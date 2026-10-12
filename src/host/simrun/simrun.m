@@ -252,7 +252,7 @@ static int Run(NSArray<NSString *> *args) {
   } else if (micLoop) return Fail(@"--mic-loop goes with --mic <audio file>");
   NSMutableArray *env = [NSMutableArray array];
   BOOL mute = [o[@"mute"] isEqual:@YES];
-  // the app's own variables (rshim.dylib), replacing the terminal's
+  // the app's own variables (app.dylib's audio module), replacing the terminal's
   for (char **e = environ; *e; e++)
     if (!(mute && !strncmp(*e, "AUDIO_MUTE=", 11)) && !(mic && !strncmp(*e, "AUDIO_INPUT=", 12)) && !(micLoop && !strncmp(*e, "AUDIO_INPUT_LOOP=", 17)))
       [env addObject:@(*e)];

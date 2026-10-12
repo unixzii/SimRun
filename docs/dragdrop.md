@@ -43,12 +43,12 @@ can't run under SimRun.
 
 ## SimRun's version
 
-- **drag.dylib** (`src/sim/drag/drag.m`, injected after pboard.dylib) checks in both druid names in the app's simns
+- **The drag module** (`src/sim/drag/drag.m`, in app.dylib) checks in both druid names in the app's simns
   namespace and implements the server side of the protocols for drags that stay in the app. NSXPC interfaces must match
   the client's (proxy arguments, allowed classes), so it uses the `remoteObjectInterface` of a throwaway
   `_UIDruidSourceConnection` / `_UIDruidDestinationConnection`.
-- After `beginDrag…`, it asks hid.dylib for the finger (`SRHIDDetachTouches`). hid.dylib cancels the app's touch and
-  hands the finger's moves to drag.dylib. Then drag.dylib requests the previews, makes views from them with UIKit's own
+- After `beginDrag…`, it asks the hid module for the finger (`SRHIDDetachTouches`). The hid module cancels the app's touch and
+  hands the finger's moves to the drag module. Then the drag module requests the previews, makes views from them with UIKit's own
   `-[_DUIImageComponent createSnapshotViewForPreview:]`, and shows them in a non-interactive overlay window under the
   finger, at `scaledSize` and `liftAnchorPoint`.
 - Each finger move becomes `SRHIDDragEvent(session, locus, x, y, touching)`: a digitizer event with those path

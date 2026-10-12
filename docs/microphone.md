@@ -45,7 +45,7 @@ later (0). CMCapture (`AVCaptureDevice`'s `authorizationStatusForMediaType:` / `
 same way. The device's tccd isn't there in SimRun (and there is no SpringBoard for its prompt), so the request failed
 and apps were told "denied".
 
-## SimRun's version (rshim.dylib, `src/sim/rshim/mic.m`)
+## SimRun's version (app.dylib's audio module, `src/sim/audio/mic.m`)
 
 ```
 app process
@@ -83,7 +83,7 @@ app process
   first of these starts, the file goes back to its start and the ring to what the Mac plays now; also when the
   device starts, for apps that record some other way. A queue that is paused and started again starts over too.
 
-WebKit's helper processes get rshim.dylib and the app's environment, so a web page's `getUserMedia` records from the
+WebKit's helper processes get the audio module and the app's environment, so a web page's `getUserMedia` records from the
 same source (in its GPU process); not tested.
 
 ## Permission
@@ -101,7 +101,8 @@ simrund serves them to apps as `dev.simrun.privacy` ([include/privacy.h](../incl
 that macOS hasn't decided, it asks macOS (its prompt, once however many apps ask at the same time) and answers when
 the user has.
 
-**The app's**, in rshim.dylib, answering `tcc_server_message_request_authorization` for `kTCCServiceMicrophone` (the
+**The app's**, from app.dylib's tcc module (`src/sim/tcc/`), with which the audio module registers
+`kTCCServiceMicrophone`: it answers `tcc_server_message_request_authorization` for the services registered with it (the
 options' policies, recorded by interposing `tcc_message_options_set_request_prompt_policy` and
 `…_set_reply_handler_policy`, say whether it is a status check or a request, and whether the reply is awaited):
 

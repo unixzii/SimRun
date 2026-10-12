@@ -137,12 +137,12 @@ timings to its stderr.
 
 ## How it works
 
-script.dylib is injected into every app. It links only what apps load anyway; JavaScriptCore is loaded on the first
+The script module (`src/sim/script/`, in app.dylib) runs in every app. It links only what apps load anyway; JavaScriptCore is loaded on the first
 script and UIKit's accessibility support on the first look at the screen, so an app that is never scripted pays for
 neither.
 
 ```
-simrun eval ──unix socket──▶ SimRun ──Mach──▶ script.dylib (in the app)
+simrun eval ──unix socket──▶ SimRun ──Mach──▶ the script module (in the app)
   { action: eval,             finds the        SR_MSG_SCRIPT_EVAL: the source (out of line), flags (snapshot)
     instance, source,         instance          and a send right to a port SimRun made for this one script
     snapshot? }
@@ -151,9 +151,9 @@ simrun eval ──unix socket──▶ SimRun ──Mach──▶ script.dylib (
                                  main thread
 ```
 
-- At start, script.dylib sends SR_MSG_SCRIPT_HELLO with its port to the session port (`mach_ports_lookup()[0]`), as
-  hid.dylib does with its input port (protocol.h). Only apps get script.dylib, not the helpers they spawn, so nothing
-  else says hello in their place.
+- At start, the script module sends SR_MSG_SCRIPT_HELLO with its port to the session port (`mach_ports_lookup()[0]`),
+  as the hid module does with its input port (protocol.h). It starts only in the app, not in the helpers it spawns, so
+  nothing else says hello in its place.
 - SimRun asks for a no-senders notification on each script's reply port: if the app exits or crashes mid-script, the
   client gets `{ error: "the app went away before the script finished" }` instead of waiting forever.
 - The reply port's queue limit is raised to the maximum, and SimRun drains it on a queue of its own, so a script
@@ -161,7 +161,7 @@ simrun eval ──unix socket──▶ SimRun ──Mach──▶ script.dylib (
 - If the client goes away (Ctrl-C), the script still runs to the end; its output is dropped.
 
 The library is split by concern (`src/sim/script/`): `script.m` (the channel to SimRun), `context.m` (the JSContext,
-timers, running a script), `ui.m` (touches and keys through hid.dylib, the frame count, the view dump), `ax.m` (the
+timers, running a script), `ui.m` (touches and keys through the hid module, the frame count, the view dump), `ax.m` (the
 elements: roles, states, visibility, refs, reading order, scrolling into view) and `objcbridge.m`; on top of them the
 API in JS, `js/core.js` (formatting, waiting), `keyboard.js`, `snapshot.js`, `locator.js`, `expect.js` and `app.js`
 (the globals). The Makefile embeds the JS files (`xxd -i`); each loads as the body of `function (native, internal)`,
@@ -175,7 +175,7 @@ before the first frame of the transition, and a wall-clock rule took that for th
 
 ## JavaScriptCore
 
-- Loaded with `dlopen` and used through `NSClassFromString`; script.dylib doesn't link it, so apps that never run a
+- Loaded with `dlopen` and used through `NSClassFromString`; the script module doesn't link it, so apps that never run a
   script don't pay for it.
 - `dlopen` itself takes ~1 ms (JavaScriptCore is in the shared cache). Creating the first `JSContext` takes 5–125 ms,
   ~100 ms typically. Later scripts cost only what they do (0.3–5 ms for small ones).

@@ -44,8 +44,8 @@ them in Launch With….
 | `SIMRUND_IDLE=secs` | SimRun, started headless by `simrun`, quits after this long without apps (default 600, 0 = never) |
 | `SIMRUND_SOCKET=path` | Use a different server socket (default `~/Library/Developer/SimRun/simrund.sock`) |
 | `SCENES_W`, `SCENES_H`, `SCENES_SCALE` | Scene size in points / scale (default: the device type's screen); SimRun sizes the display (`SIMULATOR_MAINSCREEN_*`) and window to match |
-| `HID_VERBOSE=1`, `RSHIM_VERBOSE=1`, `SIMFB_VERBOSE=1`, `SCENES_VERBOSE=1`, `PBOARD_VERBOSE=1`, `DRAG_VERBOSE=1`, `DOCPICKER_VERBOSE=1`, `KEYCHAIN_VERBOSE=1`, `WEBKIT_VERBOSE=1`, `MPS_VERBOSE=1`, `SCRIPT_VERBOSE=1` | Component tracing (`SIMFB_VERBOSE` also reports the frame-copy latency) |
-| `PBOARD_DISABLE=1` | No pasteboard service in the app (UIPasteboard fails as it did before pboard.dylib) |
+| `HID_VERBOSE=1`, `SIMFB_VERBOSE=1`, `SCENES_VERBOSE=1`, `PBOARD_VERBOSE=1`, `DRAG_VERBOSE=1`, `DOCPICKER_VERBOSE=1`, `KEYCHAIN_VERBOSE=1`, `WEBKIT_VERBOSE=1`, `MPS_VERBOSE=1`, `SCRIPT_VERBOSE=1`, `TCC_VERBOSE=1`, `AUDIO_VERBOSE=1`, `LOCALE_VERBOSE=1`, `CONTAINER_VERBOSE=1`, `XPCSERVICES_VERBOSE=1` | Component tracing: app.dylib's modules and xpcservices.dylib (`SIMFB_VERBOSE` also reports the frame-copy latency) |
+| `PBOARD_DISABLE=1` | No pasteboard service in the app (UIPasteboard fails, as in an app without SimRun's) |
 | `DRAG_DISABLE=1` | No drag server in the app (drags lift and then go nowhere) |
 | `DOCPICKER_DISABLE=1` | Document pickers aren't served by Mac panels (they present an empty sheet) |
 | `KEYCHAIN_DISABLE=1` | SecItem calls go to the runtime's securityd again (which answers -34018, missing entitlement) |

@@ -41,23 +41,24 @@ which is the same handler as WebKit's XPC services (`XPCServiceEventHandler`: bo
 ## SimRun's version
 
 ```
-app process (webkit.dylib)                                        appex process (rshim.dylib + webkit.dylib)
+app process (app.dylib: webkit)                                   appex process (xpcservices.dylib + app.dylib)
   +[BE*Process …] ─replaced─▶ posix_spawn the appex executable ──▶ NSExtensionMain ─interposed─▶ extension_main:
      bootstrap = the app's simns namespace                           anonymous XPC listener, peers -> ExtensionEventHandler
-     env: WEBKIT_EXT_HANDSHAKE=dev.simrun.webkit.<pid>.<n>  ◀────── listener port, sent to that name (bootstrap_look_up)
+     env: SIMRUN_HANDSHAKE=dev.simrun.helper.<pid>.<n>     ◀────── listener port, sent to that name (bootstrap_look_up)
   completion(SRWebKitProcess)                                       exits when the app does
   makeLibXPCConnectionError: -> connection from the listener port
 ```
 
-- **webkit.dylib** (`src/sim/webkit/webkit.m`) is injected into every app. Once BrowserEngineKit is loaded (a dyld
+- **The webkit module** (`src/sim/webkit/webkit.m`, in app.dylib) runs in every app. Once BrowserEngineKit is loaded (a dyld
   add-image callback, because WebKit is often loaded lazily), it replaces the six `+[BE*Process …]` launchers.
   - A launch runs on a background queue. It finds the appex by its Info.plist `CFBundleIdentifier`, registers a
     handshake port under a unique name in the app's namespace, spawns the executable and waits up to 30 s for the
     extension's listener port. Then it calls WebKit's completion with an **SRWebKitProcess**.
-  - The child gets the app's environment, but only `rshim.dylib` and `webkit.dylib` are injected (no render server,
-    scene host or input). Its bootstrap port is the app's own simns namespace, so it reaches the app's in-process
-    `com.apple.CARenderServer`, the host's IOSurface/Metal services, trustd (TLS in the Networking process) and
-    cfprefsd. The GPU process gets its own MTLCompilerService through rshim.
+  - The child gets the app's environment (spawned by `SRSpawnHelper`, `src/sim/common/`), with `xpcservices.dylib`
+    and `app.dylib` injected; of app.dylib's modules only those for extensions start (container, tcc, audio: no render
+    server, scene host or input). Its bootstrap port is the app's own simns namespace, so it reaches the app's
+    in-process `com.apple.CARenderServer`, the host's IOSurface/Metal services, trustd (TLS in the Networking process)
+    and cfprefsd. The GPU process gets its own MTLCompilerService through xpcservices.dylib.
   - SRWebKitProcess: `makeLibXPCConnectionError:` builds a connection from the listener port (sim endpoint). Grants are
     objects that are always valid. The visibility interaction does nothing. `invalidate` is SIGKILL. A dispatch source
     reaps the child, and when the child dies without `invalidate` it calls the interruption handler, which is what

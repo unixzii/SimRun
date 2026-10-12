@@ -4,7 +4,7 @@
 the GPU work: FFTs, element-wise ops, and the MPSGraph stages of an audio-separation pipeline next to Core ML. Before
 this, they aborted on the first graph. **This isn't a SimRun gap:** the same app aborts the same way in Simulator.app,
 because MPSGraph in these simulator runtimes can't run on the simulator's Metal device (`MTLSimDevice`). On iOS 18.5,
-MPSGraph works without any of this, and mps.dylib changes nothing there.
+MPSGraph works without any of this, and the mps module changes nothing there.
 
 ```bash
 make test-programs && build/bin/simrun run build/tests/mpstest                       # PASS: 8×16 real FFT on Apple iOS simulator GPU
@@ -15,7 +15,7 @@ MPS_VERBOSE=1 build/bin/simrun run build/tests/mpstest                          
 ## Core ML on the GPU: a separate problem, not fixed here
 
 Core ML with `MLComputeUnitsCPUAndGPU` doesn't go through these code paths. It runs on the simulator GPU with or
-without mps.dylib, and then it can be wrong. A Mel-Band RoFormer separation model (input 1×801×7916, STFT features up
+without the mps module, and then it can be wrong. A Mel-Band RoFormer separation model (input 1×801×7916, STFT features up
 to ±226) returns an all-zero mask on the GPU in the simulator, while CPU-only gives the real mask (max 1.2, 90%
 non-zero). On the Mac, both work. Simulator.app gives the same zeros, with the same numbers, so SimRun reproduces it
 faithfully. The same model with small inputs (±0.1) agrees with the CPU, which points at a precision overflow in the
@@ -45,7 +45,7 @@ name as well. `-[MPSGraphExecutable applyOptimizationPasses…]` turns it into a
 `-hasANE` is `architecture != nil`, and `-supportsMXU` is true for `h17…` and later (not `h17p`): the M5's matrix
 units.
 
-mps.dylib replaces `-initWithMPSGraphDevice:`: for a Metal device it returns
+The mps module replaces `-initWithMPSGraphDevice:`: for a Metal device it returns
 `-initMetalDeviceWithGPUCoreCount:-1 architecture:@"h13g"`, which is MPSGraph's own initializer for the same three
 properties. `-hasANE` returns NO. `h13g` (M1 class) is the most conservative choice. Code for it runs on every Apple
 silicon Mac, since the simulator's Metal recompiles on the host anyway. It also keeps MPSGraph off the MXU code paths,
@@ -74,7 +74,7 @@ mismatch:
 That assertion fires in SimRun's own process (MTLSimImplementation, see [render.md](render.md#42-metal-commetalsimulator)),
 so it takes SimRun and every running app down with it.
 
-mps.dylib replaces `-[MTLSimDevice newHeapWithDescriptor:]`. When the caller is in a MetalPerformanceShaders
+The mps module replaces `-[MTLSimDevice newHeapWithDescriptor:]`. When the caller is in a MetalPerformanceShaders
 framework (by the return address) and asks for a non-private heap, the heap is made private and marked. On marked
 heaps, `MTLSimHeap`'s `newBufferWithLength:options:[offset:]` and `newTextureWithDescriptor:[offset:]` make what they
 place private too. Only the GPU touches these intermediates, and the graph's inputs and outputs are the app's own
@@ -83,14 +83,12 @@ shared heap still gets the simulator's assertion, as in Simulator.app.
 
 ## Loading
 
-MPSGraph is often loaded after the injected libraries; Core ML, for one, loads it lazily. mps.dylib patches from a
+MPSGraph is often loaded after the injected libraries; Core ML, for one, loads it lazily. The mps module patches from a
 dyld add-image callback as soon as `MPSGraphDeviceDescriptor` and `MTLSimDevice` are registered. Metal dlopens
 MTLSimDriver when the first device is made, and the callback for it can come before its classes are registered. In
 Simulator.app nothing else was loaded after it, so the heaps went unpatched. The heaps are therefore also patched
 when the first MPSGraph device is made, which comes after the Metal device and before any graph runs. On a runtime
 whose `MPSGraphDeviceDescriptor` lacks `-initMetalDeviceWithGPUCoreCount:architecture:`, or has no such class (iOS 18),
 the descriptor is left alone.
-
-mps.dylib works in Simulator.app too: `SIMCTL_CHILD_DYLD_INSERT_LIBRARIES=…/mps.dylib xcrun simctl spawn …`.
 
 Env: `MPS_VERBOSE=1` (what was patched, and each heap made private), `MPS_DISABLE=1`.

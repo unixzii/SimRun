@@ -23,10 +23,11 @@ Real launchd_sim publishes host-side ports (com.apple.IOSurface.Remote, com.appl
 IndigoHIDRegistrationPort, coreaudiod, configd, FSEvents, ...) registered by CoreSimulator.
 
 ## Usage
-    simns <app> [args]          # in a sim environment (SimRun itself runs `simns --serve`); SIMNS_INSERT for the app's dylibs
-Env: SIMNS_INSERT, SIMNS_LOG=file, SIMNS_QUIET=1, SIMNS_HOST_SLOT=n (send SIMNS_MSG_HELLO{control port} to mach_ports_lookup()[n],
-wait SIMNS_HOST_WAIT ms for SIMNS_MSG_READY). Control messages: simns_proto.h (SIMNS_MSG_REGISTER {name, send right, flags}).
-The control port is also registered as `dev.simrun.simns.control` so an in-app shim can bootstrap_look_up it and register in-process services.
+    simns --serve               # run by SimRun, one per iOS runtime in use
+Env: SIMNS_LOG=file, SIMNS_QUIET=1, SIMNS_DAEMONS, SIMNS_HOST_SLOT=n (send SIMNS_MSG_HELLO{control port} to
+mach_ports_lookup()[n], wait SIMNS_HOST_WAIT ms for SIMNS_MSG_READY). Control messages: simns_proto.h (SIMNS_MSG_REGISTER
+{name, send right, flags} into the global namespace, SIMNS_MSG_NEW_NS for an app's namespace).
+(It used to also launch one app by itself, `simns <app> [args]`; SimRun spawns the apps.)
 
 ## Inventory: Hello.app (UIKit, scene-based) until first fatal error
 | service | kind | handling |

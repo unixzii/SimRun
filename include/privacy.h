@@ -1,4 +1,4 @@
-// privacy.h — SimRun's own privacy permissions on the Mac, which rshim.dylib (mic.m) puts under an app's: an app may
+// privacy.h — SimRun's own privacy permissions on the Mac, which app.dylib's tcc module puts under an app's: an app may
 // record from the Mac's microphone, or what the Mac plays, only when macOS lets SimRun. See docs/microphone.md.
 //
 // simrund serves SRPV_SERVICE: a sim2host XPC listener registered in simns' global namespace. Messages are xpc

@@ -11,7 +11,10 @@ Measured: 1206x2622 BGRA at about 50–55 fps in steady state (3 s runs give 150
 ```
 
 This is the record of the prototype. Its pieces are gone: gpuhost.m now runs inside SimRun, and `rhost`, `catest`,
-`fakeframes` and `simrun.sh` were removed (they are in the git history).
+`fakeframes` and `simrun.sh` were removed (they are in the git history), and later what served running without SimRun
+(no simns: the slot-passed services, the CARenderServer name; the in-process frame handler). rshim.m's
+MTLCompilerService launcher is now xpcservices.dylib (`src/sim/xpcservices/`), and starting the render server is
+app.dylib's render module (`src/sim/render/`). Section 6 has where things are now.
 
 ## 1. Architecture
 
@@ -184,11 +187,12 @@ The first draw aborts in `CA::OGL::MetalContext::create_fragment_shader`: "Unabl
 Connection init failed at lookup with error 141". Sim Metal calls `xpc_connection_create("com.apple.MTLCompilerService")`.
 That is a *bundled* XPC service (`$R/System/Library/Frameworks/Metal.framework/XPCServices/MTLCompilerService.xpc`, a
 sim binary) which launchd_sim normally spawns.
-rshim spawns it lazily, on the app's first connection. It is posix_spawned with rshim injected, `RSHIM_ROLE=xpcservice`,
-`XPC_FLAGS=0x2`, the bundle's `XPCService.EnvironmentVariables` (`MallocNanoZone=1`), and its `TASK_BOOTSTRAP_PORT`
-set to a handshake port. In the child, rshim's `xpc_main()` replacement turns the service's handler into an anonymous
-listener and sends the listener port back through that special port. The child exits when the parent dies. The app's
-connection is created from that endpoint. Both sides are sim processes, so no sim2host flag is involved.
+xpcservices.dylib spawns it lazily, on the app's first connection (`SRSpawnHelper`, `src/sim/common/`). It is
+posix_spawned with only xpcservices.dylib injected, `SIMRUN_ROLE=xpcservice`, `XPC_FLAGS=0x2`, the bundle's
+`XPCService.EnvironmentVariables` (`MallocNanoZone=1`), and its `TASK_BOOTSTRAP_PORT` set to a handshake port. In the
+child, the `xpc_main()` replacement turns the service's handler into an anonymous listener and sends the listener port
+back through that special port (`SRHelperCheckIn`). The child exits when the parent dies. The app's connection is
+created from that endpoint. Both sides are sim processes, so no sim2host flag is involved.
 
 Every runtime uses it. Even on 27.1, CA compiles shaders from AIR the first time: a fresh app makes two connections,
 both before its first frame. After that the results are in the app's Metal cache
@@ -198,21 +202,21 @@ here with that directory removed. A warm cache hides compiler problems.
 **One process for all connections, but serialized.** The bundle's Info.plist says `XPCService._MultipleInstances = true`.
 launchd_sim then starts one compiler process per connection: a booted 26.5 device shows several MTLCompilerService
 children of launchd_sim, with `XPC_SERVICE_NAME=com.apple.MTLCompilerService`, `XPC_FLAGS=8009`, `MallocNanoZone=1`
-and nothing injected. The service isn't written for two connections in one process. When rshim's process served both of
+and nothing injected. The service isn't written for two connections in one process. When our one process served both of
 CA's connections at once (each peer on its own workloop thread), the iOS 26.5 (23F77) compiler crashed every time with
 a cold cache: EXC_BAD_ACCESS in LLVM, at a different spot each time (`PredicateInfoBuilder::buildPredicateInfo`,
 `EarlyCSEPass::run`, `air::ErrorHandler::reset`), always under `MTLCompilerObject::buildSpecializedFunctionRequest` ->
 `airspc::Specializer::specialize`. The app then aborted in `create_fragment_shader` (exit status 6). 18.6 and 27.1
 survived the same race. It wasn't the environment: pointing the compiler at CoreSimulator's dyld cache for 26.5 (see
-below) didn't help. rshim's `xpc_main()` now puts every peer on one serial queue, so requests run one at a time, as in
+below) didn't help. The `xpc_main()` replacement now puts every peer on one serial queue, so requests run one at a time, as in
 a single-connection process. A process per connection would also work, but each extra compiler costs another sim
 process launch before the first frame.
 
-**Relaunched after it dies.** launchd_sim starts a crashed service again on the next connection. rshim used to spawn
+**Relaunched after it dies.** launchd_sim starts a crashed service again on the next connection. We used to spawn
 the compiler only once and kept handing out its dead listener. Every reconnect then failed with "Connection init
 failed at send right creation with error 9 - Bad file descriptor", and CA aborted on the next shader ("The process is
 unavailable because the compiler is no longer active"). Now a proc-exit source (or a dead-name check of the listener)
-clears it, and the next `xpc_connection_create` spawns a new one. rshim also stops waiting for the handshake as soon
+clears it, and the next `xpc_connection_create` spawns a new one. The spawn also stops waiting for the handshake as soon
 as the child dies, instead of blocking the caller for 20 s.
 
 Environment difference noticed on the way, not the cause: 18.6 and 26.5 ship no dyld shared cache in the runtime.
@@ -230,65 +234,41 @@ which only 27.1 has, so on older runtimes SimRun's processes load every dylib fr
 | sim client -> host anonymous listener: "Connection interrupted" / host peer "Connection invalid" | sim2host wire magic `!CPX` rejected by an unflagged listener | `xpc_connection_enable_sim2host_4sim(listener)` on the host listener |
 | ports from `mach_ports_register` missing in the child | lost across the zsh `exec` in simrun.sh (same as NOTES fact 8) | rhost computes the env via `simrun.sh /usr/bin/env -0` and spawns the sim binary directly |
 | NSTask in rhost hung | (not investigated) | plain posix_spawn + pipe |
-| SIGABRT in `create_fragment_shader` (MTLCompilerService unreachable) | bundled XPC service needs launchd_sim | rshim spawns it and fakes `xpc_main` (4.3) |
+| SIGABRT in `create_fragment_shader` (MTLCompilerService unreachable) | bundled XPC service needs launchd_sim | rshim (now xpcservices.dylib) spawns it and fakes `xpc_main` (4.3) |
 | frames show the tree at 1/3 size | the server renders in display pixels | scale the root layer by the display scale; UIKit does the same for window layers |
 | tearing / clipped content in PNGs | handler ran async while CA was already drawing the next frame | frame handler runs synchronously inside `SwapSubmit` when `q == NULL` |
 | `+[CADisplay mainDisplay]` nil | CADisplay needs `kCADisplayDeviceName`, and main = name prefix "LCD" | Name = "LCD", DeviceName = "LCD", UID = "PurpleMain" |
 | `bootstrap_check_in/look_up` only called when bootstrap_port is valid | null-bootstrap mode | standalone: rshim interposes the CARenderServer name and gives a dead-name `bootstrap_port`; under simns: real check-in (rshim steps aside) |
 | iOS 26.5: every app aborts in `create_fragment_shader` ("compiler is no longer active", "send right creation with error 9") | the 26.5 MTLCompilerService crashes in LLVM when two connections compile at once in one process (launchd_sim gives each its own, `_MultipleInstances`); rshim then never relaunched it | serialize the service's peers; relaunch the compiler after it dies (4.3) |
 
-## 6. API for the integrator
+## 6. In SimRun now
 
-**Sim process** (inject `render/rshim.dylib`; set `SIMULATOR_FRAMEBUFFER_FRAMEWORK=<abs>/render/SimFramebuffer`):
-* Start the server. Do it once, early, before UIKit/BackBoard asks for displays. Use exactly what backboardd does:
-  `[CAWindowServer serverWithOptions:@{}]`. Pass `kCAWindowServerDisableUpdatesOnMainDisplay` only if you later call
-  `-[CAWindowServerDisplay setDisablesUpdates:NO]`. After this, `[CAWindowServer server].displays[0]` is the
-  `CAWindowServerDisplay` ("LCD", 1206x2622, displayId 1), and `[CADisplay mainDisplay]` works for clients.
-* Frames, option A (in-process): `SimRunFBSetFrameHandler(NULL, ^(IOSurfaceRef s, uint64_t seq){...})`, declared in
-  `render/simfb.h` and resolved with `dlsym(dlopen($SIMULATOR_FRAMEBUFFER_FRAMEWORK))`. It runs synchronously on CA's
-  display thread inside `SwapSubmit`; copy or blit there. The surface is CA's BGRA framebuffer at canvas size.
-* Frames, option B (host viewer): automatic. If `mach_ports_lookup()[0]` (viewer port) exists and
-  `SIMFB_VIEWER != 0`, the fake SFB sends `SR_MSG_SURFACE` (IOSurface send right, w, h, scale) whenever the presented
-  surface changes, plus `SR_MSG_FRAME` per present (viewer/protocol.h). CA rotates up to 3 framebuffers, so expect
-  frequent SR_MSG_SURFACE. Ports are cached per surface. **Suggested protocol extension:** put the IOSurface ID in
-  SR_MSG_FRAME and let the viewer cache `id -> IOSurfaceRef` (no lookups per frame).
-* Display geometry comes from `SIMULATOR_MAINSCREEN_WIDTH/HEIGHT/SCALE/PITCH` (set by simrun.sh).
+**Sim side.** SimRun injects `xpcservices.dylib:app.dylib` and sets `SIMULATOR_FRAMEBUFFER_FRAMEWORK` to its
+`SimFramebuffer` (architecture.md).
+* app.dylib's render module (`src/sim/render/render.m`) starts the server first thing, before UIKit/BackBoard asks for
+  displays, exactly as backboardd does: `[CAWindowServer serverWithOptions:@{}]`. After this,
+  `[CAWindowServer server].displays[0]` is the `CAWindowServerDisplay` ("LCD", the device's screen, displayId 1), and
+  `[CADisplay mainDisplay]` works for clients. It then hosts the scene's layers (`CALayerHost`) in a displayable context.
+* The fake SimFramebuffer (`src/sim/simfb/simfb.m`, `include/simfb.h`) sends `SR_MSG_SURFACE` (IOSurface send right, w,
+  h, scale) to the session port (`mach_ports_lookup()[0]`) whenever the presented surface changes, plus `SR_MSG_FRAME`
+  per present (`include/protocol.h`), from display buffers it copies each present into. `SimRunFBFrameCount()` is what
+  scripts wait on.
+* Display geometry comes from `SIMULATOR_MAINSCREEN_WIDTH/HEIGHT/SCALE/PITCH` (set by SimRun from the device type).
   `SIMFB_REFRESH_CENTIHZ` (default 6000), `SIMFB_DISPLAY_UID`, `SIMFB_VERBOSE=1`.
-* rshim env: `RSHIM_VERBOSE=1`. `RSHIM_NO_COMPILER=1` disables the MTLCompilerService spawn.
-  `RSHIM_KEEP_BOOTSTRAP=1` keeps a null bootstrap_port.
+* xpcservices.dylib (`src/sim/xpcservices/xpcservices.m`): the MTLCompilerService launcher (4.3).
+  `XPCSERVICES_VERBOSE=1`; `XPCSERVICES_DISABLE=1` disables the spawn.
 
-**Host process** (viewer): link `render/gpuhost.m` and call
-`srgpu_host_start(&iosurfacePort, &metalPort)` once. It creates both sim2host listeners in-process and returns send
-rights to their listener ports. Publish them either way:
-* simns: `SIMNS_MSG_REGISTER` `"com.apple.IOSurface.Remote"` -> iosurfacePort and `"com.apple.metal.simulator"` ->
-  metalPort, then `SIMNS_MSG_READY`. rhost.m `drain()` does exactly this on `SIMNS_MSG_HELLO`. The viewer already
-  does it for IOSurface; it only needs to add the Metal one.
-* no simns: `mach_ports_register` slots 1 (IOSurface) and 2 (Metal), with slot 0 = viewer port. rshim then interposes
-  `xpc_connection_create_mach_service` for those two names.
+**Host side.** `src/host/gpuhost/gpuhost.m`: `srgpu_host_start(&iosurfacePort, &metalPort)` creates both sim2host
+listeners in SimRun, and SimRun registers them in each simns (`SIMNS_MSG_REGISTER` `"com.apple.IOSurface.Remote"`,
+`"com.apple.metal.simulator"`, then `SIMNS_MSG_READY` once simns has said `SIMNS_MSG_HELLO`). MTLCompilerService is
+handled inside the sim app, so nothing is needed on the host for it. If simns learns to launch bundled XPC services,
+xpcservices.dylib can go.
 
-`MTLCompilerService` is handled entirely inside the sim app by rshim, so nothing is needed on the host. If simns
-learns to launch bundled XPC services, rshim's version can go.
-
-**Verified commands** (from `b/render`):
-```
-./build.sh
-./run.sh                                                    # all four variants below
-RHOST_INSERT=$PWD/rshim.dylib SIMULATOR_FRAMEBUFFER_FRAMEWORK=$PWD/SimFramebuffer ./rhost ./catest
-RHOST_NO_SLOTS=1 SIMNS_INSERT=$PWD/rshim.dylib SIMULATOR_FRAMEBUFFER_FRAMEWORK=$PWD/SimFramebuffer ./rhost ../launchd/simns ./catest
-```
-catest env: `CATEST_OUT=dir`, `CATEST_SECONDS=n`, and `CATEST_MODE=hosted` (content context non-displayable,
-shown via `CALayerHost` in a displayable host context, which is how scene hosting works). `catest_uikit` = the same
-plus UIView/UILabel/UISwitch/UIProgressView layers, with UIKit linked but no UIApplicationMain. All render correctly.
-
-## 7. Files
-* `simfb.m` / `simfb.h`: fake SimFramebuffer (sim dylib `SimFramebuffer`), with the frame handler API and viewer sink.
-* `rshim.m`: sim dylib with sim2host XPC redirection (slots), the MTLCompilerService spawner, an `xpc_main`
-  replacement, and CARenderServer bootstrap names when no real namespace exists.
-* `gpuhost.m` / `gpuhost.h`: host GPU services (IOSurfaceRemoteServer + MTLSimImplementation) and a sim-env helper.
-* `rhost.m`: host launcher / mini-viewer. It serves gpuhost, the simns HELLO/REGISTER/READY handshake and the viewer
-  protocol, and writes a host-side PNG (`RHOST_PNG`).
-* `catest.m`: test client (UIKit-free; `catest_uikit` with `-DCATEST_UIKIT=1`).
-* `build.sh`, `run.sh`.
+## 7. Files (now)
+* `src/sim/simfb/simfb.m` / `include/simfb.h`: fake SimFramebuffer (sim dylib `SimFramebuffer`) and its viewer sink.
+* `src/sim/xpcservices/xpcservices.m`: the MTLCompilerService spawner and the `xpc_main` replacement.
+* `src/sim/render/render.m`: the in-process render server and scene layer hosting (an app.dylib module).
+* `src/host/gpuhost/gpuhost.m` / `include/gpuhost.h`: host GPU services (IOSurfaceRemoteServer + MTLSimImplementation).
 
 ## 8. Open issues / what's needed for a real UIKit app
 1. **UIApplicationMain still needs BackBoard.** `BKSDisplayServicesStart()` requires `com.apple.backboard.display.services`

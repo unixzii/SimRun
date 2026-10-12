@@ -29,7 +29,7 @@ PBOARD_VERBOSE=1 build/bin/simrun run …                          # trace reads
   drops persistent ones when it sees the NSNotification **`com.apple.pasteboard.changed`** `{state: n}`, which
   PBServerConnection posts on the notify(3) post `com.apple.pasteboard.notify.changed`. When `state` equals the
   `notificationState` of its own last save (`PBSaveResponse`), UIKit treats the change as its own. iOS 27 added a
-  `removedItemUUIDs:` argument to `PBSaveResponse`'s initializer; pboard.dylib uses whichever the runtime has (an
+  `removedItemUUIDs:` argument to `PBSaveResponse`'s initializer; the pboard module uses whichever the runtime has (an
   unrecognized selector there ended the app at its first copy on iOS 18 and 26).
 - Without a server, every save logs "Could not save pasteboard … Cannot connect to pasteboard server" (after
   multi-second timeouts) and the pasteboard is always empty.
@@ -42,7 +42,7 @@ Neither fits SimRun.
 
 ```
 app process                                                      simrund (macOS)
-  UIKit ─NSXPC─▶ pboard.dylib: fake pasted                        SRPasteboardHost (src/host/simrund/services/pasteboard.m)
+  UIKit ─NSXPC─▶ pboard module: fake pasted                       SRPasteboardHost (src/host/simrund/services/pasteboard.m)
                  NSXPCListener checked in as                        sim2host XPC listener "dev.simrun.pasteboard"
                  com.apple.pasteboard.pasted (app's namespace)      registered in simns' global namespace
                  ── read / data / write (pboard.h) ─sim2host XPC─▶  NSPasteboard (general, find, dev.simrun.pboard.<name>)
@@ -50,7 +50,7 @@ app process                                                      simrund (macOS)
                  posts com.apple.pasteboard.changed {state}
 ```
 
-- **pboard.dylib** (`src/sim/pboard/pboard.m`, injected after hid.dylib) implements `PBClientToServerProtocol`:
+- **The pboard module** (`src/sim/pboard/pboard.m`, in app.dylib) implements `PBClientToServerProtocol`:
   - *read* → `read` from the host (types per item, no data) → a `PBItemCollection` with those types (placeholder
     loaders; the client installs its own); *load* → `data` for one item/type.
   - *save* → replies at once (the client may be waiting on the main thread while its data provider needs that thread),
@@ -67,7 +67,7 @@ app process                                                      simrund (macOS)
     (`-[_UIEditMenuContentPresentation wantsPasteTouchAuthenticationInEditMenuListView:]`) asks for touch
     authentication, meaning a tap only counts if backboardd signed the touch. SimRun's HID touches carry no
     authentication record, so the Gestures framework resets the menu's selection recognizer before its action runs:
-    Paste looked enabled but did nothing (Select etc. worked). pboard.dylib makes that method return NO, and Paste
+    Paste looked enabled but did nothing (Select etc. worked). The pboard module makes that method return NO, and Paste
     then behaves like any other menu item.
 - **SRPasteboardHost** (simrund) maps `com.apple.UIKit.pboard.general` → `NSPasteboard.generalPasteboard`,
   `…find` → the Find pasteboard, others → `dev.simrun.pboard.<name>`. It hides Mac types an iOS app can't use

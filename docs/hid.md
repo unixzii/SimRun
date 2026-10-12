@@ -1,7 +1,7 @@
 # hid/ — touch and keyboard input without backboardd
 
-**Status: working.** `hid.dylib` makes UIKit deliver real input in a sim app process that has no backboardd or
-SpringBoard. All of the following were verified:
+**Status: working.** app.dylib's hid module (`src/sim/hid/hid.m`) makes UIKit deliver real input in a sim app process
+that has no backboardd or SpringBoard. All of the following were verified:
 - UIButton `touchUpInside` actions, UISwitch, UITapGestureRecognizer, UITableView row selection.
 - UIScrollView/UITableView panning, deceleration and tap-to-stop.
 - Two-finger pinch (UIPinchGestureRecognizer).
@@ -12,21 +12,11 @@ SpringBoard. All of the following were verified:
 - Trackpad gestures as touches: two-finger scroll (drag + UIKit's own fling), magnify/rotate (two-finger pinch and
   rotation), smart magnify (double tap). See §4a.
 
-It works in a plain null-bootstrap process (`run.sh` with `HID_PLAIN=1`) and on the full stack (`../simapp.sh`), end to
-end from the AppKit viewer.
+It runs in every app SimRun starts: the app window's mouse, trackpad and keyboard come in through it, and so do
+`simrun eval`'s taps and typing (the script module calls the API below). `build/apps/HIDTest.app` logs every input
+callback with an "[app]" prefix; `HID_VERBOSE=1` logs every injected event.
 
-```
-./build.sh              # HIDTest.app (app.m) + hid.dylib (hid.m)
-./run.sh [App]          # full stack (../simapp.sh + hid.dylib), runs the built-in demo script, prints [app]/[hid] lines,
-                        # writes last_run.log + last_run.png. Output: sample_output.txt
-HID_SCRIPT="wait 1; tap 201 486" ./run.sh ../../sim2mac/Hello.app     # any app, scripted
-HID_PLAIN=1 HID_SCRIPT="wait 1; tap 201 105" ./run.sh                    # plain process (scenes.dylib only)
-./viewer_demo.sh        # through the viewer: host mouse/key events -> viewer.m -> SR_IN_* -> hid.dylib -> UIKit
-                        # (SUI.app + Hello.app; writes viewer_*.png; uses CGEventPost: moves the real cursor and needs
-                        # the Accessibility permission for the terminal)
-```
-
-Proof screenshots:
+Proof screenshots (from the workstream, not in the repository):
 - `viewer_sui_1.png`: Count 3 after three clicks on "+", and "hello SwiftUI" typed.
 - `viewer_sui_2.png`: backspace, left arrow and "-" give "hello Swi-ft".
 - `viewer_sui_3.png`: NavigationLink pushed (Detail 2).
@@ -100,7 +90,7 @@ One IOHIDEvent per change, shaped like backboardd's:
 
 Each item below was found by tracing why typed keys arrived as `pressesBegan` but never reached the text field.
 
-| # | Missing piece | Symptom | Fix in hid.dylib |
+| # | Missing piece | Symptom | Fix in the hid module |
 |---|---|---|---|
 | 1 | `GSEventIsHardwareKeyboardAttached()` reads notifyd state that backboardd sets | software-keyboard mode. On first focus, the keyboard dock runs the dictation livelock (#4) | `__interpose` → YES. `HID_SOFTWARE_KEYBOARD=1` reports detached: typing still works, but no on-screen keyboard is drawn, see §6 |
 | 2 | **Keyboard focus.** `_UIKeyboardFocusAssistant` attaches the keyboard (`UIKeyboardImpl` delegate = first responder) only if a `BKSHIDEventDeliveryPolicyObserver` reports that the scene's `FBSScene.ui_eventDeferringToken` is the final target of the keyboardFocus deferring chain. backboardd pushes the chains over the hid-services BSService by calling the client method `-[BKSHIDEventObserver didUpdateDeferringChains:withReply:]` | `keyInputDelegate == nil`. Keys reach `_UIKeyboardStateManager handleKeyEvent:executionContext:` and are dropped | On scene activation or key-window change we call that method in-process on `+[BKSHIDEventObserver sharedInstance]`. There is one `BKSHIDEventDeliveryChain` per environment (keyboardFocus, system), with identity `BKSEventDeferringChainIdentity(builtinDisplay, env)` and path `[BKSHIDEventDeferringTarget(getpid(), sceneToken)]`, `containsEndOfChain` YES and `finalStringTargetIndex` 0. Disable with `HID_NO_FOCUS=1`, which stops typing |
@@ -143,7 +133,7 @@ and `-[BKSHIDEventObserver didUpdateDeferringChains:]` (no reply).
 void SRHIDTouch(int phase, float x, float y);                    // finger 0; SRHID_TOUCH_BEGAN/MOVED/ENDED/CANCELLED = 1..4
 void SRHIDTouchFinger(int finger, int phase, float x, float y);  // multitouch, finger 0..9 (9: scroll, 7-8: pinch)
 bool SRHIDDetachTouches(SRHIDDetachedTouchHandler h, void *ctx); // drag began: cancel the app's touches, send their
-                                                                 // moves/lift to h (drag.dylib, docs/dragdrop.md)
+                                                                 // moves/lift to h (the drag module, docs/dragdrop.md)
 void SRHIDDragEvent(uint32_t session, int locus, float x, float y, bool touching); // a drag HID event
 void SRHIDScroll(float x, float y, float dx, float dy);          // mouse wheel, emulated drag without fling (§4a)
 void SRHIDTrackpadScroll(float x, float y, float dx, float dy, int phase, int momentumPhase, double ts); // §4a
@@ -153,27 +143,24 @@ void SRHIDKeyUsage(uint32_t hidUsage, bool down);                // USB HID page
 void SRHIDKeyMac(uint16_t macKeyCode, bool down, uint32_t macModifierFlags);
 void SRHIDReleaseModifiers(void);
 void SRHIDText(const char *utf8);
-void SRHIDStartReceiver(void);                                   // automatic in the constructor
 ```
 - All functions are thread-safe. They run on the main thread, asynchronously when called from elsewhere, in call
   order. Coordinates are scene points.
-- **Receiver:** the constructor (only in processes whose main bundle is a `.app`, see §5) allocates a receive port. It
+- **Receiver:** the module's start (only in processes whose main bundle is a `.app`, see §5) allocates a receive port. It
   sends `SR_MSG_HELLO` {port} to `mach_ports_lookup()[SR_PORT_SLOT_HOST]` and serves `SR_MSG_INPUT` on a serial dispatch
   queue:
   - `SR_IN_TOUCH_*` → `SRHIDTouch`
   - `SR_IN_KEY_DOWN/UP` → `SRHIDKeyMac(keycode, modifiers)`. The characters field is not used, because keys are
     positional.
   - `SR_IN_TEXT` → `SRHIDText`
-  - `SR_IN_RESIZE` → `SRScenesUpdate(x, y, YES, portrait)` via dlsym, if scenes.dylib is loaded
+  - `SR_IN_RESIZE` → `SRScenesUpdate(x, y, YES, portrait)` (the scenes module)
   - `SR_IN_SCROLL` (`sr_scroll_payload_t`: deltas, NSEvent phase/momentumPhase, timestamp) → `SRHIDTrackpadScroll`
   - `SR_IN_GESTURE` (`sr_gesture_payload_t`: magnify or rotate delta + phase) → `SRHIDTrackpadGesture`
   - `SR_IN_SMART_MAGNIFY` → `SRHIDDoubleTap`
-- No viewer change is needed for touches or keys; this was tested. Disable the receiver with `HID_NO_RECEIVER=1`.
-- **Testing hooks:**
-  - `HID_SCRIPT="wait S; tap X Y; tapid ACCESSIBILITY_ID; drag X0 Y0 X1 Y1 [steps] [secs]; pinch CX CY R0 R1; wheel X Y DY [n]; tpscroll X Y DY [n]; tpmag X Y TOTAL [DEGREES]; dtap X Y; text STR; key USAGE; mac KEYCODE [FLAGS]; scene W H ORIENT; where ID; dump"`
-    runs after the first scene activation.
-  - `HID_DEMO=1` runs the HIDTest script.
-  - `HID_VERBOSE=1` logs every injected event.
+- No viewer change is needed for touches or keys; this was tested.
+- **Testing:** `simrun eval` (scripting.md) drives the same calls; `HID_VERBOSE=1` logs every injected event. (A
+  `HID_SCRIPT` command list, run at the first scene activation, did this before `simrun eval`; the checks below were
+  made with it.)
 
 ## 4a. Trackpad gestures → touches
 
@@ -220,7 +207,7 @@ finger on the glass, not just those that opt into scroll events.
   level, because UIRotationGestureRecognizer's angle wraps at ±180°. The two host streams can overlap: the fingers go
   down with the first and lift with the last.
 - **Smart magnify** → a double tap at the cursor.
-- Verified with `HID_SCRIPT` in HIDTest:
+- Verified with `HID_SCRIPT` (the scripted input of the time) in HIDTest:
   - `tpscroll` ends with `didEndDragging decelerate=1` and a natural deceleration.
   - A touch during the fling stops it.
   - `wheel` still gives `decelerate=0`.
@@ -232,28 +219,25 @@ finger on the glass, not just those that opt into scroll events.
   - A long scroll can carry the virtual finger past the screen edge.
   - Both pinch fingers must land in the view that should get the gesture: each touch is hit-tested.
 
-## 5. Merge instructions (for the integrator)
+## 5. In app.dylib
 
-- **Drop-in:** append `hid.dylib` to the insert list. `simrun run --insert $B/hid/hid.dylib App.app` already works.
-- **To fold it into the stack permanently:** add it to `+[SREnvironment injectedLibraries]`, or compile hid.m into glue.dylib.
-  It has no dependency on other dylibs: it uses `SRScenesUpdate` only optionally via dlsym, and it includes
-  `../viewer/protocol.h`.
-- **Interposers:** only one, `GSEventIsHardwareKeyboardAttached`. No other SimRun dylib interposes it (checked rshim,
-  glue, scenes). Everything else is ObjC swizzling with `method_setImplementation`:
+- It is a module of app.dylib (`src/sim/app/app.h`), started after render and scenes. It calls the scenes module's
+  `SRScenesUpdate` directly, and the drag module calls `SRHIDDetachTouches`/`SRHIDDragEvent`; it includes
+  `include/protocol.h`. The API stays exported (test apps look up `SRHIDTouch` with `dlsym`).
+- **Interposers:** only one, `GSEventIsHardwareKeyboardAttached`; no other module interposes it. It answers only where
+  the module runs (`SRModuleOn`). Everything else is ObjC swizzling with `method_setImplementation`:
   - `UIDictationConnection` ×2, `UIDictationController` ×1
   - `_UIRemoteKeyboards -queue_failedConnection:`
 
-  None of these overlap with scenes.dylib, which swizzles BSServiceConnectionEndpoint, CADisplay and CAContext.
-- **scenes.dylib needs no change.** Its hid-services "sink" endpoint must stay: BKSHIDEventDeliveryManager and
-  BKSHIDEventObserver need a live connection or they assert or exit. The keyboard-focus chains are pushed directly to
-  the client object, so nothing has to be answered on the sink.
-- **Heads-up (applies to every injected dylib):** `DYLD_INSERT_LIBRARIES` leaks into helper processes the app spawns,
-  for example **MTLCompilerService**. hid.dylib loaded there once and sent its own SR_MSG_HELLO, which stole the
-  viewer's input port.
-  - hid.dylib now returns early unless the main bundle is an `.app`.
-  - rshim, glue and scenes are injected into MTLCompilerService too; it is worth checking that they behave.
-  - Better long term: strip `DYLD_INSERT_LIBRARIES` from the environment in an injected `posix_spawn` hook, or have
-    simns pass it only to the app.
+  None of these overlap with the scenes module, which swizzles BSServiceConnectionEndpoint, RBSConnection and UTType.
+- **The scenes module's** hid-services "sink" endpoint must stay: BKSHIDEventDeliveryManager and BKSHIDEventObserver
+  need a live connection or they assert or exit. The keyboard-focus chains are pushed directly to the client object, so
+  nothing has to be answered on the sink.
+- **Helper processes:** `DYLD_INSERT_LIBRARIES` leaks into processes the app spawns. hid once loaded in
+  MTLCompilerService and sent its own SR_MSG_HELLO, which stole the viewer's input port. Now no app.dylib module starts
+  in the services SimRun spawns for the app (they get only xpcservices.dylib), nor in WebKit's extensions, and the hid
+  module also returns early unless the main bundle is an `.app` (a program the app runs inherits the variable).
+
 ## 6. Open issues
 
 - **Trackpad scroll as a UIScrollEvent:** the iPadOS mapping in §4a could be fed instead of touches. It would
@@ -283,20 +267,16 @@ finger on the glass, not just those that opt into scroll events.
   (`[CAWindowServer server].displays[0]`) but is not needed.
 - **Rotation:** input uses scene coordinates and works in landscape. The viewer must send rotated-space points when the
   scene is rotated (currently its view stays 402x874).
-- **Plain mode (`HID_PLAIN=1`, no render server):** UIScrollView deceleration crashes in `+[CADisplayLink
-  _displayLinkWithDisplay:…]` (nil CADisplay; scenes' no-render-server stopgap). This is not an input bug; it does not
-  happen on the full stack.
 - **Physical keyboard device properties / layout** (`BKSHIDKeyboardGetDeviceProperties`,
   `BKSHIDServicesGetHardwareKeyboardLanguage`) fail softly. They could be answered by the same future hid-services
   service.
 
 ## Files
-- `hid.m` → `hid.dylib`, with `hid.h` (the API).
+- `src/sim/hid/hid.m`: the hid module of app.dylib, with `include/hid.h` (the API).
 - `app.m` → `HIDTest.app`: a UIButton, UITextField with delegate logging, UISwitch, a 100-row UITableView, tap,
   double-tap, pinch and rotation recognizers, touches/presses logging and UIKeyCommands. All of its logs carry the
   "[app]" prefix. The Table | Zoom switch swaps the table for a pannable, pinch-zoomable tile map (0.33–4×, double tap
   zooms in or back out), for trying trackpad scroll, pinch and smart zoom (logs "ZOOM ...").
-- `build.sh`, `run.sh` (scripted demo, full stack or `HID_PLAIN`), `sample_output.txt`, `last_run.png`.
 - `hostinput.swift` (→ `hostinput`): a host-side event synthesizer for the viewer window. `viewer_demo.sh` and
   `viewer_*.png` are the end-to-end proof.
 - `re/`: IDA decompilations (`uik_*.c`), made by `re/decre.py db out.c regex` with the idalib venv; `re/xsel.py` finds the callers of a selector.

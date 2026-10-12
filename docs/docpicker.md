@@ -31,14 +31,14 @@ Under SimRun there is no pkd or extension host: the picker presents its sheet an
 ```
 app process                                                         simrund (macOS)
   UIDocumentPickerViewController                                      SRDocumentPickerHost (src/host/simrund/services/filepanel.m)
-    docpicker.dylib: no remote UI; blank sheet                          sim2host XPC listener "dev.simrun.docpicker"
+    docpicker module: no remote UI; blank sheet                         sim2host XPC listener "dev.simrun.docpicker"
     on screen ── choose {panel, types, multiple, ...} ─sim2host XPC─▶   registered in simns' global namespace
                                                                         NSOpenPanel / NSSavePanel, a sheet on the
     ◀────────────────────────────────── {paths} ───────────────────     app's window (found by the caller's pid)
     copy / move per mode, then -documentBrowser:didPickDocumentURLs:
 ```
 
-- **docpicker.dylib** (`src/sim/docpicker/docpicker.m`, injected after drag.dylib) replaces the picker's
+- **The docpicker module** (`src/sim/docpicker/docpicker.m`, in app.dylib) replaces the picker's
   `viewDidLoad`, `viewWillAppear:` and `_viewControllerPresentationDidInitiate` with UIViewController's own, so the
   remote UI is never set up and the picker is an empty sheet (system background). In `viewDidAppear:` it asks simrund
   to choose (`include/docpicker.h`):
@@ -57,7 +57,7 @@ app process                                                         simrund (mac
   `startAccessingSecurityScopedResource` returns YES for any file URL in a sim process.
 - **SRDocumentPickerHost** (simrund) shows one panel per app at a time, as a sheet on the window of the app whose pid
   made the request (a free-standing panel if the window isn't shown yet), and brings SimRun forward. If the app
-  dismisses the picker while the panel is up, docpicker.dylib sends `cancel` and the panel goes away (the delegate
+  dismisses the picker while the panel is up, the docpicker module sends `cancel` and the panel goes away (the delegate
   hears nothing, as on a device); if the app quits, its connection's end does the same.
 - No simrund (an app run outside SimRun)? Pickers cancel as soon as they appear.
 - Folder types are recognized by name as well (`public.folder`, `public.directory`): with no Launch Services type

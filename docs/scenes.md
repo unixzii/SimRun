@@ -1,23 +1,13 @@
 # scenes/ — application lifecycle & UIWindowScene delivery without SpringBoard
 
-Status: **working.** A scene-based sim UIKit app launched with `simrun.sh` (no launchd_sim, no backboardd, no
-SpringBoard, no runningboardd) gets `application:didFinishLaunchingWithOptions:`, then
-`scene:willConnectToSession:options:` with a `UIWindowScene` of the size we choose (default: the display's,
-`SIMULATOR_MAINSCREEN_*`, e.g. 402x874 pt @3x). It
-then becomes foreground-active and the main run loop keeps going. Resize, rotation and foreground/background
-transitions also work. Tested in null-bootstrap mode and under `launchd/simns`; also tested with the SwiftUI
-`../sim2mac/SUI.app`.
+Status: **working.** A scene-based sim UIKit app run by SimRun (no launchd_sim, no backboardd, no SpringBoard, no
+runningboardd) gets `application:didFinishLaunchingWithOptions:`, then `scene:willConnectToSession:options:` with a
+`UIWindowScene` of the display's size (`SIMULATOR_MAINSCREEN_*`, e.g. 402x874 pt @3x; `SCENES_W`/`SCENES_H`/
+`SCENES_SCALE` override it). It then becomes foreground-active and the main run loop keeps going. Resize, rotation
+and foreground/background transitions also work. This is app.dylib's scenes module (`src/sim/scenes/scenes.m`);
+`SCENES_VERBOSE=1` traces it.
 
-```
-./build.sh                    # builds Hello.app (app.m = ../main.m + lifecycle logging) and scenes.dylib
-./run.sh                      # null-bootstrap mode (simrun.sh + DYLD_INSERT_LIBRARIES=scenes.dylib)
-SCENES_NS=1 ./run.sh          # same, under ../launchd/simns
-SCENES_DEMO_UPDATES=1 ./run.sh   # also resizes to 600x800, rotates to landscape, backgrounds, foregrounds
-SCENES_W=390 SCENES_H=844 ./run.sh   # choose the scene/screen size (points); SCENES_SCALE (default 3)
-./run.sh ../../sim2mac/SUI.app/SUI   # any other sim app binary
-./dbg.sh script.lldb          # lldb with the dylib injected into the target only
-```
-Output from `sample_output.txt`:
+Output from the workstream's `sample_output.txt` (Hello.app, before SimRun):
 ```
 [scenes] BKSDisplayServicesStart stubbed (main screen 1206x2622 px @3)
 [scenes] local scenes source registered: <FBSWorkspaceScenesClient: 0x101875180>
@@ -72,7 +62,7 @@ both protocols is an `FBSSceneIdentity`, not an NSString.**
 
 ## 2. Approach chosen: an in-process FrontBoard host (option 1, done at the FBS protocol level)
 
-`scenes.dylib` (shim.m), interposing `FBSWorkspaceInitialize`:
+The scenes module (it was `shim.m`), interposing `FBSWorkspaceInitialize`:
 1. Call the original, which returns the FBSWorkspace.
 2. Build a `FBSWorkspaceScenesClient` **by hand**: `class_createInstance` plus ivars. Its initializers, `queue_activate`
    and `_queue_sendHandshake` are `objc_direct`, so they can't be messaged. The ivars are set exactly as
@@ -121,7 +111,7 @@ Why this approach:
 - It uses the exact client-side code path that SpringBoard's XPC messages drive, so all of UIKit's scene machinery
   runs for real: FBSScene, settings diffs, UIScene lifecycle, UIScreen/display mapping and state restoration ids.
   Later scene operations are the same calls with different arguments.
-- It has no XPC, no Mach services and no launchd dependency, and it works in null-bootstrap mode and under simns.
+- It has no XPC, no Mach services and no launchd dependency.
 - It needs only one interposed C function. Everything else uses public-in-runtime ObjC (alloc + ivars).
 
 Alternatives considered:
@@ -137,21 +127,19 @@ Alternatives considered:
   objects directly would bypass FBSScene, which UIWindowScene uses everywhere (settings, client settings, layers).
   Rejected.
 
-## 3. Other launch blockers handled in scenes.dylib (keep or replace)
+## 3. Other launch blockers handled in the scenes module (keep or replace)
 
-| What | Symptom without it | What scenes.dylib does | Owner long-term |
+| What | Symptom without it | What the scenes module does | Owner long-term |
 |---|---|---|---|
 | `BKSDisplayServicesStart()` (BackBoardServices, called cross-image) | "unable to communicate with backboardd" → exit | `__interpose`: `GSSetMainScreenInfo(W*S, H*S, S, 0)`, return true. `GSSetMainScreenInfo(double pixelW, double pixelH, float scale, float orientation)` | backboard/display layer |
-| `os_trace_set_mode(0x100)` from `_libxpc_initializer` in null-bootstrap mode | **all os_log/NSLog dropped, even with OS_ACTIVITY_DT_MODE=1** (`_os_trace_init_slow` returns early when the mode has the 0x100 "disabled" bit) | `__interpose`: drop bit 0x100. Not needed under simns | Mach-namespace layer |
 | `com.apple.backboard.hid-services.xpc` BSService endpoint (`BKSHIDEventDeliveryManager`, `BKSHIDEventObserver`; first used by `-makeKeyAndVisible` → `_UIEventDeferringManager`) | nil endpoint → `_initWithConnectionFactory:` hard assert. A null endpoint invalidates → BKSHIDEventObserver logs "backboardd must have unloaded, exiting…" and **exits** | Swizzle `+[BSServiceConnectionEndpoint endpointForMachName:service:instance:]`: if nil for that mach name, return an endpoint for an **in-process anonymous XPC listener** that accepts and swallows everything. The endpoint is built by hand: BSXPCServiceConnectionEndpoint `_xpcEndpoint` = `xpc_endpoint_create(listener)` | HID/input workstream (a real in-process BKHIDEventDeliveryManager service) |
-| No CARenderServer: `+[CADisplay displays]` | `query_displays()` usleep-retries for **5 s** on the main thread (in `+[UIScreen initialize]`), then returns @[] | Only if `CARenderServerGetServerPort()==0` at load: return @[] immediately (`+mainDisplay` → nil) | render workstream |
-| No CARenderServer: UIScreen | main UIScreen built with nil FBSDisplayConfiguration → bounds 0x0, scale 1 | `[[UIScreen mainScreen] _updateDisplayConfiguration:synth]`, synth = FBSDisplayConfiguration(`_initWithIdentity:...`) with FBSDisplayIdentity(type 0 main, mainLike, displayID 1), FBSDisplayMode(W*S x H*S, scale S, 60 Hz). `+[UIScreen initialize]` calls the designated init directly, so swizzling `initWithDisplayConfiguration:forceMainScreen:` does nothing. | render workstream (real CADisplay → FBS builds this itself) |
 | No LaunchServices (`com.apple.lsd.mapdb`; real lsd needs containermanagerd and more): UTType resolves only built-in core types, `+typeWithIdentifier:` is nil for e.g. `com.apple.uikit.useractivity` | starting a drag crashes the app: `_UIDragStatisticLogItemsInDragByType` → `-[UTType conformsToType:nil]` → "type != nil" assertion | Swizzle `-[UTType conformsToType:]`: nil → NO (an unresolvable type conforms to nothing) | a LaunchServices type database |
-| No CARenderServer: `+[CAContext remoteContextWithOptions:]` returns nil | `__UIKIT_DID_NOT_RECEIVE_A_REMOTE_CACONTEXT...` assertion in `-makeKeyAndVisible` | Fall back to `localContextWithOptions:` (nothing displayed) | render workstream |
 
-With a render server the last three stay inactive automatically. `SRCreateScene` then passes the real
-`[UIScreen mainScreen].displayConfiguration`, which UIKit builds from `_UIScreenInitialDisplayConfigurationLoader`
-(see Open problems).
+It used to handle running without a render server too (CADisplay's 5 s query cut short, a synthesized main display
+configuration, local CAContexts) and libxpc's null-bootstrap mode (which turns os_log off). The render module always
+runs a render server first and every app has a simns namespace, so those stopgaps were removed. `SRCreateScene`
+passes the real `[UIScreen mainScreen].displayConfiguration`, which UIKit builds from
+`_UIScreenInitialDisplayConfigurationLoader`.
 
 ## 4. What is asked of each daemon during launch (Hello.app, from simns logs plus os_log)
 
@@ -171,11 +159,10 @@ With a render server the last three stay inactive automatically. `SRCreateScene`
 | routine 904 (simns) | libxpc | harmless |
 
 ## 5. Integrator hook points (scenes.h)
-- Inject `scenes.dylib` (DYLD_INSERT_LIBRARIES / SIMNS_INSERT). It is self-contained and its interposers are
-  `BKSDisplayServicesStart`, `os_trace_set_mode` and `FBSWorkspaceInitialize`. If another dylib also interposes these,
-  merge the code instead (dyld uses one interposer per symbol).
-- `void SRScenesCreate(CGFloat w, CGFloat h)` creates the main scene. This happens automatically unless
-  `SCENES_NO_AUTOCREATE=1`. Use the manual call to wait until a render server or host window is ready.
+- It is a module of app.dylib, started right after the render module. Its interposers are `BKSDisplayServicesStart`
+  and `FBSWorkspaceInitialize`, and they answer only where the module runs (`SRModuleOn`). If another module needed
+  these too, the code would have to be merged (dyld uses one interposer per symbol).
+- The main scene is created right after `FBSWorkspaceInitialize`.
 - `void SRScenesUpdate(CGFloat w, CGFloat h, BOOL foreground, long orientation)` handles resize, rotation and
   foreground/background (host window resize, minimise, and so on).
 - `SRScenesSetLayersCallback(cb, ctx)` / `SRScenesGetMainContextID()` report the scene's CAContext id(s) to put in a
@@ -199,14 +186,6 @@ Written against iOS 27.1; the iOS 18.6 runtime differs in three places, handled 
   underlying `BSXPCServiceConnectionEndpoint` (`_xpcEndpoint`). The HID sink endpoint is built either way.
 
 ## 6. Open problems / next steps
-- **Render server present.** This is not yet tested. UIKit then builds the main screen from
-  `-[_UIScreenInitialDisplayConfigurationLoader initialDisplayContext]`:
-  `+[UIApplication _expectsCADisplays]` and `[CADisplay displays].count` → `applicationInitializationContext.mainDisplayContext`
-  (from FrontBoard, so it fails), then falls back to `[UISDisplayContext defaultContext]`. Check that
-  `mainScreen.displayConfiguration` is non-nil and that its identity matches what we pass to `setDisplay:`.
-  Also check the CAContext from `remoteContextWithOptions:` (displayId comes from the screen's display identity).
-  The synthesized display uses displayID 1, and UIKit logs "Unable to find a CADisplay for decoded displayID 1"
-  (harmless without CA).
 - **Scene destruction / app termination.** `sceneID:destroyWithTransitionContext:completion:` and
   `willTerminateWithTransitionContext:` are not exercised yet.
 - **Multiple scenes.** `requestSceneWithOptions:` from the app (e.g. `UIApplication requestSceneSessionActivation`)
@@ -231,9 +210,8 @@ Written against iOS 27.1; the iOS 18.6 runtime differs in three places, handled 
   differently ("unknown service") and libxpc does not disable logging. Behaviour can differ from a plain run.
 
 ## Files
-- `shim.m` → `scenes.dylib`: everything above, plus `scenes.h` (exported API).
-- `app.m` → `Hello.app`: ../main.m plus logging for didFinishLaunching, willConnect (bounds/scale), the lifecycle
+- `src/sim/scenes/scenes.m` (was `shim.m`): the scenes module of app.dylib, plus `include/scenes.h` (exported API).
+- `app.m` → `Hello.app` (the workstream's): ../main.m plus logging for didFinishLaunching, willConnect (bounds/scale), the lifecycle
   callbacks and geometry changes, and a heartbeat that shows the main thread keeps running.
-- `build.sh`, `run.sh`, `dbg.sh` (lldb), `sample_output.txt`.
 - IDA databases / decompilations used: `~/Developer/SimRun-research/idb-scenes/` (UIKitCore.i64, FrontBoardServices.i64,
   BoardServices.i64, BackBoardServices.i64; `fbs_all.c`, `bs_all.c`, `bbs_all.c`, `uik*.c`; `fn.sh file.c 'name'` prints a function).

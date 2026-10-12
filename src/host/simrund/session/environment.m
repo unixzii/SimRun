@@ -366,7 +366,7 @@ static NSArray<NSString *> *ScannedDeviceTypePaths(NSString *version) {
 }
 
 + (NSString *)hostInternationalSettings {
-  // The Mac's language & region settings (rshim.dylib applies them in each app). Read from the plist: when SimRun runs
+  // The Mac's language & region settings (app.dylib's locale module applies them in each app). Read from the plist: when SimRun runs
   // with a sim environment, HOME and CFFIXED_USER_HOME are the device's, and CFPreferences would read the device's instead.
   NSDictionary *g = [NSDictionary dictionaryWithContentsOfFile:[RealHome() stringByAppendingPathComponent:@"Library/Preferences/.GlobalPreferences.plist"]];
   if (!g) return nil;

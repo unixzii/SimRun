@@ -1,5 +1,5 @@
 // permissions.h — SimRun's privacy permissions on the Mac (the microphone, recording what the Mac plays) as SRPV_SERVICE
-// (include/privacy.h): what every app's rshim.dylib asks before it lets the app record.
+// (include/privacy.h): what every app's tcc module asks before it lets the app record.
 #pragma once
 #import <Foundation/Foundation.h>
 #include <mach/mach.h>

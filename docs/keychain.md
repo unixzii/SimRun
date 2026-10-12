@@ -25,12 +25,12 @@ storage is also an encrypted SQLite database (`data/Library/Keychains/keychain-2
 
 ```
 app process
-  SecItem*() ──interposed──▶ keychain.dylib ──flock + read/modify/write──▶ data/Library/Keychains/simrun-keychain.plist
+  SecItem*() ──interposed──▶ keychain module ─flock + read/modify/write──▶ data/Library/Keychains/simrun-keychain.plist
   SecKeyCreateRandomKey()                                                        ▲ watched; same lock
   SecKeyGeneratePair()                                         SimRun.app: Keychain window (keychainwindow.m)
 ```
 
-- **keychain.dylib** (`src/sim/keychain/keychain.m`, injected last) interposes the four SecItem functions and
+- **The keychain module** (`src/sim/keychain/keychain.m`, in app.dylib) interposes the four SecItem functions and
   implements their semantics over the store; securityd is never contacted.
   - Store: `~/Library/Developer/SimRun/data/Library/Keychains/simrun-keychain.plist` — the shared data directory
     (`SIMULATOR_SHARED_RESOURCES_DIRECTORY`, follows `SIMRUN_DATA`), not the app's own container — mode

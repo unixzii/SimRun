@@ -65,7 +65,7 @@ background, border, corner radius, shadow, contents, gradient, path, filters. Ma
 
 ### In the app: which layers changed
 
-script.dylib's `inspect.m` does the app's half. It starts on SimRun's `SR_MSG_INSPECT_START` (protocol.h), sent to the
+The script module's `inspect.m` does the app's half. It starts on SimRun's `SR_MSG_INSPECT_START` (protocol.h), sent to the
 script port with a port of SimRun's own, and sends `SR_MSG_INSPECT_BATCH` messages back to that port. A batch is a
 binary property list.
 

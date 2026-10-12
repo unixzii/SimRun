@@ -19,8 +19,9 @@ static NSArray<NSArray *> *TracingSwitches(void) {
             @[ @"DRAG_VERBOSE", @"Drag and drop", @NO ], @[ @"DOCPICKER_VERBOSE", @"Document pickers", @NO ],
             @[ @"KEYCHAIN_VERBOSE", @"Keychain", @NO ],
             @[ @"WEBKIT_VERBOSE", @"Web views", @NO ], @[ @"MPS_VERBOSE", @"MPSGraph", @NO ],
-            @[ @"SCRIPT_VERBOSE", @"Scripts", @NO ],
-            @[ @"RSHIM_VERBOSE", @"Runtime shims", @NO ] ];
+            @[ @"SCRIPT_VERBOSE", @"Scripts", @NO ], @[ @"AUDIO_VERBOSE", @"Audio", @NO ],
+            @[ @"TCC_VERBOSE", @"Privacy permissions", @NO ], @[ @"LOCALE_VERBOSE", @"Language & region", @NO ],
+            @[ @"CONTAINER_VERBOSE", @"Sandbox container", @NO ], @[ @"XPCSERVICES_VERBOSE", @"Shader compiler service", @NO ] ];
 }
 
 static const CGFloat kLabelWidth = 170, kFieldWidth = 360;
