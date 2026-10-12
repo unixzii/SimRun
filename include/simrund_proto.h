@@ -12,7 +12,8 @@
 //               insert: an extra sim dylib to inject. The message carries the client's stdin/stdout/stderr as
 //               SCM_RIGHTS, so the app writes straight to the client's terminal.
 //               replies: { pid: int } app started, then { exit: int } app finished (raw wait(2) status); or
-//               { error: string } launch failed. Closing the connection before { exit } terminates the app (this is how
+//               { error: string } launch failed. A device build first streams { log: string } for each line of the
+//               patch script. Closing the connection before { exit } terminates the app (this is how
 //               Ctrl-C on the client propagates).
 //   list        -> { instances: [ { pid, title, executable, app?, bundleID?, profile?, runtime, device?, ready } ] }
 //   quit        { instance: string, profile? } -> { ok: true }

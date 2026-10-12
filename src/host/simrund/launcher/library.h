@@ -7,6 +7,8 @@
 @property (readonly) NSImage *icon;
 // nil if `path` is an arm64 iOS-Simulator app bundle; otherwise why it can't be launched.
 + (NSString *)problemWithAppAtPath:(NSString *)path;
+// YES if `path`'s arm64 slice is built for iPhone/iPad devices (LC_BUILD_VERSION platform iOS).
++ (BOOL)isDeviceBuildAtPath:(NSString *)path;
 + (instancetype)infoWithPath:(NSString *)path;
 // The minimum iOS version an executable's arm64 slice was built for ("26.0"), as dyld enforces it; nil if unknown.
 + (NSString *)minimumOSVersionOfExecutable:(NSString *)path;

@@ -96,11 +96,11 @@ $(ICON)/Assets.car: $(ICON_INPUTS)
 # Assembled in a staging bundle and swapped in with a rename, so a SimRun that is running from the old bundle keeps
 # its (unlinked) files instead of having them overwritten underneath it.
 SKILL_FILES := $(shell find skills -type f ! -name .DS_Store)
-$(APP): $(SKILL_FILES) $(PARTS) $(LIB)/rshim.dylib $(LIB)/glue.dylib $(LIB)/scenes.dylib $(LIB)/hid.dylib $(LIB)/pboard.dylib $(LIB)/drag.dylib $(LIB)/docpicker.dylib $(LIB)/keychain.dylib $(LIB)/webkit.dylib $(LIB)/mps.dylib $(LIB)/script.dylib $(LIB)/SimFramebuffer resources/Info.plist $(ICON)/Assets.car
+$(APP): $(SKILL_FILES) $(PARTS) $(LIB)/rshim.dylib $(LIB)/glue.dylib $(LIB)/scenes.dylib $(LIB)/hid.dylib $(LIB)/pboard.dylib $(LIB)/drag.dylib $(LIB)/docpicker.dylib $(LIB)/keychain.dylib $(LIB)/webkit.dylib $(LIB)/mps.dylib $(LIB)/script.dylib $(LIB)/SimFramebuffer resources/Info.plist resources/patch_uikit_iossim.sh $(ICON)/Assets.car
 	@rm -rf $(BUILD)/.SimRun.app.new $(BUILD)/.SimRun.app.old
 	@mkdir -p $(BUILD)/.SimRun.app.new/Contents/MacOS $(BUILD)/.SimRun.app.new/Contents/Helpers $(BUILD)/.SimRun.app.new/Contents/Resources/lib
 	@cp resources/Info.plist $(BUILD)/.SimRun.app.new/Contents/Info.plist
-	@cp $(ICON)/Assets.car $(ICON)/AppIcon.icns $(BUILD)/.SimRun.app.new/Contents/Resources/
+	@cp $(ICON)/Assets.car $(ICON)/AppIcon.icns resources/patch_uikit_iossim.sh $(BUILD)/.SimRun.app.new/Contents/Resources/
 	@cp $(BIN)/simrund $(BUILD)/.SimRun.app.new/Contents/MacOS/SimRun
 	@cp $(BIN)/simns $(BIN)/simrun $(BUILD)/.SimRun.app.new/Contents/Helpers/
 	@cp $(LIB)/rshim.dylib $(LIB)/glue.dylib $(LIB)/scenes.dylib $(LIB)/hid.dylib $(LIB)/pboard.dylib $(LIB)/drag.dylib $(LIB)/docpicker.dylib $(LIB)/keychain.dylib $(LIB)/webkit.dylib $(LIB)/mps.dylib $(LIB)/script.dylib $(LIB)/SimFramebuffer $(BUILD)/.SimRun.app.new/Contents/Resources/lib/

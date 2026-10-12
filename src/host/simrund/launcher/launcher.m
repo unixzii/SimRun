@@ -236,7 +236,7 @@ static NSImage *Symbol(NSString *name, NSString *description) {
   SRAppInfo *last = nil;
   for (NSString *p in paths) {
     NSString *why = [SRAppInfo problemWithAppAtPath:p];
-    if (why) { [problems addObject:[NSString stringWithFormat:@"%@: %@", p.lastPathComponent, why]]; continue; }
+    if (why && ![SRAppInfo isDeviceBuildAtPath:p]) { [problems addObject:[NSString stringWithFormat:@"%@: %@", p.lastPathComponent, why]]; continue; }
     last = [SRLibrary.shared addPath:p];
     [_delegate launchApp:last profile:nil];
   }
@@ -255,7 +255,7 @@ static NSImage *Symbol(NSString *name, NSString *description) {
   [self show];
   NSOpenPanel *p = [NSOpenPanel openPanel];
   p.allowedContentTypes = @[ UTTypeApplicationBundle ]; p.allowsMultipleSelection = YES; p.treatsFilePackagesAsDirectories = NO;
-  p.message = @"Choose iOS Simulator app bundles (built for an iOS Simulator destination).";
+  p.message = @"Choose iOS app bundles. A device build is patched for the simulator.";
   [p beginSheetModalForWindow:_window completionHandler:^(NSModalResponse r) {
     if (r != NSModalResponseOK) return;
     NSMutableArray *paths = [NSMutableArray array]; for (NSURL *u in p.URLs) [paths addObject:u.path];

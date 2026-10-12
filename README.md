@@ -32,8 +32,8 @@ window, controlled with your mouse, trackpad and keyboard.
   APIs that behave differently. SimRun runs the iOS Simulator build you already have.
 - **Looks and behaves like the iPhone version.** Your app runs with the iPhone's own UIKit and SwiftUI, so layouts,
   controls and Liquid Glass look the way they do on a phone, not the way they're adapted for the Mac.
-- **Works with apps you didn't write.** Any iOS Simulator build can be opened, including ones you received from
-  someone else, without access to the source.
+- **Works with apps you didn't write.** An iOS Simulator build can be opened as it is, including one you received
+  from someone else. A device build is patched into a simulator build the first time you open it.
 
 ## What you need
 
@@ -92,7 +92,7 @@ SimRun opens its launcher: your apps in the sidebar, and the selected app's deta
 device and iOS runtime it runs as, and its **Profiles** (its data containers and what is running in each). To add an
 app, do any of the following:
 
-- Drag an iOS Simulator `.app` onto the launcher window or onto SimRun's Dock icon.
+- Drag an `.app` onto the launcher window or onto SimRun's Dock icon.
 - Click **+** in the toolbar, or choose **File ▸ Add App…**
 - Choose **File ▸ Add Xcode Simulator Builds** to add everything you've built for the Simulator in Xcode.
 - In Finder, right-click an app and choose **Open With ▸ SimRun**.
@@ -102,6 +102,17 @@ shows a spinner; once its window is up, the row shows a green dot. The toolbar a
 **Profiles** (the default one if none is): it runs and stops the app, opens its launch options and its log, and its
 **⋯** menu has the rest. Right-click a profile for the same commands and its data container; right-click an app in
 the sidebar for its keychain items, Show in Finder and Remove from SimRun.
+
+A Simulator build runs as it is. A build made for an iPhone or iPad (an `iphoneos` product, or an `.app` you were
+given) is rewritten into a simulator build the first time you open it, then launched. The row shows **Launching…**
+while that runs. The rewritten copy is kept and reused until that app's executable changes:
+
+- An Xcode build under `DerivedData` is written next to it:
+  `.../Build/Products/Debug-iphoneos/iossim-work/MyApp.app`
+- Any other `.app` is cached in `~/Library/Developer/SimRun/patched`.
+
+Building for a Simulator destination is still the reliable way to run an app you compile yourself. The rewrite changes
+the binary's platform and re-signs it; it does not make an app work that needs a real device.
 
 To see what SimRun can do, build the sample apps (`make test-apps`), then add `build/apps/Showcase.app` and launch it.
 
@@ -120,7 +131,8 @@ How your Mac maps to an iPhone:
 build/bin/simrun run build/apps/Showcase.app
 ```
 
-The app opens in a window, and its output appears in your terminal. Press Ctrl-C or close the window to quit it.
+The app opens in a window, and its output appears in your terminal. A device build is patched first, and the patch
+log prints here as it runs. Press Ctrl-C or close the window to quit it.
 Anything after the app's path is passed to the app as launch arguments. `simrun` is also inside the app, at
 `SimRun.app/Contents/Helpers/simrun`; link either one into your `PATH` to type just `simrun`. With a downloaded
 release, that's:

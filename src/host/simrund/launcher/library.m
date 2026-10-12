@@ -79,6 +79,13 @@ static uint32_t Arm64Platform(NSString *path, uint32_t *minos) {
   }
 }
 
++ (BOOL)isDeviceBuildAtPath:(NSString *)path {
+  NSDictionary *info = [NSDictionary dictionaryWithContentsOfFile:[path stringByAppendingPathComponent:@"Info.plist"]];
+  NSString *exe = info[@"CFBundleExecutable"];
+  if (!exe.length) return NO;
+  return Arm64Platform([path stringByAppendingPathComponent:exe], NULL) == PLATFORM_IOS;
+}
+
 + (NSString *)minimumOSVersionOfExecutable:(NSString *)path {
   uint32_t v;
   if (!Arm64Platform(path, &v) || !v) return nil;

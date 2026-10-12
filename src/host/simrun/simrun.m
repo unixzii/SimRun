@@ -22,6 +22,8 @@ static const char kUsage[] =
   "  run [options] <App.app | sim-binary> [args...]\n"
   "        Run an app in SimRun (started in the background if it isn't open). Its output goes to this terminal,\n"
   "        Ctrl-C quits it, and simrun exits with its status. Arguments after the app are the app's.\n"
+  "        An iPhone/iPad device .app is patched for the simulator first. The patched copy is reused until\n"
+  "        that app's executable changes.\n"
   "        -p, --profile <name>   run it with the app's data container for this profile, created on first use\n"
   "                               (default: its default container), e.g. to run it twice with separate data\n"
   "        -r, --runtime <spec>   on this iOS runtime: a build, version or RuntimeRoot (default: SimRun's)\n"
@@ -219,6 +221,8 @@ static int Run(NSArray<NSString *> *args) {
   for (;;) {
     NSDictionary *msg = CFBridgingRelease(simrund_recv(s, NULL, NULL));
     if (!msg) return Fail(@"lost connection to SimRun");
+    if ([msg[@"log"] isKindOfClass:NSString.class]) { fprintf(stderr, "%s\n", [msg[@"log"] UTF8String]); fflush(stderr); continue; }
+    if ([msg[@"status"] isKindOfClass:NSString.class]) { fprintf(stderr, "simrun: %s\n", [msg[@"status"] UTF8String]); fflush(stderr); continue; }
     if ([msg[@"exit"] isKindOfClass:NSNumber.class]) {
       int st = [msg[@"exit"] intValue];
       return WIFEXITED(st) ? WEXITSTATUS(st) : 128 + WTERMSIG(st);

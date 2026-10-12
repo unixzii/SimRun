@@ -25,6 +25,7 @@
 #include "session/environment.h"
 #include "launcher/library.h"
 #include "launcher/launcher.h"
+#include "launcher/devicepatch.h"
 #include "services/pasteboard.h"
 #include "services/filepanel.h"
 #include "services/keychainwindow.h"
@@ -83,6 +84,7 @@ static BOOL SameProfile(NSString *a, NSString *b) { return a == b || [a isEqualT
   dispatch_source_t _listenSource, _sigSource;
   int _listenFd; NSString *_socketPath;
   NSMutableArray<SRRequest *> *_pending, *_active;
+  NSMutableSet<NSString *> *_patching;   // "path\nprofile" while a device build is being patched, before its process exists
   NSMutableArray<NSString *> *_openAtLaunch;
   NSTimer *_idleTimer;
   SRLauncher *_launcher;
@@ -98,6 +100,7 @@ static BOOL SameProfile(NSString *a, NSString *b) { return a == b || [a isEqualT
   if ((self = [super init])) {
     _mode = mode; _args = args; _listenFd = -1;
     _pending = [NSMutableArray array]; _active = [NSMutableArray array]; _openAtLaunch = [NSMutableArray array];
+    _patching = [NSMutableSet set];
     _simns = [NSMutableDictionary dictionary];
     if (mode == SRModeGUI) [_openAtLaunch addObjectsFromArray:args];
     _launcher = [[SRLauncher alloc] initWithDelegate:self];
@@ -303,7 +306,9 @@ static BOOL SameProfile(NSString *a, NSString *b) { return a == b || [a isEqualT
   for (SRRequest *r in _pending) if ([r.appPath isEqualToString:app.path] && SameProfile(r.profile, profile)) return r;
   return nil;
 }
+static NSString *PatchKey(NSString *path, NSString *profile) { return [NSString stringWithFormat:@"%@\n%@", path, profile ?: @""]; }
 - (SRAppState)stateForApp:(SRAppInfo *)app profile:(NSString *)profile {
+  if ([_patching containsObject:PatchKey(app.path, profile)]) return SRAppStateLaunching;
   SRRequest *r = [self requestForApp:app profile:profile];
   if (!r) return SRAppStateStopped;
   return r.session.isReady ? SRAppStateRunning : SRAppStateLaunching;
@@ -408,16 +413,44 @@ static BOOL ProcessGone(pid_t pid) {
     [al runModal];
     return;
   }
-  SRRequest *r = [SRRequest new];
-  r.argv = [@[ app.executablePath ] arrayByAddingObjectsFromArray:o.launchArguments];
-  r.cwd = app.path; r.title = app.name; r.appPath = app.path; r.bundleID = app.bundleIdentifier; r.runtimeRoot = root; r.profile = profile;
-  r.device = device ?: [SREnvironment defaultDeviceTypeForRuntime:[SRRuntime runtimeAtRoot:root]];
-  r.env = [self environmentFrom:[SREnvironment processEnvironment] for:r libraries:[SREnvironment injectedLibraries]
-                      overrides:o.environmentVariables];
-  // no terminal: stdout/stderr go to the session's log window
-  int p[2]; pipe(p);
-  r.fd0 = open("/dev/null", O_RDONLY); r.fd1 = p[1]; r.fd2 = dup(p[1]); r.captureFD = p[0];
-  [self enqueue:r];
+  device = device ?: [SREnvironment defaultDeviceTypeForRuntime:[SRRuntime runtimeAtRoot:root]];
+  void (^start)(NSString *, NSString *) = ^(NSString *executable, NSString *cwd) {
+    SRRequest *r = [SRRequest new];
+    r.argv = [@[ executable ] arrayByAddingObjectsFromArray:o.launchArguments];
+    r.cwd = cwd; r.title = app.name; r.appPath = app.path; r.bundleID = app.bundleIdentifier; r.runtimeRoot = root; r.profile = profile;
+    r.device = device;
+    r.env = [self environmentFrom:[SREnvironment processEnvironment] for:r libraries:[SREnvironment injectedLibraries]
+                        overrides:o.environmentVariables];
+    int p[2]; pipe(p);   // no terminal: stdout/stderr go to the session's log window
+    r.fd0 = open("/dev/null", O_RDONLY); r.fd1 = p[1]; r.fd2 = dup(p[1]); r.captureFD = p[0];
+    [self enqueue:r];
+  };
+  if (![SRAppInfo isDeviceBuildAtPath:app.path]) { start(app.executablePath, app.path); return; }
+  NSString *key = PatchKey(app.path, profile);
+  if ([_patching containsObject:key]) return;
+  [_patching addObject:key];
+  [_launcher reloadState];   // "Launching…" while the patch runs off the main thread
+  NSString *version = [SRRuntime runtimeAtRoot:root].version;
+  __weak SRServer *weakSelf = self;
+  dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+    NSString *why = nil;
+    NSString *patched = version ? SRPatchedDeviceApp(app.path, version, ^BOOL(NSString *line) { return YES; }, &why) : nil;
+    dispatch_async(dispatch_get_main_queue(), ^{
+      SRServer *me = weakSelf;
+      if (!me) return;
+      [me->_patching removeObject:key];
+      if (!patched) {
+        [me->_launcher reloadState];
+        if (why) {
+          NSAlert *al = [NSAlert new]; al.messageText = [NSString stringWithFormat:@"Couldn't launch %@", app.name];
+          al.informativeText = why;
+          [al runModal];
+        }
+        return;
+      }
+      start([SRAppInfo infoWithPath:patched].executablePath, patched);
+    });
+  });
 }
 
 // `base` (the launcher's environment, or a client's) with the simulator environment for `r`'s runtime and device, the
@@ -787,17 +820,45 @@ static void SendReply(int c, NSDictionary *reply, dispatch_block_t then) {
 }
 
 // `run`: launch an app for a client, its output going to the client's terminal (`fds`).
-- (void)runRequest:(NSDictionary *)d client:(int)c fds:(const int[3])fds {
+- (void)rejectRun:(NSString *)err client:(int)c fds:(const int[3])fds {
+  LOG(@"launch failed: %@", err);
+  SRRequest *r = [SRRequest new];
+  r.sock = c;
+  [self reply:r dict:@{ @"error": err }];
+  for (int i = 0; i < 3; i++) if (fds[i] >= 0) close(fds[i]);
+  [self closeClient:r];
+}
+
+// YES when `d` is a device .app. `error` is why it can't be patched (profile, runtime, device); otherwise `app` and
+// `sdk` are what to patch. NO when it isn't a device build (prepareClientRun reports any other problem).
+- (BOOL)deviceBuildInRequest:(NSDictionary *)d app:(NSString **)app sdk:(NSString **)sdk error:(NSString **)error {
+  NSArray *argv = d[@"argv"];
+  if (![argv isKindOfClass:NSArray.class] || !argv.count || ![argv.firstObject isKindOfClass:NSString.class]) return NO;
+  NSString *target = argv.firstObject, *cwd = Str(d, @"cwd") ?: @"/";
+  if (!target.absolutePath) target = [cwd stringByAppendingPathComponent:target];
+  target = target.stringByStandardizingPath;
+  BOOL dir = NO;
+  if (![NSFileManager.defaultManager fileExistsAtPath:target isDirectory:&dir] || !dir || ![target.pathExtension isEqualToString:@"app"]) return NO;
+  if (![SRAppInfo isDeviceBuildAtPath:target]) return NO;
+  NSString *why = [SREnvironment problemWithProfileName:Str(d, @"profile")];
+  if (why) { if (error) *error = why; return YES; }
+  NSString *rtSpec = Str(d, @"runtime"), *devSpec = Str(d, @"device");
+  SRRuntime *rt = rtSpec ? [SREnvironment runtimeMatching:rtSpec] : [SRRuntime runtimeAtRoot:SREnvironment.runtimeRoot];
+  if (!rt) { if (error) *error = [NSString stringWithFormat:@"No installed iOS runtime matches \"%@\" (simrun runtimes lists them)", rtSpec]; return YES; }
+  if (devSpec && ![SREnvironment deviceTypeWithIdentifier:devSpec runtime:rt]) {
+    if (error) *error = [NSString stringWithFormat:@"%@ has no device type \"%@\" (simrun devices --runtime %@ lists them)", rt.name, devSpec, rt.build];
+    return YES;
+  }
+  if (app) *app = target;
+  if (sdk) *sdk = rt.version;
+  return YES;
+}
+
+- (void)startRun:(NSDictionary *)d client:(int)c fds:(const int[3])fds {
   SRRequest *r = [SRRequest new];
   r.sock = c; r.fd0 = fds[0]; r.fd1 = fds[1]; r.fd2 = fds[2];
   NSString *err = [self prepareClientRun:r request:d];
-  if (err) {
-    LOG(@"launch failed: %@", err);
-    [self reply:r dict:@{ @"error": err }];
-    for (int i = 0; i < 3; i++) close(fds[i]);
-    [self closeClient:r];
-    return;
-  }
+  if (err) { [self rejectRun:err client:c fds:fds]; return; }
   // client gone (e.g. Ctrl-C) before the app exited -> terminate the app
   dispatch_source_t eof = dispatch_source_create(DISPATCH_SOURCE_TYPE_READ, c, 0, dispatch_get_main_queue());
   dispatch_source_set_event_handler(eof, ^{
@@ -805,6 +866,32 @@ static void SendReply(int c, NSDictionary *reply, dispatch_block_t then) {
   });
   dispatch_resume(eof); r.eofSource = eof;
   [self enqueue:r];
+}
+
+- (void)runRequest:(NSDictionary *)d client:(int)c fds:(const int[3])fds {
+  NSString *deviceApp = nil, *sdk = nil, *why = nil;
+  if (![self deviceBuildInRequest:d app:&deviceApp sdk:&sdk error:&why]) { [self startRun:d client:c fds:fds]; return; }
+  if (why) { [self rejectRun:why client:c fds:fds]; return; }
+  int f0 = fds[0], f1 = fds[1], f2 = fds[2];
+  dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+    NSString *err = nil;
+    NSString *patched = SRPatchedDeviceApp(deviceApp, sdk, ^BOOL(NSString *line) {
+      return simrund_send(c, (__bridge CFDictionaryRef)@{ @"log": line }, NULL, 0) == 0;
+    }, &err);
+    dispatch_async(dispatch_get_main_queue(), ^{
+      int got[3] = { f0, f1, f2 };
+      if (!patched) {
+        if (err) [self rejectRun:err client:c fds:got];
+        else { for (int i = 0; i < 3; i++) if (got[i] >= 0) close(got[i]); close(c); }
+        return;
+      }
+      NSMutableDictionary *req = [d mutableCopy];
+      NSMutableArray *argv = [req[@"argv"] mutableCopy];
+      argv[0] = patched;
+      req[@"argv"] = argv;
+      [self startRun:req client:c fds:got];
+    });
+  });
 }
 
 // `eval`: run a script in an app, streaming its console output and then its outcome to the client.
@@ -885,7 +972,8 @@ static void SendReply(int c, NSDictionary *reply, dispatch_block_t then) {
 }
 
 // Fills in `r` from a client's `run` request: the app, its profile, runtime and device, and its environment (the
-// client's, with the simulator environment for those). Returns why it can't run, or nil.
+// client's, with the simulator environment for those). A device .app has already been replaced by its patched copy.
+// Returns why it can't run, or nil.
 - (NSString *)prepareClientRun:(SRRequest *)r request:(NSDictionary *)d {
   NSArray *argv = d[@"argv"];
   if (![argv isKindOfClass:NSArray.class] || !argv.count) return @"Nothing to run";
