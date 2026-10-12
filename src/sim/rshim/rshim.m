@@ -8,6 +8,7 @@
 //  * AUDIO_MUTE=1 (simrun run --mute, Launch Options ▸ Mute): the process is inaudible (CoreAudio's own per-process
 //    switch, kAudioHardwarePropertyProcessIsAudible), and its system sounds aren't played. WebKit's helper processes
 //    inherit the variable and this dylib, so web media is muted too.
+//  * the microphone: its permission, and what the app records (AUDIO_INPUT) — in mic.m.
 #import <Foundation/Foundation.h>
 #include <mach/mach.h>
 #include <xpc/xpc.h>

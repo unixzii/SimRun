@@ -43,7 +43,7 @@ $(BIN) $(LIB) $(APPS) $(TBIN):
 SIMRUND_SRC := $(wildcard src/host/simrund/*.m src/host/simrund/*/*.m) src/host/gpuhost/gpuhost.m
 $(BIN)/simrund: $(SIMRUND_SRC) $(wildcard src/host/simrund/*/*.h) $(HDRS) | $(BIN)
 	$(MACCC) -Isrc/host/simrund $(SIMRUND_SRC) -framework Cocoa -framework QuartzCore -framework IOSurface -framework Metal \
-	  -framework UniformTypeIdentifiers -framework ImageIO -o $@
+	  -framework UniformTypeIdentifiers -framework ImageIO -framework AVFoundation -o $@
 
 # App icon: the Icon Composer document compiled into Assets.car (Liquid Glass icon) and AppIcon.icns (fallback).
 # Xcode 27 reads "features" and a string specular (outside/inside/...). Xcode 26's actool crashes on
@@ -121,8 +121,10 @@ $(BIN)/simns: src/sim/simns/simns.c $(HDRS) | $(BIN)
 	xcrun -sdk iphonesimulator clang -arch arm64 -mios-simulator-version-min=17.0 -Wall -Wno-deprecated-declarations -Iinclude $< -framework CoreFoundation -o $@
 	@$(SIGN) $@ 2>/dev/null
 
-$(LIB)/rshim.dylib: src/sim/rshim/rshim.m $(HDRS) | $(LIB)
-	$(SIMCC) -dynamiclib $< -framework Foundation -framework AudioToolbox -o $@
+# rshim.dylib: rshim.m and mic.m (the microphone), linked to TCC.framework through a stub (tcc.tbd; not in the SDK)
+RSHIM_SRC := src/sim/rshim/rshim.m src/sim/rshim/mic.m
+$(LIB)/rshim.dylib: $(RSHIM_SRC) src/sim/rshim/tcc.tbd $(HDRS) | $(LIB)
+	$(SIMCC) -dynamiclib $(RSHIM_SRC) src/sim/rshim/tcc.tbd -framework Foundation -framework AudioToolbox -framework CoreAudio -o $@
 	@$(SIGN) $@ 2>/dev/null
 
 $(LIB)/SimFramebuffer: src/sim/simfb/simfb.m $(HDRS) | $(LIB)

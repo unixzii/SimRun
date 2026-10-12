@@ -1,0 +1,11 @@
+--- !tapi-tbd
+# TCC.framework isn't in the iOS SDK: the libTCC functions mic.m interposes, from the simulator runtimes' TCC.framework.
+tbd-version:     4
+targets:         [ arm64-ios-simulator ]
+install-name:    '/System/Library/PrivateFrameworks/TCC.framework/TCC'
+exports:
+  - targets:     [ arm64-ios-simulator ]
+    symbols:     [ _tcc_authorization_record_get_authorization_right, _tcc_message_options_set_reply_handler_policy,
+                   _tcc_message_options_set_request_prompt_policy, _tcc_server_message_request_authorization,
+                   _tcc_service_get_name ]
+...

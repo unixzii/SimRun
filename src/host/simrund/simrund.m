@@ -29,6 +29,7 @@
 #include "launcher/launcher.h"
 #include "services/pasteboard.h"
 #include "services/filepanel.h"
+#include "services/permissions.h"
 #include "services/keychainwindow.h"
 #include "inspector/layerwindow.h"
 #include "inspector/layermirror.h"
@@ -39,6 +40,7 @@
 #include "gpuhost.h"
 #include "pboard.h"
 #include "docpicker.h"
+#include "privacy.h"
 
 typedef NS_ENUM(NSInteger, SRMode) { SRModeGUI, SRModeServe };
 
@@ -95,6 +97,7 @@ static BOOL SameProfile(NSString *a, NSString *b) { return a == b || [a isEqualT
   NSMenuItem *_quitServerItem, *_quitAppItem;   // ⌘Q quits the app whose window is key, else SimRun
   SRPasteboardHost *_pasteboard; mach_port_t _pasteboardPort;
   SRDocumentPickerHost *_docPicker; mach_port_t _docPickerPort;
+  SRPrivacyHost *_privacy; mach_port_t _privacyPort;
   BOOL _gpuStarted; mach_port_t _iosurfacePort, _metalPort;
   mach_port_t _audioPort; dispatch_source_t _audioDeath;
   BOOL _launched;
@@ -521,6 +524,8 @@ static BOOL ProcessGone(pid_t pid) {
       _docPickerPort = [_docPicker start];
     }
     if (_docPickerPort) [self registerName:SRDP_SERVICE port:_docPickerPort in:ns]; else LOG(@"host document picker service failed to start");
+    if (!_privacy) { _privacy = [SRPrivacyHost new]; _privacyPort = [_privacy start]; }
+    if (_privacyPort) [self registerName:SRPV_SERVICE port:_privacyPort in:ns]; else LOG(@"host privacy service failed to start");
     if (!_audioPort) [self lookUpHostAudio];
     if (_audioPort) [self registerName:"com.apple.audio.audiohald" port:_audioPort in:ns];
     mach_msg_header_t ready = { .msgh_bits = MACH_MSGH_BITS(MACH_MSG_TYPE_COPY_SEND, 0), .msgh_size = sizeof ready,

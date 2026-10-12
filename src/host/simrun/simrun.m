@@ -36,6 +36,10 @@ static const char kUsage[] =
   "                               writes into the folder. No panel comes up\n"
   "        --mute                 silence the app: everything it plays, web views' media and its system sounds\n"
   "                               (AUDIO_MUTE=1 does the same)\n"
+  "        --mic <source>         what the app records: mac (the Mac's microphone, the default), system (what\n"
+  "                               the Mac plays, but the app itself) or an audio file, played from its start\n"
+  "                               each time the app starts recording, then silence (AUDIO_INPUT=<source>)\n"
+  "        --mic-loop             play the --mic file over and over (AUDIO_INPUT_LOOP=1)\n"
   "  list                       the running apps\n"
   "  quit <pid | app> [-p <profile>]\n"
   "                             quit a running app (app: its name, bundle ID or executable)\n"
@@ -109,8 +113,13 @@ static int FindServer(char *server, size_t n) {
   return 0;
 }
 
+// libSystem (libquarantine): the child is responsible for itself, not the app that ran us
+extern int responsibility_spawnattrs_setdisclaim(posix_spawnattr_t *attrs, int disclaim);
+
 // Start `SimRun --serve` as a detached session leader, logging to ~/Library/Logs/SimRun/simrund.log. It gets our
-// environment (SIMRUN_RUNTIME_ROOT, SIMRUN_DATA, SIMRUND_IDLE... apply to it).
+// environment (SIMRUN_RUNTIME_ROOT, SIMRUN_DATA, SIMRUND_IDLE... apply to it). It is responsible for itself, as when
+// it is opened from Finder: macOS asks for (and keeps) privacy permissions, the microphone's and others, for SimRun
+// and its apps, not for the terminal that ran simrun.
 static int StartServer(void) {
   char server[PATH_MAX];
   if (FindServer(server, sizeof server)) { Fail(@"SimRun.app not found (set SIMRUN_SERVER)"); return -1; }
@@ -121,6 +130,7 @@ static int StartServer(void) {
   posix_spawn_file_actions_adddup2(&fa, 1, 2);
   posix_spawnattr_t at; posix_spawnattr_init(&at);
   posix_spawnattr_setflags(&at, POSIX_SPAWN_SETSID | POSIX_SPAWN_CLOEXEC_DEFAULT);   // nothing of ours but stdio
+  responsibility_spawnattrs_setdisclaim(&at, 1);
   int ne = 0; while (environ[ne]) ne++;
   char **env = calloc(ne + 1, sizeof(char *)); int k = 0;
   for (int i = 0; i < ne; i++) if (strncmp(environ[i], "DYLD_INSERT_LIBRARIES=", 22)) env[k++] = environ[i];
@@ -222,8 +232,9 @@ static int Run(NSArray<NSString *> *args) {
   NSMutableDictionary *o = [NSMutableDictionary dictionary]; NSMutableArray *rest = [NSMutableArray array];
   NSString *err = ParseOptions(args, @{ @"-p": @"profile", @"--profile": @"profile", @"-r": @"runtime", @"--runtime": @"runtime",
                                         @"-d": @"device", @"--device": @"device", @"--insert": @"insert",
-                                        @"--headless": @"headless", @"--mute": @"mute", @"--pick": @"pick" },
-                               [NSSet setWithObjects:@"--headless", @"--mute", nil], [NSSet setWithObject:@"--pick"], YES, o, rest);
+                                        @"--headless": @"headless", @"--mute": @"mute", @"--pick": @"pick",
+                                        @"--mic": @"mic", @"--mic-loop": @"micLoop" },
+                               [NSSet setWithObjects:@"--headless", @"--mute", @"--mic-loop", nil], [NSSet setWithObject:@"--pick"], YES, o, rest);
   if (err) { Fail(@"%@", err); return Usage(); }
   if (!rest.count) return Usage();
   rest[0] = AbsolutePath(rest[0]);   // SimRun has its own working directory
@@ -231,11 +242,24 @@ static int Run(NSArray<NSString *> *args) {
   for (NSUInteger i = 0; i < [o[@"pick"] count]; i++) o[@"pick"][i] = AbsolutePath(o[@"pick"][i]);
   const char *headless = getenv("SIMRUN_HEADLESS");   // for every run, e.g. in an agent's or CI's environment
   if (headless && *headless && strcmp(headless, "0")) o[@"headless"] = @YES;
+  NSString *mic = o[@"mic"];
+  BOOL micLoop = [o[@"micLoop"] isEqual:@YES];
+  if (mic && ![mic isEqualToString:@"mac"] && ![mic isEqualToString:@"system"]) {
+    mic = AbsolutePath(mic);
+    BOOL dir = NO;
+    if (![NSFileManager.defaultManager fileExistsAtPath:mic isDirectory:&dir] || dir)
+      return Fail(@"--mic takes mac, system or an audio file; there is no file at %@", mic);
+  } else if (micLoop) return Fail(@"--mic-loop goes with --mic <audio file>");
   NSMutableArray *env = [NSMutableArray array];
   BOOL mute = [o[@"mute"] isEqual:@YES];
-  for (char **e = environ; *e; e++) if (!mute || strncmp(*e, "AUDIO_MUTE=", 11)) [env addObject:@(*e)];
-  if (mute) [env addObject:@"AUDIO_MUTE=1"];   // the app's own variable (rshim.dylib)
-  [o removeObjectForKey:@"mute"];
+  // the app's own variables (rshim.dylib), replacing the terminal's
+  for (char **e = environ; *e; e++)
+    if (!(mute && !strncmp(*e, "AUDIO_MUTE=", 11)) && !(mic && !strncmp(*e, "AUDIO_INPUT=", 12)) && !(micLoop && !strncmp(*e, "AUDIO_INPUT_LOOP=", 17)))
+      [env addObject:@(*e)];
+  if (mute) [env addObject:@"AUDIO_MUTE=1"];
+  if (mic) [env addObject:[@"AUDIO_INPUT=" stringByAppendingString:mic]];
+  if (micLoop) [env addObject:@"AUDIO_INPUT_LOOP=1"];
+  [o removeObjectsForKeys:@[ @"mute", @"mic", @"micLoop" ]];
   NSMutableDictionary *req = [@{ @"action": @"run", @"argv": rest, @"env": env, @"cwd": NSFileManager.defaultManager.currentDirectoryPath } mutableCopy];
   [req addEntriesFromDictionary:o];
 

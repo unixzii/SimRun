@@ -1,7 +1,9 @@
-// audiotest: plays sound through each of the audio APIs an app uses, and reports what fails.
-//   audiotest [session|queue|unit|engine|player|avplayer|system|all] [seconds]
-// Passing means the API ran and was paced by the output device; whether it is audible only the Mac can tell (a system
-// sound's completion is called even when no sound server played it).
+// audiotest: plays sound through each of the audio APIs an app uses, and records through each, and reports what fails.
+//   audiotest [session|queue|unit|engine|player|avplayer|system|all|
+//              rsession|rqueue|runit|rengine|recorder|record] [seconds]
+// Playing passes when the API ran and was paced by the output device; whether it is audible only the Mac can tell (a
+// system sound's completion is called even when no sound server played it). Recording passes when the API delivered
+// about as many frames as the time it ran; the level of what it got (RMS and peak, dBFS) says whether that was sound.
 #import <AVFoundation/AVFoundation.h>
 #import <AudioToolbox/AudioToolbox.h>
 #include <math.h>
@@ -138,20 +140,158 @@ static BOOL testSystem(void) {
   return done;
 }
 
+// ---------- recording ----------
+typedef struct { double sum; float peak; long frames; } Level;
+static Level gLevel;
+static void measure(Level *l, const float *x, UInt32 n, UInt32 stride) {
+  for (UInt32 i = 0; i < n; i++) { float v = x[i * stride]; l->sum += (double)v * v; if (fabsf(v) > l->peak) l->peak = fabsf(v); }
+  l->frames += n;
+}
+static void measure16(Level *l, const int16_t *x, UInt32 n, UInt32 stride) {
+  for (UInt32 i = 0; i < n; i++) { float v = x[i * stride] / 32768.f; l->sum += (double)v * v; if (fabsf(v) > l->peak) l->peak = fabsf(v); }
+  l->frames += n;
+}
+static double dB(double v) { return v > 0 ? 20 * log10(v) : -INFINITY; }
+static BOOL reportLevel(const char *what, Level l, double rate) {
+  double rms = l.frames ? sqrt(l.sum / l.frames) : 0;
+  printf("%s: %ld frames (%.2f s at %.0f Hz), RMS %.1f dBFS, peak %.1f dBFS\n", what, l.frames, l.frames / rate, rate, dB(rms), dB(l.peak));
+  return l.frames > rate * gSeconds * 0.5;
+}
+
+static BOOL testRecordSession(void) {
+  AVAudioSession *s = AVAudioSession.sharedInstance;
+  NSError *e = nil;
+  BOOL ok = [s setCategory:AVAudioSessionCategoryPlayAndRecord error:&e];
+  printf("session setCategory PlayAndRecord: %s %s\n", ok ? "ok" : "FAIL", e ? e.description.UTF8String : "");
+  e = nil; ok = [s setActive:YES error:&e] && ok;
+  printf("session setActive: %s %s\n", ok ? "ok" : "FAIL", e ? e.description.UTF8String : "");
+  printf("session recordPermission %#lx, inputAvailable %d, inputChannels %ld, sampleRate %.0f\n", (unsigned long)s.recordPermission,
+         s.inputAvailable, (long)s.inputNumberOfChannels, s.sampleRate);
+  for (AVAudioSessionPortDescription *p in s.availableInputs) printf("  input %s (%s)\n", p.portName.UTF8String, p.portType.UTF8String);
+  for (AVAudioSessionPortDescription *p in s.currentRoute.inputs) printf("  route input %s (%s)\n", p.portName.UTF8String, p.portType.UTF8String);
+  __block int answer = -1;
+  [s requestRecordPermission:^(BOOL granted) { answer = granted; }];
+  NSDate *until = [NSDate dateWithTimeIntervalSinceNow:3];
+  while (answer < 0 && [until timeIntervalSinceNow] > 0) [NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.05]];
+  printf("requestRecordPermission: %s\n", answer < 0 ? "no answer" : answer ? "granted" : "denied");
+  return ok && s.inputAvailable;
+}
+
+// recording needs a session category that records, as on a device
+static void recordingSession(void) {
+  static BOOL done; if (done) return; done = YES;
+  NSError *e = nil;
+  if (![AVAudioSession.sharedInstance setCategory:AVAudioSessionCategoryPlayAndRecord error:&e] || ![AVAudioSession.sharedInstance setActive:YES error:&e])
+    printf("recording session: FAIL %s\n", e.description.UTF8String);
+}
+
+static void inputCallback(void *ud, AudioQueueRef q, AudioQueueBufferRef b, const AudioTimeStamp *ts, UInt32 n, const AudioStreamPacketDescription *pd) {
+  measure16(&gLevel, b->mAudioData, b->mAudioDataByteSize / 2, 1);
+  AudioQueueEnqueueBuffer(q, b, 0, NULL);
+}
+
+static BOOL testRecordQueue(void) {
+  recordingSession();
+  AudioStreamBasicDescription f = { 44100, kAudioFormatLinearPCM, kAudioFormatFlagIsSignedInteger | kAudioFormatFlagIsPacked, 2, 1, 2, 1, 16, 0 };
+  AudioQueueRef q; OSStatus st = AudioQueueNewInput(&f, inputCallback, NULL, CFRunLoopGetCurrent(), kCFRunLoopCommonModes, 0, &q);
+  report("AudioQueueNewInput", st); if (st) return NO;
+  for (int i = 0; i < 3; i++) { AudioQueueBufferRef b; AudioQueueAllocateBuffer(q, 4096 * 2, &b); AudioQueueEnqueueBuffer(q, b, 0, NULL); }
+  gLevel = (Level){0};
+  st = AudioQueueStart(q, NULL); report("AudioQueueStart (input)", st);
+  [NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:gSeconds]];
+  AudioQueueStop(q, true); AudioQueueDispose(q, true);
+  return reportLevel("AudioQueue input", gLevel, 44100) && st == 0;
+}
+
+static AudioUnit gInUnit;
+static float gInBuf[8192];
+static OSStatus unitInput(void *ud, AudioUnitRenderActionFlags *fl, const AudioTimeStamp *ts, UInt32 bus, UInt32 n, AudioBufferList *unused) {
+  AudioBufferList l = { 1, { { 1, (UInt32)MIN(n, 8192) * 4, gInBuf } } };
+  OSStatus st = AudioUnitRender(gInUnit, fl, ts, 1, n, &l);
+  if (st) { static int once; if (!once++) report("RemoteIO AudioUnitRender", st); return st; }
+  measure(&gLevel, gInBuf, n, 1);
+  return 0;
+}
+
+static BOOL testRecordUnit(void) {
+  recordingSession();
+  AudioComponentDescription d = { kAudioUnitType_Output, kAudioUnitSubType_RemoteIO, kAudioUnitManufacturer_Apple, 0, 0 };
+  AudioComponent c = AudioComponentFindNext(NULL, &d);
+  OSStatus st = AudioComponentInstanceNew(c, &gInUnit); report("RemoteIO new", st); if (st) return NO;
+  UInt32 one = 1, zero = 0;
+  st = AudioUnitSetProperty(gInUnit, kAudioOutputUnitProperty_EnableIO, kAudioUnitScope_Input, 1, &one, sizeof one); report("RemoteIO enable input", st);
+  AudioUnitSetProperty(gInUnit, kAudioOutputUnitProperty_EnableIO, kAudioUnitScope_Output, 0, &zero, sizeof zero);
+  AudioStreamBasicDescription f = { 44100, kAudioFormatLinearPCM, kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked, 4, 1, 4, 1, 32, 0 };
+  AudioUnitSetProperty(gInUnit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, 1, &f, sizeof f);
+  AURenderCallbackStruct cb = { unitInput, NULL };
+  AudioUnitSetProperty(gInUnit, kAudioOutputUnitProperty_SetInputCallback, kAudioUnitScope_Global, 0, &cb, sizeof cb);
+  st = AudioUnitInitialize(gInUnit); report("RemoteIO initialize", st); if (st) return NO;
+  gLevel = (Level){0};
+  st = AudioOutputUnitStart(gInUnit); report("RemoteIO start", st);
+  [NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:gSeconds]];
+  AudioOutputUnitStop(gInUnit); AudioComponentInstanceDispose(gInUnit);
+  return reportLevel("RemoteIO input", gLevel, 44100) && st == 0;
+}
+
+static BOOL testRecordEngine(void) {
+  recordingSession();
+  AVAudioEngine *engine = [AVAudioEngine new];
+  AVAudioInputNode *in = engine.inputNode;
+  AVAudioFormat *fmt = [in outputFormatForBus:0];
+  printf("AVAudioEngine input format: %s\n", fmt.description.UTF8String);
+  if (fmt.sampleRate == 0 || fmt.channelCount == 0) { printf("AVAudioEngine: no input\n"); return NO; }
+  __block Level l = {0};
+  [in installTapOnBus:0 bufferSize:4096 format:fmt block:^(AVAudioPCMBuffer *b, AVAudioTime *t) {
+    measure(&l, b.floatChannelData[0], b.frameLength, b.stride);
+  }];
+  NSError *e = nil;
+  BOOL ok = [engine startAndReturnError:&e];
+  printf("AVAudioEngine start: %s %s\n", ok ? "ok" : "FAIL", e ? e.description.UTF8String : "");
+  [NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:gSeconds]];
+  [engine stop];
+  return reportLevel("AVAudioEngine input", l, fmt.sampleRate) && ok;
+}
+
+static BOOL testRecorder(void) {
+  recordingSession();
+  NSURL *url = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:@"audiotest-recording.caf"]];
+  NSError *e = nil;
+  AVAudioRecorder *r = [[AVAudioRecorder alloc] initWithURL:url settings:@{ AVFormatIDKey: @(kAudioFormatLinearPCM), AVSampleRateKey: @44100,
+    AVNumberOfChannelsKey: @1, AVLinearPCMBitDepthKey: @16 } error:&e];
+  if (!r) { printf("AVAudioRecorder: FAIL %s\n", e.description.UTF8String); return NO; }
+  r.meteringEnabled = YES;
+  BOOL ok = [r record];
+  printf("AVAudioRecorder record: %s\n", ok ? "ok" : "FAIL");
+  [NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:gSeconds]];
+  [r updateMeters];
+  printf("AVAudioRecorder meters: average %.1f dB, peak %.1f dB\n", [r averagePowerForChannel:0], [r peakPowerForChannel:0]);
+  [r stop];
+  AVAudioFile *f = [[AVAudioFile alloc] initForReading:url error:&e];
+  if (!f) { printf("AVAudioRecorder file: FAIL %s\n", e.description.UTF8String); return NO; }
+  AVAudioPCMBuffer *b = [[AVAudioPCMBuffer alloc] initWithPCMFormat:f.processingFormat frameCapacity:(AVAudioFrameCount)f.length];
+  [f readIntoBuffer:b error:&e];
+  Level l = {0}; measure(&l, b.floatChannelData[0], b.frameLength, b.stride);
+  printf("AVAudioRecorder wrote %s\n", url.path.UTF8String);
+  return reportLevel("AVAudioRecorder file", l, f.processingFormat.sampleRate) && ok;
+}
+
 int main(int argc, char **argv) {
   @autoreleasepool {
     setvbuf(stdout, NULL, _IOLBF, 0);
     NSString *which = argc > 1 ? @(argv[1]) : @"all";
     if (argc > 2) gSeconds = atof(argv[2]);
     NSArray *all = @[ @"session", @"queue", @"unit", @"engine", @"player", @"avplayer", @"system" ];
-    NSArray *tests = [which isEqualToString:@"all"] ? all : @[ which ];
+    NSArray *record = @[ @"rsession", @"rqueue", @"runit", @"rengine", @"recorder" ];
+    NSArray *tests = [which isEqualToString:@"all"] ? all : [which isEqualToString:@"record"] ? record : @[ which ];
     int failed = 0;
     for (NSString *t in tests) {
       printf("== %s\n", t.UTF8String);
       BOOL ok = [t isEqualToString:@"session"] ? testSession() : [t isEqualToString:@"queue"] ? testQueue()
               : [t isEqualToString:@"unit"] ? testUnit() : [t isEqualToString:@"engine"] ? testEngine()
               : [t isEqualToString:@"player"] ? testPlayer() : [t isEqualToString:@"avplayer"] ? testAVPlayer()
-              : [t isEqualToString:@"system"] ? testSystem() : NO;
+              : [t isEqualToString:@"system"] ? testSystem() : [t isEqualToString:@"rsession"] ? testRecordSession()
+              : [t isEqualToString:@"rqueue"] ? testRecordQueue() : [t isEqualToString:@"runit"] ? testRecordUnit()
+              : [t isEqualToString:@"rengine"] ? testRecordEngine() : [t isEqualToString:@"recorder"] ? testRecorder() : NO;
       printf("%s: %s\n", t.UTF8String, ok ? "PASS" : "FAIL");
       if (!ok) failed++;
     }

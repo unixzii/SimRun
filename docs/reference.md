@@ -7,7 +7,7 @@ over its socket; `run`, `profiles`, `runtimes` and `devices` start SimRun headle
 
 | Command | Effect |
 |---|---|
-| `simrun run [options] <Sim.app \| sim-binary> [args…]` | Run an app in SimRun; output goes to the terminal, Ctrl-C quits it, exits with the app's status. `-p`/`--profile <name>`: with that profile's data container ([architecture.md](architecture.md#data-containers)); `-r`/`--runtime <build, version or RuntimeRoot>`: on that runtime; `-d`/`--device <name or identifier>`: as that device type; `--insert <dylib>`: inject another sim dylib; `--headless`: with no window, never bringing SimRun forward, with pasteboards of its own; its file pickers wait for `simrun pick` ([architecture.md](architecture.md#headless-apps)); `--pick <path>` (repeatable): its file pickers choose from these files and folders with no panel ([docpicker.md](docpicker.md#choosing-without-a-panel)); `--mute`: silence it (`AUDIO_MUTE=1`) |
+| `simrun run [options] <Sim.app \| sim-binary> [args…]` | Run an app in SimRun; output goes to the terminal, Ctrl-C quits it, exits with the app's status. `-p`/`--profile <name>`: with that profile's data container ([architecture.md](architecture.md#data-containers)); `-r`/`--runtime <build, version or RuntimeRoot>`: on that runtime; `-d`/`--device <name or identifier>`: as that device type; `--insert <dylib>`: inject another sim dylib; `--headless`: with no window, never bringing SimRun forward, with pasteboards of its own; its file pickers wait for `simrun pick` ([architecture.md](architecture.md#headless-apps)); `--pick <path>` (repeatable): its file pickers choose from these files and folders with no panel ([docpicker.md](docpicker.md#choosing-without-a-panel)); `--mute`: silence it (`AUDIO_MUTE=1`); `--mic <mac \| system \| file>`: what it records ([microphone.md](microphone.md)): the Mac's microphone (default), what the Mac plays, or an audio file from its start each time it starts recording (`AUDIO_INPUT=`); `--mic-loop`: the file over and over (`AUDIO_INPUT_LOOP=1`) |
 | `simrun list` | The running apps: pid, app (marked headless), profile, device, runtime |
 | `simrun quit <pid \| app> [-p <profile>]` | Quit a running app (by name, bundle ID or executable; `-p` picks among its profiles); returns once it has exited |
 | `simrun screenshot <pid \| app> [-p <profile>] [-o <file.png>]` | Save the app's screen as it last drew it, at its pixel size (default `./<app>.png`) |
@@ -37,7 +37,10 @@ them in Launch With….
 | `SIMNS_DAEMONS=a,b` / `none` | Labels of real sim daemons simns may launch on demand |
 | `SIMAPP_EXTRA_INSERT=x.dylib` | Inject an extra sim dylib into apps launched from the launcher (`simrun run --insert` for one launch) |
 | `AUDIO_MUTE=1` | The app is silent: CoreAudio's per-process switch (`kAudioHardwarePropertyProcessIsAudible`) for everything it plays, its web views' helper processes too, and its system sounds aren't played (`simrun run --mute`, Launch Options ▸ Mute) |
+| `AUDIO_INPUT=mac \| system \| <file>` | What the app records ([microphone.md](microphone.md)): the Mac's default input device (default); what the Mac plays, every process but the app (a CoreAudio process tap); or the audio file, from its start each time the app starts recording, then silence (`simrun run --mic`, Launch Options ▸ Microphone). The app's microphone permission takes SimRun's permission on the Mac for the source (none for a file) ([microphone.md](microphone.md#permission)) |
+| `AUDIO_INPUT_LOOP=1` | With `AUDIO_INPUT=<file>`: play the file over and over (`simrun run --mic-loop`) |
 | `SIMRUN_HEADLESS=1` | `simrun run` runs every app headless, as with `--headless` (read by `simrun`, not SimRun) |
+| `SIMRUND_PERMISSIONS=microphone:denied,audio-capture:authorized` | SimRun pretends macOS has given it these permissions (`denied`, `authorized`, `restricted` or `undetermined`), never asking macOS: to test what apps do without the microphone ([microphone.md](microphone.md#permission)) |
 | `SIMRUND_IDLE=secs` | SimRun, started headless by `simrun`, quits after this long without apps (default 600, 0 = never) |
 | `SIMRUND_SOCKET=path` | Use a different server socket (default `~/Library/Developer/SimRun/simrund.sock`) |
 | `SCENES_W`, `SCENES_H`, `SCENES_SCALE` | Scene size in points / scale (default: the device type's screen); SimRun sizes the display (`SIMULATOR_MAINSCREEN_*`) and window to match |
@@ -70,7 +73,9 @@ select all) go to the app while one of its windows is key.
   input into rotated space; `deviceOrientation` and the accelerometer aren't wired.
 - notifyd is not provided.
 - Sound plays through the Mac's default output ([architecture.md](architecture.md)); there is no volume of the app's
-  own (only muting it, `AUDIO_MUTE`), and recording is untested. A muted app is muted from just after it starts
+  own (only muting it, `AUDIO_MUTE`). Recording works ([microphone.md](microphone.md)), but needs a Mac input device
+  even with a file or the Mac's sound as the source; the app's own permission is always allowed once SimRun's is
+  (there is no prompt in the app to deny it with). A muted app is muted from just after it starts
   (CoreAudio is told off the main thread), so a sound played in its first moments could still be heard. Once an app has played a sound, its audio output keeps running (and with
   it coreaudiod's assertion against idle sleep) until the app exits, as in Simulator.app; for system sounds that is
   the sound server, which SimRun stops when no apps are left ([simns.md](simns.md#on-demand-sim-daemons)).

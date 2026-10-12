@@ -11,7 +11,8 @@ simrun (CLI) ───unix socket──▶ build/bin/simrund   macOS AppKit serv
   argv, env, stdio fds                   │            host-side "sim2host" services (com.apple.IOSurface.Remote via
                                          │            IOSurfaceRemoteServer, com.apple.metal.simulator via MTLSimImplementation,
                                          │            dev.simrun.pasteboard: the Mac's NSPasteboard, dev.simrun.docpicker:
-                                         │            the Mac's open and save panels; com.apple.audio.audiohald:
+                                         │            the Mac's open and save panels; dev.simrun.privacy: SimRun's
+                                         │            microphone permissions; com.apple.audio.audiohald:
                                          │            the Mac's coreaudiod, looked up and passed on)
                                          ├─ build/bin/simns --serve   launchd_sim stand-in speaking sim libxpc's XPC-pipe protocol;
                                          │     │                      one private namespace per app layered over a shared global one;
@@ -21,7 +22,8 @@ simrun (CLI) ───unix socket──▶ build/bin/simrund   macOS AppKit serv
                                                              the Mac's language & region (locale, languages, 24-hour
                                                              time, first weekday...) into the device's global preferences,
                                                              the app's HOME as its sandbox container
-                                                             (sandbox_container_path_for_pid)
+                                                             (sandbox_container_path_for_pid), muting, the
+                                                             microphone's permission and source (microphone.md)
                                               glue.dylib     starts the in-process CA render server (CAWindowServer) and hosts the
                                                              scene's layers on the display (SpringBoard's job)
                                               scenes.dylib   in-process FrontBoard host (creates/updates the UIWindowScene)
@@ -52,7 +54,8 @@ talks to it over a unix socket (`include/simrund_proto.h`): one request per conn
 quit, screenshot or run a script in running ones, list profiles, runtimes and device types, or stop SimRun. `simrun run` passes the
 app's argv, the terminal's environment and stdio file descriptors; SimRun adds the simulator environment itself (the
 runtime, device type, data container and injected libraries), as for launcher launches. If SimRun.app isn't open, it
-is started headless and exits after 10 idle minutes (`SIMRUND_IDLE`). Each app gets its own window; `simrun run`
+is started headless and exits after 10 idle minutes (`SIMRUND_IDLE`), responsible for itself (macOS asks for and keeps
+privacy permissions, such as the microphone's, for SimRun, not for the terminal). Each app gets its own window; `simrun run`
 exits with the app's status, and Ctrl-C (or closing the window) ends the app. Launching into a running server takes
 ~0.6 s to first frame.
 
@@ -104,7 +107,8 @@ app, never through the Mac's mouse or keyboard) and `inspect` work as usual. Wha
 
 `simrun list` marks headless apps. In the launcher they show as running; opening one there (double-click, ▶) shows
 its window after all, and it is an ordinary windowed app from then on, but for its pasteboards, which stay its own.
-Sound still plays on the Mac's output; `--mute` silences an app. Instances of one app running at the same time share its data container unless
+Sound still plays on the Mac's output; `--mute` silences an app, and `--mic` gives it a file (or what the Mac plays)
+to record instead of the Mac's microphone ([microphone.md](microphone.md)). Instances of one app running at the same time share its data container unless
 they run in different profiles (`-p`).
 
 ## Runtimes
@@ -171,7 +175,7 @@ and `simrun screenshot` take `--profile` to pick one of an app's instances.
 | `resources/` | SimRun.app's Info.plist and app icon (`AppIcon.icon`, an Icon Composer document) |
 | `src/sim/` | Simulator side: `simns/` (launchd_sim stand-in), `rshim/`, `glue/`, `scenes/`, `hid/`, `pboard/`, `drag/`, `docpicker/`, `keychain/`, `webkit/`, `mps/`, `script/`, `simfb/` |
 | `tools/` | `hostinput.swift` (synthesize Mac clicks/typing into the viewer), `crash.py` (crash-report backtrace) |
-| `tests/` | Test apps (`hello` UIKit, `swiftui`, `hidtest`, `dragtest`, `webtest` WKWebView, `bgdownload` background URLSession, `pickertest` document pickers, `glass` Liquid Glass, `showcase` a SwiftUI tour of everything that works, `audioplayer` a music player for trying sound) and programs (`net/nettest`, `net/nwtest`, `pboard/pbtest`, `keychain/kctest`, `locale/loctest`, `mps/mpstest`, `audio/audiotest`), and scripts for `simrun eval` (`scripts/`) |
+| `tests/` | Test apps (`hello` UIKit, `swiftui`, `hidtest`, `dragtest`, `webtest` WKWebView, `bgdownload` background URLSession, `pickertest` document pickers, `glass` Liquid Glass, `showcase` a SwiftUI tour of everything that works, `audioplayer` a music player for trying sound) and programs (`net/nettest`, `net/nwtest`, `pboard/pbtest`, `keychain/kctest`, `locale/loctest`, `mps/mpstest`, `audio/audiotest` playing and recording), and scripts for `simrun eval` (`scripts/`) |
 | `skills/` | The agent skill (`simrun/`: SKILL.md and an API reference) that SimRun.app carries in `Contents/Resources/skills/` and `simrun skill` prints or installs |
 | `docs/` | These write-ups |
 

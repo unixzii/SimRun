@@ -246,6 +246,26 @@ simrun pick MyApp /tmp/fixtures/photo.jpg
   an open picker gets the first file that fits (in a folder: its files, by name), or all of them if it takes several;
   a save picker writes into the first folder.
 
+## Microphone
+
+The app records from the Mac's microphone unless told otherwise. For a flow that records (voice notes, speech
+recognition, audio levels), give it an audio file at launch: it needs nothing of the Mac's, so it works when nobody is
+there to answer a macOS permission prompt.
+
+```bash
+nohup simrun run --headless --mute --mic /tmp/fixtures/hello.m4a path/to/MyApp.app > /tmp/myapp.log 2>&1 &
+```
+
+- The file plays **from its start each time the app starts recording**, then the app hears silence; so every
+  recording in the run hears the same thing. `--mic-loop` plays it over and over instead.
+- `--mic system` gives the app what the Mac is playing (not the app's own sound). Prefer a file: it doesn't depend on
+  what else is going on on the Mac.
+- The source is set at launch. To record something else, relaunch the app with another `--mic`.
+- The app's microphone permission works as on a device: not determined until the app asks, then allowed (the
+  answer is kept in its data container; a new profile, `-p`, starts over). With the Mac's microphone or `system`, it
+  takes SimRun's permission on the Mac: without it the app is denied and records silence, and if macOS hasn't been
+  asked, the app's request makes macOS show the user a prompt. Prefer a file.
+
 ## Limits
 
 - **Portrait only,** and no on-screen keyboard.

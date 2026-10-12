@@ -2,7 +2,7 @@
 #import "launchoptions.h"
 #import "library.h"
 
-// { app path: { runtime, device, arguments, environment, switches,       (its default profile's)
+// { app path: { runtime, device, microphone, arguments, environment, switches,   (its default profile's)
 //               profiles: { name: { runtime, device, ... } } } }      (its other profiles')
 static NSString *const kOptionsKey = @"SRLaunchOptions";
 
@@ -52,6 +52,7 @@ static NSArray<NSString *> *ShellWords(NSString *s) {
   if (![d isKindOfClass:NSDictionary.class]) return o;
   if ([d[@"runtime"] isKindOfClass:NSString.class]) o.runtimeBuild = d[@"runtime"];
   if ([d[@"device"] isKindOfClass:NSString.class]) o.deviceType = d[@"device"];
+  if ([d[@"microphone"] isKindOfClass:NSString.class]) o.microphone = d[@"microphone"];
   for (NSString *key in @[ @"arguments", @"environment" ]) {
     NSArray *items = [d[key] isKindOfClass:NSArray.class] ? d[key] : @[];
     for (NSDictionary *it in items) {
@@ -94,6 +95,7 @@ static NSArray<NSString *> *ShellWords(NSString *s) {
   NSMutableDictionary *d = [NSMutableDictionary dictionary];
   if (_runtimeBuild) d[@"runtime"] = _runtimeBuild;
   if (_deviceType) d[@"device"] = _deviceType;
+  if (_microphone) d[@"microphone"] = _microphone;
   NSMutableArray *args = [NSMutableArray array], *env = [NSMutableArray array];
   for (SRLaunchItem *i in _arguments) if (i.value.length) [args addObject:@{ @"enabled": @(i.enabled), @"value": i.value }];
   for (SRLaunchItem *i in _environment)
@@ -114,6 +116,7 @@ static NSArray<NSString *> *ShellWords(NSString *s) {
 - (NSDictionary<NSString *, NSString *> *)environmentVariables {
   NSMutableDictionary *out = [NSMutableDictionary dictionary];
   for (NSString *s in _switches) out[s] = @"1";
+  if (_microphone) out[@"AUDIO_INPUT"] = _microphone;
   for (SRLaunchItem *i in _environment) if (i.enabled && i.name.length) out[i.name] = i.value ?: @"";
   return out;
 }

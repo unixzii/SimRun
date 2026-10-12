@@ -17,6 +17,8 @@ Write-ups of each part:
 - [dragdrop.md](dragdrop.md) — drag & drop within an app: the druid protocols, drag HID events, the in-process drag
   server
 - [docpicker.md](docpicker.md) — document pickers: UIDocumentPickerViewController with the Mac's open and save panels
+- [microphone.md](microphone.md) — recording: the Mac's microphone, what the Mac plays or an audio file as the app's
+  microphone, and its permission
 - [keychain.md](keychain.md) — the fake keychain: SecItem semantics, the plaintext store, access groups, the Keychain
   window
 - [webkit.md](webkit.md) — WKWebView: BrowserEngineKit process launches, the extension entry point, the Launch

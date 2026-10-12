@@ -12,6 +12,8 @@
 @interface SRLaunchOptions : NSObject
 @property (copy) NSString *runtimeBuild;   // nil: SimRun's runtime (SimRun ▸ iOS Runtime)
 @property (copy) NSString *deviceType;     // a device type identifier; nil: the runtime's default (environment.h)
+@property (copy) NSString *microphone;     // what the app records (AUDIO_INPUT): nil the Mac's microphone, "system" what
+                                           // the Mac plays, else an audio file's path (AUDIO_INPUT_LOOP is a switch)
 @property (readonly) NSMutableArray<SRLaunchItem *> *arguments, *environment;
 @property (readonly) NSMutableSet<NSString *> *switches;
 // The saved ones of the app's `profile` (nil: its default container), or the defaults.
@@ -21,6 +23,6 @@
 - (void)saveForAppAtPath:(NSString *)path profile:(NSString *)profile;   // posts SRLibraryDidChangeNotification
 // The enabled arguments, each split into words as a shell would ("quotes", 'quotes' and \ escapes).
 - (NSArray<NSString *> *)launchArguments;
-// The switches (=1), then the enabled environment variables.
+// The switches (=1) and the microphone, then the enabled environment variables.
 - (NSDictionary<NSString *, NSString *> *)environmentVariables;
 @end

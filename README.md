@@ -168,6 +168,10 @@ with no apps running.
   a clipboard of its own. Run as many as you like side by side (each in its own profile, `-p`), and drive them with
   `simrun eval`, `screenshot` and `inspect`; answer their file pickers with `simrun pick`, and add `--mute` to
   silence them. Handy for coding agents and CI working in parallel while you use the Mac.
+- **Feed the microphone**: `simrun run --mic speech.m4a` gives the app an audio file to record, from its start each
+  time it starts recording, and `--mic system` what the Mac is playing; or pick either in Launch Options ▸
+  Microphone ([microphone.md](docs/microphone.md)). Recording from the Mac's microphone, or what it plays, takes
+  SimRun's permission on the Mac (macOS asks the first time); without it apps are denied the microphone.
 - **Script a running app** (experimental) with `simrun eval`: JavaScript that runs inside the app with a
   Playwright-like API. It sees the screen through accessibility, and taps and types like a user. Handy for automating
   UI checks, and for coding agents driving your app:
