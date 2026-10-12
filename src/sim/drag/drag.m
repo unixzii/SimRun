@@ -19,6 +19,7 @@
 #import <objc/message.h>
 #include <dlfcn.h>
 #include "hid.h"
+#import "common.h"
 
 static int gVerbose;
 #define LOG(fmt, ...) do { if (gVerbose) NSLog(@"[drag] " fmt, ##__VA_ARGS__); } while (0)
@@ -245,7 +246,7 @@ static NSXPCListener *check_in(NSString *name, SRDragServer *server) {
 
 __attribute__((constructor)) static void drag_init(void) {
   gVerbose = getenv("DRAG_VERBOSE") != NULL;
-  if (getenv("DRAG_DISABLE") || !strcmp(getprogname(), "MTLCompilerService")) return;
+  if (getenv("DRAG_DISABLE") || SRProcessRole() != SRRoleApp) return;
   gDetachTouches = dlsym(RTLD_DEFAULT, "SRHIDDetachTouches");
   gDragEvent = dlsym(RTLD_DEFAULT, "SRHIDDragEvent");
   gSessions = [NSMutableDictionary dictionary];

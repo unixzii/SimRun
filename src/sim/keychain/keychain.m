@@ -20,6 +20,7 @@
 #include <errno.h>
 #include <pthread.h>
 #include "keychain.h"
+#import "common.h"
 
 int csops(pid_t pid, unsigned int ops, void *addr, size_t size);
 #define CS_OPS_ENTITLEMENTS_BLOB 7
@@ -579,7 +580,7 @@ __attribute__((used, section("__DATA,__interpose"))) static struct { const void 
 
 __attribute__((constructor)) static void keychain_init(void) {
   gVerbose = getenv("KEYCHAIN_VERBOSE") != NULL;
-  gDisabled = getenv("KEYCHAIN_DISABLE") != NULL || !strcmp(getprogname(), "MTLCompilerService");
+  gDisabled = getenv("KEYCHAIN_DISABLE") != NULL || SRProcessRole() != SRRoleApp;
   if (gDisabled) return;
   // the device's shared data directory, not the app's container (HOME): one keychain for all apps
   const char *data = getenv("SIMULATOR_SHARED_RESOURCES_DIRECTORY") ?: getenv("HOME");

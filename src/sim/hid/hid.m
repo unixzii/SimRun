@@ -30,6 +30,7 @@
 #include <dlfcn.h>
 #include "hid.h"
 #include "protocol.h"
+#import "common.h"
 
 #define LOG(fmt, ...) fprintf(stderr, "[hid] " fmt "\n", ##__VA_ARGS__)
 static int gVerbose;
@@ -617,10 +618,8 @@ static void SRHIDHandleInput(const sr_input_msg_t *m) {
 static void SRHIDStartReceiver(void) {
   static dispatch_once_t once;
   dispatch_once(&once, ^{
-    mach_port_array_t ports = NULL; mach_msg_type_number_t n = 0;
-    mach_port_t host = MACH_PORT_NULL;
-    if (mach_ports_lookup(mach_task_self(), &ports, &n) == KERN_SUCCESS && n > SR_PORT_SLOT_HOST) host = ports[SR_PORT_SLOT_HOST];
-    if (!MACH_PORT_VALID(host)) { VLOG("no host port: viewer receiver not started"); return; }
+    mach_port_t host = SRSessionPort();
+    if (!host) { VLOG("no host port: viewer receiver not started"); return; }
     mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &gRecvPort);
     mach_port_insert_right(mach_task_self(), gRecvPort, gRecvPort, MACH_MSG_TYPE_MAKE_SEND);
     dispatch_queue_t q = dispatch_queue_create("dev.simrun.hid.receiver", DISPATCH_QUEUE_SERIAL);
@@ -650,8 +649,8 @@ __attribute__((constructor)) static void hid_init(void) {
   gVerbose = getenv("HID_VERBOSE") != NULL;
   if (getenv("HID_SOFTWARE_KEYBOARD")) gHWKeyboard = 0;
   if (getenv("HID_KB_SOURCE")) kKeyboardSource = atoi(getenv("HID_KB_SOURCE"));
-  // DYLD_INSERT_LIBRARIES is inherited by helper processes (e.g. MTLCompilerService): only act inside an .app
-  if (![NSBundle.mainBundle.bundlePath hasSuffix:@".app"]) return;
+  // only in an .app: not in helper processes, nor in programs an app runs (they inherit DYLD_INSERT_LIBRARIES)
+  if (SRProcessRole() != SRRoleApp || ![NSBundle.mainBundle.bundlePath hasSuffix:@".app"]) return;
   if (!getenv("HID_KEEP_DICTATION")) SRHIDDisableDictation();
   if (!getenv("HID_KEEP_REMOTE_KEYBOARDS")) SRHIDNeutralizeRemoteKeyboards();
   SRHIDStartReceiver();

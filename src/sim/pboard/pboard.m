@@ -17,12 +17,7 @@
 #include <mach/mach.h>
 #include <xpc/xpc.h>
 #include "pboard.h"
-
-extern mach_port_t bootstrap_port;
-kern_return_t bootstrap_look_up(mach_port_t bp, const char *name, mach_port_t *out);
-void xpc_connection_enable_sim2host_4sim(xpc_connection_t);
-// (marked unavailable in the iOS SDK headers; it exists in the sim libxpc)
-extern xpc_connection_t sr_xpc_create_mach_service(const char *, dispatch_queue_t, uint64_t) __asm("_xpc_connection_create_mach_service");
+#import "common.h"
 
 // Pasteboard.framework (private; resolved at runtime)
 @interface NSObject (SRPasteboardSPI)
@@ -56,21 +51,13 @@ static xpc_connection_t gHost;       // SRPB_SERVICE
 static void host_changed(NSString *name, NSInteger count);
 
 static BOOL store_open(void) {
-  mach_port_t p = MACH_PORT_NULL;
-  if (bootstrap_look_up(bootstrap_port, SRPB_SERVICE, &p) != KERN_SUCCESS) {
-    fprintf(stderr, "[pboard] no %s in this SimRun; pasteboard unavailable\n", SRPB_SERVICE);
-    return NO;
-  }
-  mach_port_deallocate(mach_task_self(), p);
-  gHost = sr_xpc_create_mach_service(SRPB_SERVICE, gQ, 0);
-  xpc_connection_enable_sim2host_4sim(gHost);
-  xpc_connection_set_event_handler(gHost, ^(xpc_object_t e) {
+  gHost = SRHostConnect(SRPB_SERVICE, gQ, ^(xpc_object_t e) {
     if (xpc_get_type(e) != XPC_TYPE_DICTIONARY) { LOG("host connection: %s\n", xpc_dictionary_get_string(e, XPC_ERROR_KEY_DESCRIPTION) ?: "?"); return; }
     const char *ev = xpc_dictionary_get_string(e, "event"), *name = xpc_dictionary_get_string(e, "name");
     if (ev && name && !strcmp(ev, "changed")) host_changed(@(name), xpc_dictionary_get_int64(e, "count"));
   });
-  xpc_connection_activate(gHost);
-  return YES;
+  if (!gHost) fprintf(stderr, "[pboard] no %s in this SimRun; pasteboard unavailable\n", SRPB_SERVICE);
+  return gHost != NULL;
 }
 
 static xpc_object_t host_call(const char *op, NSString *name, void (^fill)(xpc_object_t)) {
@@ -356,7 +343,7 @@ static void disable_paste_touch_authentication(void) {
 
 __attribute__((constructor)) static void pboard_init(void) {
   gVerbose = getenv("PBOARD_VERBOSE") != NULL;
-  if (getenv("PBOARD_DISABLE") || !strcmp(getprogname(), "MTLCompilerService")) return;
+  if (getenv("PBOARD_DISABLE") || SRProcessRole() != SRRoleApp) return;
   dlopen("/System/Library/PrivateFrameworks/Pasteboard.framework/Pasteboard", RTLD_NOW);
   Protocol *p = objc_getProtocol("PBClientToServerProtocol");
   if (!p || !objc_getProtocol("PBDataProviderProtocol")) { fprintf(stderr, "[pboard] Pasteboard.framework protocols not found; pasteboard unavailable\n"); return; }

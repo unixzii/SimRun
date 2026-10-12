@@ -27,6 +27,7 @@
 #include <stdatomic.h>
 #include <xpc/xpc.h>
 #include "privacy.h"
+#import "common.h"
 
 static int gVerbose;
 static int gMode;   // the source: kInputMac (0), kInputSystem, kInputFile
@@ -60,23 +61,11 @@ static void my_tcc_message_options_set_reply_handler_policy(id options, int poli
 }
 
 // SimRun's side (SRPV_SERVICE in simrund): its permission on the Mac, and asking macOS for it.
-extern mach_port_t bootstrap_port;
-kern_return_t bootstrap_look_up(mach_port_t bp, const char *name, mach_port_t *out);
-void xpc_connection_enable_sim2host_4sim(xpc_connection_t);
-extern xpc_connection_t sr_mic_xpc_create_mach_service(const char *, dispatch_queue_t, uint64_t) __asm("_xpc_connection_create_mach_service");
 static xpc_connection_t privacy_host(void) {
   static xpc_connection_t c; static dispatch_once_t once;
   dispatch_once(&once, ^{
-    mach_port_t p = MACH_PORT_NULL;
-    if (bootstrap_look_up(bootstrap_port, SRPV_SERVICE, &p) != KERN_SUCCESS) {
-      fprintf(stderr, "[rshim] no %s: SimRun's permissions can't be checked, the microphone is denied\n", SRPV_SERVICE);
-      return;
-    }
-    mach_port_deallocate(mach_task_self(), p);
-    c = sr_mic_xpc_create_mach_service(SRPV_SERVICE, dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), 0);
-    xpc_connection_enable_sim2host_4sim(c);
-    xpc_connection_set_event_handler(c, ^(xpc_object_t e) {});
-    xpc_connection_activate(c);
+    c = SRHostConnect(SRPV_SERVICE, dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), nil);
+    if (!c) fprintf(stderr, "[rshim] no %s: SimRun's permissions can't be checked, the microphone is denied\n", SRPV_SERVICE);
   });
   return c;
 }

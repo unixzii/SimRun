@@ -8,6 +8,7 @@
 #import <Foundation/Foundation.h>
 #import <QuartzCore/QuartzCore.h>
 #include <dlfcn.h>
+#import "common.h"
 
 @interface CAWindowServer : NSObject + (instancetype)serverWithOptions:(NSDictionary *)o; @property (readonly) NSArray *displays; @end
 @interface CAContext : NSObject + (instancetype)remoteContextWithOptions:(NSDictionary *)o; @property (strong) CALayer *layer; @property (readonly) uint32_t contextId; @end
@@ -59,8 +60,8 @@ static void layers_cb(const uint32_t *ids, const double *levels, size_t n, void 
 
 __attribute__((constructor)) static void glue_init(void) {
   if (getenv("GLUE_DISABLE")) return;
-  // helper processes spawned with our DYLD_INSERT_LIBRARIES (e.g. rshim's MTLCompilerService) must not host a server
-  if (strcmp(getprogname(), "MTLCompilerService") == 0) return;
+  // helper processes must not host a server
+  if (SRProcessRole() != SRRoleApp) return;
   gServer = [NSClassFromString(@"CAWindowServer") serverWithOptions:@{}];
   id md = [NSClassFromString(@"CADisplay") valueForKey:@"mainDisplay"];
   CGRect b = CGRectZero; [(NSValue *)[md valueForKey:@"bounds"] getValue:&b size:sizeof b];

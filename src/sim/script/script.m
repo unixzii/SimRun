@@ -20,6 +20,7 @@
 #include <mach/notify.h>
 #include "script.h"
 #include "protocol.h"
+#import "common.h"
 
 int gSRVerbose;
 
@@ -98,15 +99,14 @@ static void SRReceive(void) {
   }
 }
 
-// Says hello to SimRun with our script port, as hid.dylib does with its input port. Only apps are given script.dylib
-// (the helper processes they spawn get rshim.dylib and webkit.dylib), so nothing else says hello in their place.
+// Says hello to SimRun with our script port, as hid.dylib does with its input port. Only the app does: the helper
+// processes it spawns would say hello in its place.
 __attribute__((constructor)) static void SRScriptInit(void) {
   gSRVerbose = getenv("SCRIPT_VERBOSE") != NULL;
   if (getenv("SCRIPT_DISABLE")) { VLOG("SCRIPT_DISABLE: scripts can't be run"); return; }
-  mach_port_array_t ports = NULL; mach_msg_type_number_t n = 0;
-  mach_port_t host = MACH_PORT_NULL;
-  if (mach_ports_lookup(mach_task_self(), &ports, &n) == KERN_SUCCESS && n > SR_PORT_SLOT_HOST) host = ports[SR_PORT_SLOT_HOST];
-  if (!MACH_PORT_VALID(host)) { VLOG("no host port: scripts can't be run"); return; }
+  if (SRProcessRole() != SRRoleApp) return;
+  mach_port_t host = SRSessionPort();
+  if (!host) { VLOG("no host port: scripts can't be run"); return; }
   mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &gScriptPort);
   dispatch_source_t src = dispatch_source_create(DISPATCH_SOURCE_TYPE_MACH_RECV, gScriptPort, 0, dispatch_queue_create("dev.simrun.script", DISPATCH_QUEUE_SERIAL));
   dispatch_source_set_event_handler(src, ^{ SRReceive(); });

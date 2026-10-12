@@ -117,14 +117,18 @@ $(BIN)/hostinput: tools/hostinput.swift | $(BIN)
 	$(MACSWIFT) $< -o $@
 
 # ---------------------------------------------------------------- sim side
+# common/: what the sim libraries share (common.h), compiled into each one that uses it
+COMMON := src/sim/common/common.m
+COMMON_DEPS := $(COMMON) $(wildcard src/sim/common/*.h)
+SIMLIB := $(SIMCC) -Isrc/sim/common
 $(BIN)/simns: src/sim/simns/simns.c $(HDRS) | $(BIN)
 	xcrun -sdk iphonesimulator clang -arch arm64 -mios-simulator-version-min=17.0 -Wall -Wno-deprecated-declarations -Iinclude $< -framework CoreFoundation -o $@
 	@$(SIGN) $@ 2>/dev/null
 
 # rshim.dylib: rshim.m and mic.m (the microphone), linked to TCC.framework through a stub (tcc.tbd; not in the SDK)
 RSHIM_SRC := src/sim/rshim/rshim.m src/sim/rshim/mic.m
-$(LIB)/rshim.dylib: $(RSHIM_SRC) src/sim/rshim/tcc.tbd $(HDRS) | $(LIB)
-	$(SIMCC) -dynamiclib $(RSHIM_SRC) src/sim/rshim/tcc.tbd -framework Foundation -framework AudioToolbox -framework CoreAudio -o $@
+$(LIB)/rshim.dylib: $(RSHIM_SRC) src/sim/rshim/tcc.tbd $(COMMON_DEPS) $(HDRS) | $(LIB)
+	$(SIMLIB) -dynamiclib $(RSHIM_SRC) $(COMMON) src/sim/rshim/tcc.tbd -framework Foundation -framework AudioToolbox -framework CoreAudio -o $@
 	@$(SIGN) $@ 2>/dev/null
 
 $(LIB)/SimFramebuffer: src/sim/simfb/simfb.m $(HDRS) | $(LIB)
@@ -132,16 +136,16 @@ $(LIB)/SimFramebuffer: src/sim/simfb/simfb.m $(HDRS) | $(LIB)
 	  -install_name @rpath/SimFramebuffer.framework/SimFramebuffer -o $@
 	@$(SIGN) $@ 2>/dev/null
 
-$(LIB)/glue.dylib: src/sim/glue/glue.m $(HDRS) | $(LIB)
-	$(SIMCC) -dynamiclib $< -framework Foundation -framework QuartzCore -framework CoreGraphics -o $@
+$(LIB)/glue.dylib: src/sim/glue/glue.m $(COMMON_DEPS) $(HDRS) | $(LIB)
+	$(SIMLIB) -dynamiclib $< $(COMMON) -framework Foundation -framework QuartzCore -framework CoreGraphics -o $@
 	@$(SIGN) $@ 2>/dev/null
 
 $(LIB)/scenes.dylib: src/sim/scenes/scenes.m $(HDRS) | $(LIB)
 	$(SIMCC) -dynamiclib $< -framework Foundation -framework UIKit -Wl,-undefined,dynamic_lookup -Wl,-w -o $@
 	@$(SIGN) $@ 2>/dev/null
 
-$(LIB)/hid.dylib: src/sim/hid/hid.m $(HDRS) | $(LIB)
-	$(SIMCC) -dynamiclib $< -framework Foundation -framework UIKit -framework IOKit -Wl,-undefined,dynamic_lookup -Wl,-w -o $@
+$(LIB)/hid.dylib: src/sim/hid/hid.m $(COMMON_DEPS) $(HDRS) | $(LIB)
+	$(SIMLIB) -dynamiclib $< $(COMMON) -framework Foundation -framework UIKit -framework IOKit -Wl,-undefined,dynamic_lookup -Wl,-w -o $@
 	@$(SIGN) $@ 2>/dev/null
 
 # script.dylib: the native parts, and the JS modules (js/*.js) embedded as C arrays (xxd -i: core.js -> core_js[])
@@ -150,28 +154,28 @@ SCRIPT_JS  := $(wildcard src/sim/script/js/*.js)
 $(BUILD)/gen/script_js.h: $(SCRIPT_JS)
 	@mkdir -p $(@D)
 	@(cd src/sim/script/js && for f in *.js; do xxd -i $$f; done) > $@.tmp && mv $@.tmp $@
-$(LIB)/script.dylib: $(SCRIPT_SRC) src/sim/script/script.h $(BUILD)/gen/script_js.h $(HDRS) | $(LIB)
-	$(SIMCC) -dynamiclib -I$(BUILD)/gen $(SCRIPT_SRC) -framework Foundation -framework UIKit -framework CoreGraphics -framework QuartzCore -o $@
+$(LIB)/script.dylib: $(SCRIPT_SRC) src/sim/script/script.h $(BUILD)/gen/script_js.h $(COMMON_DEPS) $(HDRS) | $(LIB)
+	$(SIMLIB) -dynamiclib -I$(BUILD)/gen $(SCRIPT_SRC) $(COMMON) -framework Foundation -framework UIKit -framework CoreGraphics -framework QuartzCore -o $@
 	@$(SIGN) $@ 2>/dev/null
 
-$(LIB)/pboard.dylib: src/sim/pboard/pboard.m $(HDRS) | $(LIB)
-	$(SIMCC) -dynamiclib $< -framework Foundation -o $@
+$(LIB)/pboard.dylib: src/sim/pboard/pboard.m $(COMMON_DEPS) $(HDRS) | $(LIB)
+	$(SIMLIB) -dynamiclib $< $(COMMON) -framework Foundation -o $@
 	@$(SIGN) $@ 2>/dev/null
 
-$(LIB)/drag.dylib: src/sim/drag/drag.m $(HDRS) | $(LIB)
-	$(SIMCC) -dynamiclib $< -framework Foundation -framework UIKit -framework CoreGraphics -o $@
+$(LIB)/drag.dylib: src/sim/drag/drag.m $(COMMON_DEPS) $(HDRS) | $(LIB)
+	$(SIMLIB) -dynamiclib $< $(COMMON) -framework Foundation -framework UIKit -framework CoreGraphics -o $@
 	@$(SIGN) $@ 2>/dev/null
 
-$(LIB)/docpicker.dylib: src/sim/docpicker/docpicker.m $(HDRS) | $(LIB)
-	$(SIMCC) -dynamiclib $< -framework Foundation -framework UIKit -framework UniformTypeIdentifiers -o $@
+$(LIB)/docpicker.dylib: src/sim/docpicker/docpicker.m $(COMMON_DEPS) $(HDRS) | $(LIB)
+	$(SIMLIB) -dynamiclib $< $(COMMON) -framework Foundation -framework UIKit -framework UniformTypeIdentifiers -o $@
 	@$(SIGN) $@ 2>/dev/null
 
-$(LIB)/keychain.dylib: src/sim/keychain/keychain.m $(HDRS) | $(LIB)
-	$(SIMCC) -dynamiclib $< -framework Foundation -framework Security -o $@
+$(LIB)/keychain.dylib: src/sim/keychain/keychain.m $(COMMON_DEPS) $(HDRS) | $(LIB)
+	$(SIMLIB) -dynamiclib $< $(COMMON) -framework Foundation -framework Security -o $@
 	@$(SIGN) $@ 2>/dev/null
 
-$(LIB)/webkit.dylib: src/sim/webkit/webkit.m $(HDRS) | $(LIB)
-	$(SIMCC) -dynamiclib $< -framework Foundation -framework UIKit -o $@
+$(LIB)/webkit.dylib: src/sim/webkit/webkit.m $(COMMON_DEPS) $(HDRS) | $(LIB)
+	$(SIMLIB) -dynamiclib $< $(COMMON) -framework Foundation -framework UIKit -o $@
 	@$(SIGN) $@ 2>/dev/null
 
 $(LIB)/mps.dylib: src/sim/mps/mps.m $(HDRS) | $(LIB)
