@@ -25,6 +25,7 @@ static NSArray<NSArray *> *TracingSwitches(void) {
 }
 
 static const CGFloat kLabelWidth = 170, kFieldWidth = 360;
+static const CGFloat kPageInsetTop = 20, kPageInsetBottom = 12;   // around a page's content, inside its scroll view
 
 static NSTextField *Label(NSString *s) { return [NSTextField labelWithString:s]; }
 static NSTextField *Note(NSString *s) {
@@ -48,6 +49,13 @@ static NSGridView *Form(NSArray<NSArray<NSView *> *> *rows, NSInteger columns) {
   for (NSInteger c = 1; c < columns; c++) [g columnAtIndex:c].width = (kFieldWidth - (columns - 2) * g.columnSpacing) / (columns - 1);
   return g;
 }
+
+// A page's document view: its content starts at the top.
+@interface SRFlippedView : NSView
+@end
+@implementation SRFlippedView
+- (BOOL)isFlipped { return YES; }
+@end
 
 @interface SRLaunchSheet () <NSTableViewDataSource, NSTableViewDelegate>
 @end
@@ -123,10 +131,10 @@ static NSMutableSet<SRLaunchSheet *> *gShown;   // a sheet keeps itself alive un
     [sep[0].topAnchor constraintEqualToAnchor:header.bottomAnchor constant:14],
     [tabBar.topAnchor constraintEqualToAnchor:sep[0].bottomAnchor constant:8], [tabBar.centerXAnchor constraintEqualToAnchor:root.centerXAnchor],
     [sep[1].topAnchor constraintEqualToAnchor:tabBar.bottomAnchor constant:8],
-    [pageArea.topAnchor constraintEqualToAnchor:sep[1].bottomAnchor constant:20],
+    [pageArea.topAnchor constraintEqualToAnchor:sep[1].bottomAnchor],
     [pageArea.leadingAnchor constraintEqualToAnchor:root.leadingAnchor], [pageArea.trailingAnchor constraintEqualToAnchor:root.trailingAnchor],
-    [pageArea.heightAnchor constraintEqualToConstant:360],
-    [sep[2].topAnchor constraintEqualToAnchor:pageArea.bottomAnchor constant:12],
+    [pageArea.heightAnchor constraintEqualToConstant:kPageInsetTop + 360 + kPageInsetBottom],
+    [sep[2].topAnchor constraintEqualToAnchor:pageArea.bottomAnchor],
     [restore.topAnchor constraintEqualToAnchor:sep[2].bottomAnchor constant:14], [restore.leadingAnchor constraintEqualToAnchor:root.leadingAnchor constant:20],
     [root.bottomAnchor constraintEqualToAnchor:restore.bottomAnchor constant:16],
     [launch.trailingAnchor constraintEqualToAnchor:root.trailingAnchor constant:-20], [launch.centerYAnchor constraintEqualToAnchor:restore.centerYAnchor],
@@ -139,12 +147,21 @@ static NSMutableSet<SRLaunchSheet *> *gShown;   // a sheet keeps itself alive un
   [self showPage:0];
 }
 
-// A page holding `content` centered horizontally at its top.
+// A page holding `content` centered horizontally at its top, scrolling when it is taller than the page area.
 static NSView *Page(NSView *content) {
-  NSView *page = [NSView new];
-  content.translatesAutoresizingMaskIntoConstraints = NO; [page addSubview:content];
+  NSView *document = [SRFlippedView new];
+  document.translatesAutoresizingMaskIntoConstraints = NO;
+  content.translatesAutoresizingMaskIntoConstraints = NO; [document addSubview:content];
+  NSScrollView *page = [NSScrollView new];
+  page.drawsBackground = NO; page.hasVerticalScroller = YES; page.autohidesScrollers = YES;
+  page.documentView = document;
+  NSClipView *clip = page.contentView;
   [NSLayoutConstraint activateConstraints:@[
-    [content.topAnchor constraintEqualToAnchor:page.topAnchor], [content.centerXAnchor constraintEqualToAnchor:page.centerXAnchor],
+    [document.topAnchor constraintEqualToAnchor:clip.topAnchor], [document.leadingAnchor constraintEqualToAnchor:clip.leadingAnchor],
+    [document.widthAnchor constraintEqualToAnchor:clip.widthAnchor],
+    [content.topAnchor constraintEqualToAnchor:document.topAnchor constant:kPageInsetTop],
+    [content.centerXAnchor constraintEqualToAnchor:document.centerXAnchor],
+    [document.bottomAnchor constraintEqualToAnchor:content.bottomAnchor constant:kPageInsetBottom],
   ]];
   return page;
 }
@@ -288,7 +305,7 @@ static NSView *Page(NSView *content) {
   pm.segmentStyle = NSSegmentStyleSmallSquare; pm.tag = columns.count;   // 1: arguments, 2: environment
   NSStackView *s = [NSStackView stackViewWithViews:@[ label, sv, pm ]];
   s.orientation = NSUserInterfaceLayoutOrientationVertical; s.alignment = NSLayoutAttributeLeading; s.spacing = 6;
-  [s setCustomSpacing:0 afterView:sv];
+  [s setCustomSpacing:8 afterView:sv];
   [NSLayoutConstraint activateConstraints:@[
     [sv.widthAnchor constraintEqualToConstant:kLabelWidth + 12 + kFieldWidth], [sv.heightAnchor constraintEqualToConstant:88],
   ]];
