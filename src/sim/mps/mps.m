@@ -1,4 +1,4 @@
-// mps.dylib — MPSGraph on the simulator's Metal device (SIM platform; see docs/mps.md).
+// mps — app.dylib module: MPSGraph on the simulator's Metal device (SIM platform; see docs/mps.md).
 // MetalPerformanceShadersGraph in the iOS 26 and later simulator runtimes can't run a graph on MTLSimDevice, in
 // Simulator.app as here: an app that runs MPSGraph graphs on the GPU aborts on its first one. Two bugs:
 //   * -[MPSGraphDeviceDescriptor initWithMPSGraphDevice:] serializes the descriptor's architecture, which the sim build
@@ -17,6 +17,7 @@
 #include <dlfcn.h>
 #include <mach-o/dyld.h>
 #include <os/lock.h>
+#import "app.h"
 
 static int gVerbose;
 #define LOG(fmt, ...) do { if (gVerbose) fprintf(stderr, "[mps] " fmt "\n", ##__VA_ARGS__); } while (0)
@@ -134,8 +135,7 @@ static void image_loaded(const struct mach_header *mh, intptr_t slide) {
   patch_heaps();
 }
 
-__attribute__((constructor)) static void mps_init(void) {
+void SRMPSStart(void) {
   gVerbose = getenv("MPS_VERBOSE") != NULL;
-  if (getenv("MPS_DISABLE")) return;
   _dyld_register_func_for_add_image(image_loaded);
 }

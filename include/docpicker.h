@@ -1,4 +1,4 @@
-// docpicker.h — the document picker bridge between docpicker.dylib (UIDocumentPickerViewController in each app) and
+// docpicker.h — the document picker bridge between the docpicker module (UIDocumentPickerViewController in each app) and
 // simrund, which picks the files with the Mac's open and save panels. See docs/docpicker.md.
 //
 // simrund serves SRDP_SERVICE: a sim2host XPC listener registered in simns' global namespace. Messages are xpc

@@ -1,4 +1,4 @@
-// script.dylib — runs JavaScript inside the app, on its main thread, for `simrun eval` (see scripting.md), and
+// script — app.dylib module: runs JavaScript inside the app, on its main thread, for `simrun eval` (see scripting.md), and
 // streams the app's layer tree to SimRun while it is being watched (inspect.md).
 //
 // SimRun sends a script over the app's session channel (protocol.h, SR_MSG_SCRIPT_*); console output and then the
@@ -7,7 +7,7 @@
 //
 //   script.m      this overview, shared helpers, the channel to SimRun
 //   context.m     the JSContext: timers, loading the JS modules, compiling and running a script
-//   ui.m          touches, keys and text through hid.dylib; the frame count (has the UI settled?); the view dump
+//   ui.m          touches, keys and text through the hid module; the frame count (has the UI settled?); the view dump
 //   ax.m          the accessibility elements a script sees: roles, states, visibility, refs, scrolling into view
 //   objcbridge.m  sending Objective-C messages from JS
 //   inspect.m     the layer tree, whole and then what changed after each commit, for SimRun's layer window
@@ -20,7 +20,7 @@
 #include <mach/notify.h>
 #include "script.h"
 #include "protocol.h"
-#import "common.h"
+#import "app.h"
 
 int gSRVerbose;
 
@@ -99,12 +99,10 @@ static void SRReceive(void) {
   }
 }
 
-// Says hello to SimRun with our script port, as hid.dylib does with its input port. Only the app does: the helper
+// Says hello to SimRun with our script port, as the hid module does with its input port. Only the app does: the helper
 // processes it spawns would say hello in its place.
-__attribute__((constructor)) static void SRScriptInit(void) {
+void SRScriptStart(void) {
   gSRVerbose = getenv("SCRIPT_VERBOSE") != NULL;
-  if (getenv("SCRIPT_DISABLE")) { VLOG("SCRIPT_DISABLE: scripts can't be run"); return; }
-  if (SRProcessRole() != SRRoleApp) return;
   mach_port_t host = SRSessionPort();
   if (!host) { VLOG("no host port: scripts can't be run"); return; }
   mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &gScriptPort);

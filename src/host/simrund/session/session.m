@@ -50,7 +50,7 @@ extern int posix_spawn_file_actions_addchdir_np(posix_spawn_file_actions_t *, co
 - (void)mouseDown:(NSEvent *)e { [self send:SR_IN_TOUCH_BEGAN event:e]; }
 - (void)mouseDragged:(NSEvent *)e { [self send:SR_IN_TOUCH_MOVED event:e]; }
 - (void)mouseUp:(NSEvent *)e { [self send:SR_IN_TOUCH_ENDED event:e]; }
-// Trackpad gestures become touches in the app (hid.dylib): a two-finger scroll is one finger dragging the content
+// Trackpad gestures become touches in the app (the hid module): a two-finger scroll is one finger dragging the content
 // (phases drive touch down/up; macOS momentum is dropped, UIKit flings from the lift velocity), magnify/rotate are a
 // two-finger pinch/rotation around the cursor, and a smart magnify is a double tap.
 - (void)scrollWheel:(NSEvent *)e {

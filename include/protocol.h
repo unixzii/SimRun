@@ -52,7 +52,7 @@ typedef struct { float dx, dy; uint32_t phase, momentumPhase; double timestamp; 
 enum { SR_GESTURE_MAGNIFY = 1, SR_GESTURE_ROTATE = 2 };
 typedef struct { float magnification, rotation; uint32_t phase, type; } sr_gesture_payload_t;
 
-// Scripts (script.dylib, scripting.md). The app sends SR_MSG_SCRIPT_HELLO (an sr_port_msg_t; w, h_px, scale unused)
+// Scripts (the script module, scripting.md). The app sends SR_MSG_SCRIPT_HELLO (an sr_port_msg_t; w, h_px, scale unused)
 // with its script port when it starts. The host runs a script with SR_MSG_SCRIPT_EVAL to that port: the source as
 // UTF-8 in `data`, SR_SCRIPT_FLAG_* in `flags`, and in msgh_local_port a send right to a port of its own for this one
 // eval. The app answers on that port with SR_MSG_SCRIPT_OUTPUT messages, `kind` saying what `data` (UTF-8) is:
@@ -63,7 +63,7 @@ enum { SR_SCRIPT_SOURCE = 0, SR_SCRIPT_LOG, SR_SCRIPT_RESULT, SR_SCRIPT_EXCEPTIO
 enum { SR_SCRIPT_FLAG_SNAPSHOT = 1 };
 typedef struct { mach_msg_header_t h; mach_msg_body_t b; mach_msg_ool_descriptor_t data; uint32_t kind, flags; } sr_script_msg_t;
 
-// The layer tree (script.dylib's inspect.m, inspect.md). The host asks for it with SR_MSG_INSPECT_START to the script
+// The layer tree (the script module's inspect.m, inspect.md). The host asks for it with SR_MSG_INSPECT_START to the script
 // port: a bare header, msgh_local_port a send right to a port of its own. The app answers there with
 // SR_MSG_INSPECT_BATCH messages (an sr_script_msg_t; kind SR_INSPECT_BATCH): `data` is a binary property list, first
 // the whole tree, then after each Core Animation commit what changed. It stops when that port dies (the host

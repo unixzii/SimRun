@@ -6,7 +6,7 @@
 //   * Info.plists: the platform keys say iphonesimulator
 //   * signatures: the device ones (and the provisioning profile) removed and everything signed again, ad hoc. An edited
 //     Mach-O no longer matches its signature, and the kernel kills a process that maps it. The entitlements go too: an
-//     ad-hoc signature can't carry restricted ones (keychain.dylib then uses the bundle ID as the access group)
+//     ad-hoc signature can't carry restricted ones (the keychain module then uses the bundle ID as the access group)
 //   * Watch/ (the watchOS companion app) is left out
 // App Store builds are encrypted (FairPlay) and can't be converted.
 #import "devicebuild.h"

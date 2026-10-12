@@ -1,4 +1,4 @@
-// filepanel.h — the Mac's open and save panels as SRDP_SERVICE (include/docpicker.h): where every app's docpicker.dylib
+// filepanel.h — the Mac's open and save panels as SRDP_SERVICE (include/docpicker.h): where every app's docpicker module
 // has its UIDocumentPickerViewController pick files. A picker can also be answered without a panel: from files given at
 // launch (`simrun run --pick`), or by `simrun pick` (headless apps, agents, tests).
 #pragma once

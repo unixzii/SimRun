@@ -1,5 +1,5 @@
 // hostinput.swift — host-side test driver: synthesizes macOS mouse/keyboard events into the SimRun viewer window
-// (exercises viewer.m -> sr_input_msg_t -> hid.dylib receiver -> UIKit). Coordinates are sim scene points (viewer
+// (exercises viewer.m -> sr_input_msg_t -> the hid module's receiver -> UIKit). Coordinates are sim scene points (viewer
 // content view is 1:1 with scene points, origin top-left).
 // usage: swift hostinput.swift <viewer-pid> cmd [cmd...]      (HOSTINPUT_TITLE=<window title> picks one of several windows)
 //   click X Y | drag X0 Y0 X1 Y1 | type TEXT | key KEYCODE [FLAGS] | wait SECS

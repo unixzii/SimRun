@@ -1,4 +1,4 @@
-// webkit.dylib — WKWebView's helper processes (SIM platform; see docs/webkit.md).
+// webkit — app.dylib's WKWebView helper processes (SIM platform; see docs/webkit.md).
 // WebKit runs pages in separate processes: WebContent, Networking and GPU. On iOS they are ExtensionKit extensions
 // (System/Library/ExtensionKit/Extensions/{WebContent,Networking,GPU}Extension.appex) that WebKit asks
 // BrowserEngineKit for: +[BEWebContentProcess webContentProcessWithInterruptionHandler:completion:] and friends.
@@ -22,7 +22,7 @@
 #include <mach-o/dyld.h>
 #include <signal.h>
 #include <sys/wait.h>
-#import "common.h"
+#import "app.h"
 #include "spi.h"
 
 static int gVerbose;
@@ -50,10 +50,11 @@ static NSString *executable_for(NSString *bundleID) {
   return map[bundleID];
 }
 
-// Spawn `exe` as a child with our namespace as its bootstrap port and wait for its XPC listener port. It gets only rshim
-// (Metal compiler service) and us injected: no in-process render server, scene host or input in the extension.
+// Spawn `exe` as a child with our namespace as its bootstrap port and wait for its XPC listener port. It gets rshim
+// (Metal compiler service) and app.dylib, where only the modules for extensions run: no render server, scene host or
+// input in the extension.
 static pid_t spawn_extension(NSString *exe, NSString *bundleID, mach_port_t *listener) {
-  SRHelper h = { .path = exe.fileSystemRepresentation, .role = SRRoleExtension, .insert = "rshim.dylib:webkit.dylib",
+  SRHelper h = { .path = exe.fileSystemRepresentation, .role = SRRoleExtension, .insert = "rshim.dylib:app.dylib",
                  .environment = @[ [@"XPC_SERVICE_NAME=" stringByAppendingString:bundleID] ], .inNamespace = YES,
                  .timeoutSeconds = 30, .tag = "webkit" };
   pid_t pid = SRSpawnHelper(&h, listener);
@@ -182,6 +183,7 @@ static void fake_launch_services_database(void) {
 }
 
 static void extension_main(void) {
+  gVerbose = getenv("WEBKIT_VERBOSE") != NULL;
   fake_launch_services_database();
   void (*handler)(xpc_connection_t) = dlsym(RTLD_DEFAULT, "ExtensionEventHandler");
   if (!handler) { fprintf(stderr, "[webkit] %s: WebKit's ExtensionEventHandler not found\n", getprogname()); _exit(1); }
@@ -207,9 +209,8 @@ __attribute__((used, section("__DATA,__interpose"))) static struct { const void 
   { (const void *)my_NSExtensionMain, (const void *)NSExtensionMain },
 };
 
-__attribute__((constructor)) static void webkit_init(void) {
+void SRWebKitStart(void) {
   gVerbose = getenv("WEBKIT_VERBOSE") != NULL;
-  if (getenv("WEBKIT_DISABLE") || SRProcessRole() != SRRoleApp) return;
   gExtensionsDir = [@(getenv("DYLD_ROOT_PATH") ?: "") stringByAppendingPathComponent:@"System/Library/ExtensionKit/Extensions"];
   _dyld_register_func_for_add_image(image_loaded);
 }

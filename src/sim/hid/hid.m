@@ -1,4 +1,4 @@
-// hid.dylib — in-process HID input for iOS-Simulator UIKit apps run without backboardd/SpringBoard (see HID.md).
+// hid — app.dylib's in-process HID input for iOS-Simulator UIKit apps run without backboardd/SpringBoard (see hid.md).
 //
 // Injection point: -[UIApplication _enqueueHIDEvent:] (= -[UIEventFetcher _receiveHIDEvent:]), the same entry that
 // backboardd-delivered events take (BKSHIDEventRegisterEventCallbackOnQueue -> _UIEventFetcherReceiveHIDEventCallback
@@ -8,7 +8,7 @@
 //            id of the window under the first finger (BKSHIDEventSetDigitizerInfo);
 //   keys:    keyboard events (usage page 7) + BKSHIDEventBaseAttributes {source externalKeyboard, token = key window
 //            CAContext id} (BKSHIDEventSetSimpleInfo) — UIKit drops keyboard events whose context id maps to no window.
-//   drags:   for drag.dylib, the finger is taken from UIKit when a drag begins (its touch is cancelled) and drag events
+//   drags:   for the drag module, the finger is taken from UIKit when a drag begins (its touch is cancelled) and drag events
 //            are built instead: digitizer events whose path attributes carry the drag session id and locus.
 // Plus the backboardd/SpringBoard state UIKit needs for text input:
 //   * GSEventIsHardwareKeyboardAttached() -> YES (interposed; normally notifyd state set by backboardd)
@@ -27,10 +27,10 @@
 #include <mach/mach.h>
 #include <mach/mach_time.h>
 #include <pthread.h>
-#include <dlfcn.h>
 #include "hid.h"
 #include "protocol.h"
-#import "common.h"
+#include "scenes.h"
+#import "app.h"
 
 #define LOG(fmt, ...) fprintf(stderr, "[hid] " fmt "\n", ##__VA_ARGS__)
 static int gVerbose;
@@ -488,7 +488,7 @@ void SRHIDText(const char *utf8) {
 // host Mac keyboard is the input device. HID_SOFTWARE_KEYBOARD=1 -> report detached (software keyboard shows).
 extern Boolean GSEventIsHardwareKeyboardAttached(void);
 static Boolean gHWKeyboard = 1;
-static Boolean my_GSEventIsHardwareKeyboardAttached(void) { return gHWKeyboard; }
+static Boolean my_GSEventIsHardwareKeyboardAttached(void) { return SRModuleOn(SRModuleHID) ? gHWKeyboard : GSEventIsHardwareKeyboardAttached(); }
 __attribute__((used, section("__DATA,__interpose"))) static struct { void *n, *o; } hid_interposers[] = {
   { (void *)my_GSEventIsHardwareKeyboardAttached, (void *)GSEventIsHardwareKeyboardAttached },
 };
@@ -605,9 +605,8 @@ static void SRHIDHandleInput(const sr_input_msg_t *m) {
     }
     case SR_IN_SMART_MAGNIFY: SRHIDDoubleTap(m->x, m->y); break;
     case SR_IN_RESIZE: {
-      // scenes.dylib (if loaded): resize the scene to the host view size in points
-      void (*upd)(double, double, BOOL, long) = dlsym(RTLD_DEFAULT, "SRScenesUpdate");
-      if (upd && m->x > 0 && m->y > 0) upd(m->x, m->y, YES, 1);
+      // resize the scene to the host view size in points
+      if (m->x > 0 && m->y > 0) SRScenesUpdate(m->x, m->y, YES, 1);
       break;
     }
     default: VLOG("unknown input kind %u", m->kind);
@@ -645,12 +644,12 @@ static void SRHIDStartReceiver(void) {
   });
 }
 
-__attribute__((constructor)) static void hid_init(void) {
+void SRHIDStart(void) {
   gVerbose = getenv("HID_VERBOSE") != NULL;
   if (getenv("HID_SOFTWARE_KEYBOARD")) gHWKeyboard = 0;
   if (getenv("HID_KB_SOURCE")) kKeyboardSource = atoi(getenv("HID_KB_SOURCE"));
   // only in an .app: not in helper processes, nor in programs an app runs (they inherit DYLD_INSERT_LIBRARIES)
-  if (SRProcessRole() != SRRoleApp || ![NSBundle.mainBundle.bundlePath hasSuffix:@".app"]) return;
+  if (![NSBundle.mainBundle.bundlePath hasSuffix:@".app"]) return;
   if (!getenv("HID_KEEP_DICTATION")) SRHIDDisableDictation();
   if (!getenv("HID_KEEP_REMOTE_KEYBOARDS")) SRHIDNeutralizeRemoteKeyboards();
   SRHIDStartReceiver();

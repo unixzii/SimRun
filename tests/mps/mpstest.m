@@ -1,5 +1,5 @@
-// mpstest — an MPSGraph FFT on the simulator's GPU (exercises mps.dylib; see docs/mps.md).
-// Run with `simrun run build/tests/mpstest`: prints PASS, or the first wrong bin. Without mps.dylib (MPS_DISABLE=1)
+// mpstest — an MPSGraph FFT on the simulator's GPU (exercises the mps module; see docs/mps.md).
+// Run with `simrun run build/tests/mpstest`: prints PASS, or the first wrong bin. Without the mps module (MPS_DISABLE=1)
 // it aborts on iOS 26 and later runtimes, as in Simulator.app.
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>

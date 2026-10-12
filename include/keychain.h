@@ -1,4 +1,4 @@
-// keychain.h — SimRun's fake keychain store, shared by keychain.dylib (every app's SecItem* calls) and SimRun.app (the
+// keychain.h — SimRun's fake keychain store, shared by the keychain module (every app's SecItem* calls) and SimRun.app (the
 // Keychain window). Objective-C (Foundation) code only. See docs/keychain.md.
 //
 // One XML property list in the simulated device's shared data directory (not an app's container), SRKC_FILE: no

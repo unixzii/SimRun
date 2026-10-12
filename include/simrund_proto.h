@@ -22,7 +22,7 @@
 //   screenshot  { instance: string, profile? } -> { png: data } (the app's screen, at its pixel size)
 //               instance: a pid, or an app (name, bundle ID or executable name), among the instances in `profile`
 //               when given; an app running in several profiles needs one.
-//   eval        { instance: string, profile?, source: string, snapshot?: bool }   run JavaScript in the app (script.dylib,
+//   eval        { instance: string, profile?, source: string, snapshot?: bool }   run JavaScript in the app (the script module,
 //               scripting.md). replies: { log: string } for each console line; with snapshot, { snapshot: string } (the
 //               screen as text once the script has ended and the UI has settled); then { result: string } (the
 //               script's value, "" if none) or { exception: string } (it threw: message and where); { error: string }

@@ -1,4 +1,4 @@
-// keychain.dylib — a fake keychain (SIM platform; see docs/keychain.md).
+// keychain — app.dylib's fake keychain (SIM platform; see docs/keychain.md).
 // Security.framework's SecItem* calls go to securityd, which wants the client's entitlements (application-identifier,
 // keychain-access-groups) and answers -34018 (errSecMissingEntitlement) to every app SimRun runs. Instead, this dylib
 // interposes the SecItem API and keeps the items itself, in plaintext, in SimRun's keychain file (include/keychain.h),
@@ -20,13 +20,13 @@
 #include <errno.h>
 #include <pthread.h>
 #include "keychain.h"
-#import "common.h"
+#import "app.h"
 
 int csops(pid_t pid, unsigned int ops, void *addr, size_t size);
 #define CS_OPS_ENTITLEMENTS_BLOB 7
 SecIdentityRef SecIdentityCreate(CFAllocatorRef allocator, SecCertificateRef certificate, SecKeyRef privateKey);   // SPI
 
-static int gVerbose, gDisabled;
+static int gVerbose, gOn;   // gOn: the store is ready; until then SecItem calls go to securityd
 #define LOG(...) do { if (gVerbose) fprintf(stderr, "[keychain] " __VA_ARGS__); } while (0)
 
 static NSString *gPath;                  // the store
@@ -490,24 +490,24 @@ static OSStatus kc_delete(NSDictionary *q) {
 
 // ---------------------------------------------------------------- interposers
 static OSStatus my_SecItemAdd(CFDictionaryRef attributes, CFTypeRef *result) {
-  if (gDisabled) return SecItemAdd(attributes, result);
+  if (!gOn) return SecItemAdd(attributes, result);
   if (result) *result = NULL;
   if (!attributes) return errSecParam;
   @autoreleasepool { return kc_add((__bridge NSDictionary *)attributes, result); }
 }
 static OSStatus my_SecItemCopyMatching(CFDictionaryRef query, CFTypeRef *result) {
-  if (gDisabled) return SecItemCopyMatching(query, result);
+  if (!gOn) return SecItemCopyMatching(query, result);
   if (result) *result = NULL;
   if (!query) return errSecParam;
   @autoreleasepool { return kc_copy_matching((__bridge NSDictionary *)query, result); }
 }
 static OSStatus my_SecItemUpdate(CFDictionaryRef query, CFDictionaryRef attributesToUpdate) {
-  if (gDisabled) return SecItemUpdate(query, attributesToUpdate);
+  if (!gOn) return SecItemUpdate(query, attributesToUpdate);
   if (!query || !attributesToUpdate) return errSecParam;
   @autoreleasepool { return kc_update((__bridge NSDictionary *)query, (__bridge NSDictionary *)attributesToUpdate); }
 }
 static OSStatus my_SecItemDelete(CFDictionaryRef query) {
-  if (gDisabled) return SecItemDelete(query);
+  if (!gOn) return SecItemDelete(query);
   if (!query) return errSecParam;
   @autoreleasepool { return kc_delete((__bridge NSDictionary *)query); }
 }
@@ -530,7 +530,7 @@ static OSStatus add_generated_key(SecKeyRef key, NSDictionary *params, id half) 
   return kc_add(q, NULL);
 }
 static SecKeyRef my_SecKeyCreateRandomKey(CFDictionaryRef parameters, CFErrorRef *error) {
-  if (gDisabled || !parameters) return SecKeyCreateRandomKey(parameters, error);
+  if (!gOn || !parameters) return SecKeyCreateRandomKey(parameters, error);
   @autoreleasepool {
     NSDictionary *p = (__bridge NSDictionary *)parameters;
     id top = p[(id)kSecAttrIsPermanent];
@@ -556,7 +556,7 @@ static SecKeyRef my_SecKeyCreateRandomKey(CFDictionaryRef parameters, CFErrorRef
   }
 }
 static OSStatus my_SecKeyGeneratePair(CFDictionaryRef parameters, SecKeyRef *publicKey, SecKeyRef *privateKey) {
-  if (gDisabled) return SecKeyGeneratePair(parameters, publicKey, privateKey);
+  if (!gOn) return SecKeyGeneratePair(parameters, publicKey, privateKey);
   CFErrorRef e = NULL;
   SecKeyRef priv = my_SecKeyCreateRandomKey(parameters, &e);
   if (!priv) {
@@ -578,14 +578,13 @@ __attribute__((used, section("__DATA,__interpose"))) static struct { const void 
   { (const void *)my_SecKeyGeneratePair, (const void *)SecKeyGeneratePair },
 };
 
-__attribute__((constructor)) static void keychain_init(void) {
+void SRKeychainStart(void) {
   gVerbose = getenv("KEYCHAIN_VERBOSE") != NULL;
-  gDisabled = getenv("KEYCHAIN_DISABLE") != NULL || SRProcessRole() != SRRoleApp;
-  if (gDisabled) return;
   // the device's shared data directory, not the app's container (HOME): one keychain for all apps
   const char *data = getenv("SIMULATOR_SHARED_RESOURCES_DIRECTORY") ?: getenv("HOME");
-  if (!data) { gDisabled = 1; fprintf(stderr, "[keychain] no data directory: SecItem calls go to securityd\n"); return; }
+  if (!data) { fprintf(stderr, "[keychain] no data directory: SecItem calls go to securityd\n"); return; }
   gPath = [@(data) stringByAppendingPathComponent:@SRKC_FILE];
   setup_groups();
+  gOn = 1;
   LOG("store %s, access groups %s\n", gPath.UTF8String, [[gGroups componentsJoinedByString:@", "] UTF8String]);
 }

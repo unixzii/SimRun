@@ -1,4 +1,4 @@
-// scenes.h — API exported by scenes.dylib (in-process FrontBoard scene host). The main scene is created right after
+// scenes.h — API exported by the scenes module (in-process FrontBoard scene host). The main scene is created right after
 // FBSWorkspaceInitialize. All functions are thread-safe; they hop to the FBSWorkspace queue. Sizes are in points, in
 // the display's native (portrait) coordinate space; the interface orientation rotates the scene (e.g. 402x874 +
 // UIInterfaceOrientationLandscapeRight -> 874x402 bounds).

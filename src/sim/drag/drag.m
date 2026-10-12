@@ -1,4 +1,4 @@
-// drag.dylib — drag & drop inside a sim app (SIM platform; see docs/dragdrop.md).
+// drag — app.dylib module: drag & drop inside a sim app (SIM platform; see docs/dragdrop.md).
 // UIKit runs drags through druid, DragUI's drag server ("com.apple.DragUI.druid.source" / ".destination", NSXPC with
 // the _DUIServer* / _DUIClient* protocols). druid needs backboardd (it takes the finger from the app and feeds drag
 // events back), SpringBoard and its own window for the floating preview, so it can't run here. This dylib checks in
@@ -6,7 +6,7 @@
 //   * source: -beginDragWithClientSession:configuration:reply: -> a session (PBItemCollection + data provider
 //     endpoint, as for the pasteboard); then it asks the source for its previews, which "hands off" the drag image
 //     (UIKit only feeds drop targets after that) and draws them in an overlay window under the finger.
-//   * the finger: hid.dylib cancels the app's touch and gives us its moves (SRHIDDetachTouches); each one becomes a
+//   * the finger: the hid module cancels the app's touch and gives us its moves (SRHIDDetachTouches); each one becomes a
 //     drag HID event (SRHIDDragEvent) carrying the session id, from which UIKit builds UIDragEvents and drives drop
 //     interactions. Their destination session connects back here (-sawFirstDragEventWithSessionID:...).
 //   * the end: the destination asks for the drop (-requestDropWithOperation:layerContext:) -> -performDropWithItem
@@ -17,9 +17,8 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import <objc/message.h>
-#include <dlfcn.h>
 #include "hid.h"
-#import "common.h"
+#import "app.h"
 
 static int gVerbose;
 #define LOG(fmt, ...) do { if (gVerbose) NSLog(@"[drag] " fmt, ##__VA_ARGS__); } while (0)
@@ -39,8 +38,6 @@ static int gVerbose;
 - (UIView *)createSnapshotViewForPreview:(id)preview;
 @end
 
-static bool (*gDetachTouches)(SRHIDDetachedTouchHandler, void *);
-static void (*gDragEvent)(uint32_t, int, float, float, bool);
 
 // ---------------------------------------------------------------- a drag session (both server-side protocols)
 @interface SRDragSession : NSObject
@@ -70,7 +67,7 @@ static void send_drag_event(SRDragSession *s) {
   if (s.ended || !s.handedOff) return;
   int locus = s.entered ? SRHID_DRAG_WITHIN : SRHID_DRAG_ENTERED;
   s.entered = YES;
-  gDragEvent(s.sessionID, locus, s.location.x, s.location.y, !s.lifted);   // UIKit -> destination -> our server methods
+  SRHIDDragEvent(s.sessionID, locus, s.location.x, s.location.y, !s.lifted);   // UIKit -> destination -> our server methods
   if (s.lifted) {   // UIKit answers a lift with a drop request or a drag-end; if it doesn't, end the drag ourselves
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
       if (!s.ended) { LOG(@"session %u: no answer to the lift; ending it", s.sessionID); [s finishWithOperation:0]; }
@@ -88,9 +85,9 @@ static void touch_handler(int phase, float x, float y, void *ctx) {
 
 @implementation SRDragSession
 - (void)start {   // main thread, after the source got its session
-  bool ok = gDetachTouches && gDragEvent && gDetachTouches(touch_handler, (__bridge void *)self);
+  bool ok = SRHIDDetachTouches(touch_handler, (__bridge void *)self);
   LOG(@"session %u: took the finger: %d", self.sessionID, ok);
-  if (!ok) { [self finishWithOperation:0]; return; }   // finger already up (or no hid.dylib): nothing to drag
+  if (!ok) { [self finishWithOperation:0]; return; }   // finger already up: nothing to drag
   // the preview: asking for it also hands the drag image off, which UIKit waits for before feeding drop targets
   NSIndexSet *want = [self.configuration valueForKey:@"preferredPreviewIndexes"];
   NSUInteger n = [[[self.configuration valueForKey:@"itemCollection"] valueForKey:@"items"] count];
@@ -113,7 +110,7 @@ static void touch_handler(int phase, float x, float y, void *ctx) {
   if (!scene) return;
   UIWindow *w = [[UIWindow alloc] initWithWindowScene:scene];
   w.windowLevel = UIWindowLevelAlert + 100;
-  w.userInteractionEnabled = NO;   // hid.dylib sends events to the interactive window under the finger
+  w.userInteractionEnabled = NO;   // the hid module sends events to the interactive window under the finger
   w.backgroundColor = UIColor.clearColor;
   UIView *stack = [UIView new];
   stack.layer.shadowOpacity = 0.25; stack.layer.shadowRadius = 12; stack.layer.shadowOffset = CGSizeMake(0, 6);
@@ -244,11 +241,8 @@ static NSXPCListener *check_in(NSString *name, SRDragServer *server) {
   return l;
 }
 
-__attribute__((constructor)) static void drag_init(void) {
+void SRDragStart(void) {
   gVerbose = getenv("DRAG_VERBOSE") != NULL;
-  if (getenv("DRAG_DISABLE") || SRProcessRole() != SRRoleApp) return;
-  gDetachTouches = dlsym(RTLD_DEFAULT, "SRHIDDetachTouches");
-  gDragEvent = dlsym(RTLD_DEFAULT, "SRHIDDragEvent");
   gSessions = [NSMutableDictionary dictionary];
   gSourceServer = [SRDragServer new];
   gDestinationServer = [SRDragServer new]; gDestinationServer.destination = YES;

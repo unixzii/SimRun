@@ -631,7 +631,7 @@ static BOOL ProcessGone(pid_t pid) {
 // The app's environment: the client's (or the launcher's), aimed at this server's simns and at the app's own data
 // container (HOME), with the shared data directory for what is managed centrally (keychain, app groups, daemons).
 // The display the app renders into (simfb, the window) is SIMULATOR_MAINSCREEN_* in pixels (the device type's screen);
-// its scene (scenes.dylib) is that size unless SCENES_W/SCENES_H/SCENES_SCALE say otherwise. Then the display follows
+// its scene (the scenes module) is that size unless SCENES_W/SCENES_H/SCENES_SCALE say otherwise. Then the display follows
 // the scene, or a smaller scene would draw into a corner of a bigger display.
 - (NSDictionary<NSString *, NSString *> *)displayVariablesForScene:(NSArray<NSString *> *)env {
   NSMutableDictionary *vars = [NSMutableDictionary dictionary];
@@ -641,7 +641,7 @@ static BOOL ProcessGone(pid_t pid) {
       vars[[kv substringToIndex:eq.location]] = [kv substringFromIndex:NSMaxRange(eq)];
   }
   if (!vars[@"SCENES_W"] && !vars[@"SCENES_H"] && !vars[@"SCENES_SCALE"]) return @{};
-  double dscale = [vars[@"SIMULATOR_MAINSCREEN_SCALE"] doubleValue] ?: 3;   // the display's, as scenes.dylib defaults to
+  double dscale = [vars[@"SIMULATOR_MAINSCREEN_SCALE"] doubleValue] ?: 3;   // the display's, as the scenes module defaults to
   double dw = ([vars[@"SIMULATOR_MAINSCREEN_WIDTH"] doubleValue] ?: 1206) / dscale, dh = ([vars[@"SIMULATOR_MAINSCREEN_HEIGHT"] doubleValue] ?: 2622) / dscale;
   double w = vars[@"SCENES_W"] ? [vars[@"SCENES_W"] doubleValue] : dw, h = vars[@"SCENES_H"] ? [vars[@"SCENES_H"] doubleValue] : dh;
   double scale = vars[@"SCENES_SCALE"] ? [vars[@"SCENES_SCALE"] doubleValue] : dscale;

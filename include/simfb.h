@@ -2,5 +2,5 @@
 #pragma once
 #include <stdint.h>
 // How many frames have been presented so far (any thread). It stays put while nothing on screen changes, which is how
-// script.dylib tells that the UI has settled.
+// the script module tells that the UI has settled.
 uint64_t SimRunFBFrameCount(void);

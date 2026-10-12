@@ -1,4 +1,4 @@
-// PickerTest — UIDocumentPickerViewController in every mode (exercises docpicker.dylib; see docs/docpicker.md).
+// PickerTest — UIDocumentPickerViewController in every mode (exercises the docpicker module; see docs/docpicker.md).
 // Tap a button: the picker shows a blank sheet and SimRun's Mac open panel picks the files. What the delegate gets
 // (URLs, whether they can be read, where they are) is shown on screen and printed.
 // PICKERTEST=<mode>: presents that mode's picker at launch (import, open, multiple, folder, export, move, legacy, or

@@ -1,4 +1,4 @@
-// kctest — the SecItem API from a sim process (exercises keychain.dylib; see docs/keychain.md).
+// kctest — the SecItem API from a sim process (exercises the keychain module; see docs/keychain.md).
 //   kctest                          self-test: passwords, return types, limits, updates, duplicates, persistent refs,
 //                                   access groups, sync, permanent keys, certificates and identities; leaves one demo
 //                                   item behind (service "dev.simrun.kctest", account "demo") for SimRun's Keychain window

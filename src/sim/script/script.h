@@ -1,4 +1,4 @@
-// script.h — what script.dylib's parts share (see script.m for the whole picture).
+// script.h — what the script module's parts share (see script.m for the whole picture).
 #pragma once
 #import <Foundation/Foundation.h>
 #import <JavaScriptCore/JavaScriptCore.h>   // classes are looked up at runtime: JavaScriptCore isn't linked

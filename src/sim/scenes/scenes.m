@@ -1,4 +1,4 @@
-// scenes.dylib — in-process "FrontBoard host" for iOS-Simulator UIKit apps run as plain host processes.
+// scenes — app.dylib's in-process "FrontBoard host" for iOS-Simulator UIKit apps run as plain host processes.
 //
 // No Mach services are needed.
 //
@@ -27,6 +27,8 @@
 #import <objc/runtime.h>
 #import <objc/message.h>
 #include <mach/mach.h>
+#import "app.h"
+#include "scenes.h"
 
 #define LOG(fmt, ...) fprintf(stderr, "[scenes] " fmt "\n", ##__VA_ARGS__)
 
@@ -106,7 +108,6 @@ static void SRCallBlockWithNils(id blk) {
 
 // Integrator API: get told which CAContext IDs the scene wants displayed (FBSSceneClientSettings.layers), i.e. what a
 // host would wrap in CALayerHost(contextId). Called on the FBS workspace queue whenever the client settings change.
-typedef void (*SRScenesLayersCallback)(const uint32_t *contextIDs, const double *levels, size_t count, void *ctx);
 static SRScenesLayersCallback gLayersCB; static void *gLayersCtx;
 __attribute__((visibility("default"))) void SRScenesSetLayersCallback(SRScenesLayersCallback cb, void *ctx) { gLayersCB = cb; gLayersCtx = ctx; }
 static uint32_t gMainContextID;
@@ -290,6 +291,7 @@ static void SRWorkspaceAsync(dispatch_block_t block) {
 extern id FBSWorkspaceInitialize(id options);
 static id my_FBSWorkspaceInitialize(id options) {
   id ws = FBSWorkspaceInitialize(options);
+  if (!SRModuleOn(SRModuleScenes)) return ws;
   gWorkspace = ws;
   id q = [ws valueForKey:@"_queue"];          // "com.apple.frontboardservices.workspace" (SRWorkspaceAsync)
   id cq = [ws valueForKey:@"_callOutQueue"];  // UIKit's main-thread callout queue
@@ -333,6 +335,7 @@ static id my_FBSWorkspaceInitialize(id options) {
 extern Boolean BKSDisplayServicesStart(void);
 extern void GSSetMainScreenInfo(double pixelW, double pixelH, float scale, float orientation);
 static Boolean my_BKSDisplayServicesStart(void) {
+  if (!SRModuleOn(SRModuleScenes)) return BKSDisplayServicesStart();
   GSSetMainScreenInfo(gW * gScale, gH * gScale, (float)gScale, 0.0f);
   LOG("BKSDisplayServicesStart stubbed (main screen %gx%g px @%g)", gW * gScale, gH * gScale, gScale);
   return 1;
@@ -425,7 +428,7 @@ static BOOL sr_conformsToType(id self, SEL _cmd, id type) {
   return type ? ((BOOL (*)(id, SEL, id))gOrigConformsToType)(self, _cmd, type) : NO;
 }
 
-__attribute__((constructor)) static void scenes_init(void) {
+void SRScenesStart(void) {
   {
     Method m = class_getClassMethod(NSClassFromString(@"BSServiceConnectionEndpoint"), NSSelectorFromString(@"endpointForMachName:service:instance:"));
     gOrigEndpointForMachName = method_setImplementation(m, (IMP)sr_endpointForMachName);

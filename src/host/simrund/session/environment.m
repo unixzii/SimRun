@@ -411,7 +411,7 @@ static NSArray<NSString *> *ScannedDeviceTypePaths(NSString *version) {
 + (NSString *)injectedLibrariesWithExtra:(NSString *)extra {
   NSString *d = [self libraryDirectory];
   NSMutableArray *libs = [NSMutableArray array];
-  for (NSString *n in @[ @"rshim.dylib", @"glue.dylib", @"scenes.dylib", @"hid.dylib", @"pboard.dylib", @"drag.dylib", @"docpicker.dylib", @"keychain.dylib", @"webkit.dylib", @"mps.dylib", @"script.dylib" ]) [libs addObject:[d stringByAppendingPathComponent:n]];
+  for (NSString *n in @[ @"rshim.dylib", @"app.dylib" ]) [libs addObject:[d stringByAppendingPathComponent:n]];
   if (extra.length) [libs addObject:extra];
   return [libs componentsJoinedByString:@":"];
 }

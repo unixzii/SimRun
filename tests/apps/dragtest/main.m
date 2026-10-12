@@ -1,6 +1,6 @@
-// DragTest — drag & drop inside one app (exercises drag.dylib; see docs/dragdrop.md).
+// DragTest — drag & drop inside one app (exercises the drag module; see docs/dragdrop.md).
 // By hand: long-press "Drag me" (or select text in the field and long-press it), drag it onto the yellow box.
-// DRAGTEST_AUTO=1: drives three drags through hid.dylib (the label let go over nothing, the label onto the box, the
+// DRAGTEST_AUTO=1: drives three drags through the hid module (the label let go over nothing, the label onto the box, the
 // field's selected text onto the box), prints PASS/FAIL
 // and exits with 0/1.
 #import <UIKit/UIKit.h>
@@ -73,7 +73,7 @@ static void at(double t, dispatch_block_t b) { dispatch_after(dispatch_time(DISP
   [super viewDidAppear:animated];
   if (!getenv("DRAGTEST_AUTO")) return;
   void (*touch)(int, float, float) = dlsym(RTLD_DEFAULT, "SRHIDTouch");
-  if (!touch) { printf("FAIL: no hid.dylib\n"); exit(1); }
+  if (!touch) { printf("FAIL: no SRHIDTouch (SimRun's app.dylib)\n"); exit(1); }
   id<UICoordinateSpace> scene = self.view.window.windowScene.coordinateSpace;
   CGPoint from = [self.source convertPoint:CGPointMake(100, 40) toCoordinateSpace:scene];
   CGPoint nowhere = [self.view convertPoint:CGPointMake(200, 450) toCoordinateSpace:scene];

@@ -1,10 +1,11 @@
 // ui.m — what scripts do to the app and learn about its screen, beyond accessibility (native.ui, used by js/app.js):
-// touches, keys and text through hid.dylib (the same path as the window's mouse and keyboard, hid.md), how many frames
+// touches, keys and text through the hid module (the same path as the window's mouse and keyboard, hid.md), how many frames
 // have been presented (SimFramebuffer; the UI has settled once that stops moving), the screen's size, and a dump of
 // the view hierarchy.
 #import <UIKit/UIKit.h>
 #include <dlfcn.h>
 #include "script.h"
+#include "hid.h"
 
 UIWindowScene *SRActiveScene(void) {
   UIWindowScene *any = nil;
@@ -47,23 +48,17 @@ void SRInstallUIBindings(JSValue *native) {
   JSValue *ui = [V valueWithNewObjectInContext:native.context];
   // touch(finger, phase, x, y): phase 1 began, 2 moved, 3 ended, 4 cancelled (hid.h); scene points
   ui[@"touch"] = ^JSValue *(int finger, int phase, double x, double y) {
-    void (*touch)(int, int, float, float) = dlsym(RTLD_DEFAULT, "SRHIDTouchFinger");
-    if (!touch) return SRThrow(@"no touch input: hid.dylib isn't loaded");
-    touch(finger, phase, (float)x, (float)y);
+    SRHIDTouchFinger(finger, phase, (float)x, (float)y);
     return [V valueWithUndefinedInContext:SRCurrentContext()];
   };
   // key(usage, down): a key by its HID usage (page 7), e.g. 0x28 Return, 0xE3 left Command
   ui[@"key"] = ^JSValue *(uint32_t usage, BOOL down) {
-    void (*key)(uint32_t, bool) = dlsym(RTLD_DEFAULT, "SRHIDKeyUsage");
-    if (!key) return SRThrow(@"no keyboard input: hid.dylib isn't loaded");
-    key(usage, down);
+    SRHIDKeyUsage(usage, down);
     return [V valueWithUndefinedInContext:SRCurrentContext()];
   };
   // text(string): key presses for each character, into whatever has keyboard focus
   ui[@"text"] = ^JSValue *(NSString *text) {
-    void (*type)(const char *) = dlsym(RTLD_DEFAULT, "SRHIDText");
-    if (!type) return SRThrow(@"no keyboard input: hid.dylib isn't loaded");
-    type(text.UTF8String);
+    SRHIDText(text.UTF8String);
     return [V valueWithUndefinedInContext:SRCurrentContext()];
   };
   // frameCount(): frames presented so far, or -1 if SimRun's SimFramebuffer isn't there to ask

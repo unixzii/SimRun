@@ -1,4 +1,4 @@
-// pboard.h — the host pasteboard bridge between simrund (macOS NSPasteboard) and pboard.dylib (each app's fake
+// pboard.h — the host pasteboard bridge between simrund (macOS NSPasteboard) and the pboard module (each app's fake
 // com.apple.pasteboard.pasted). See docs/pasteboard.md.
 //
 // simrund serves SRPB_SERVICE: a sim2host XPC listener registered in simns' global namespace. Messages are xpc

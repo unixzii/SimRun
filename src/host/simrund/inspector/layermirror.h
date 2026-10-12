@@ -1,4 +1,4 @@
-// layermirror.h — a Mac copy of a sim app's layer tree, built from the batches script.dylib's inspect.m sends
+// layermirror.h — a Mac copy of a sim app's layer tree, built from the batches the script module's inspect.m sends
 // (inspect.md): real CALayers with the app's geometry, colors, borders, corners, shadows, masks, gradients and shapes,
 // so Core Animation draws them as the app's do.
 #pragma once

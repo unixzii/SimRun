@@ -1,4 +1,4 @@
-// pbtest — UIPasteboard from a sim process (exercises pboard.dylib; see docs/pasteboard.md).
+// pbtest — UIPasteboard from a sim process (exercises the pboard module; see docs/pasteboard.md).
 //   pbtest                 self-test: write/read text, several items and types, an image, a named pasteboard
 //   pbtest get             print the general pasteboard (types per item, string)
 //   pbtest set <text>      put text on the general pasteboard

@@ -1,4 +1,4 @@
-// pasteboard.h — the Mac pasteboard as SRPB_SERVICE (include/pboard.h): what every app's pboard.dylib (its fake
+// pasteboard.h — the Mac pasteboard as SRPB_SERVICE (include/pboard.h): what every app's pboard module (its fake
 // pasted) reads and writes. Also tells the apps when a pasteboard changes behind their back, so UIKit drops its cache.
 #pragma once
 #import <Cocoa/Cocoa.h>

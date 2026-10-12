@@ -82,7 +82,7 @@
 + (NSString *)hostInternationalSettings;
 
 + (NSString *)simnsPath;                 // the simns helper
-+ (NSString *)libraryDirectory;          // rshim/glue/scenes/hid/pboard/drag/keychain dylibs + SimFramebuffer
++ (NSString *)libraryDirectory;          // rshim.dylib, app.dylib + SimFramebuffer
 + (NSString *)injectedLibraries;         // SIMNS_INSERT value for apps (+ SIMAPP_EXTRA_INSERT)
 + (NSString *)injectedLibrariesWithExtra:(NSString *)extra;   // ... + this dylib instead
 + (NSString *)framebufferFramework;      // SIMULATOR_FRAMEBUFFER_FRAMEWORK value

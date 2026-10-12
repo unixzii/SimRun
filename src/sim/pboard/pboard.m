@@ -1,7 +1,7 @@
-// pboard.dylib — UIPasteboard backed by the Mac pasteboard (SIM platform; see docs/pasteboard.md).
+// pboard — app.dylib's UIPasteboard backed by the Mac pasteboard (SIM platform; see docs/pasteboard.md).
 // UIKit reaches the pasteboard daemon (pasted, "com.apple.pasteboard.pasted") through Pasteboard.framework's
 // PBServerConnection: an NSXPCConnection speaking PBClientToServerProtocol. The real pasted wants SpringBoard, TCC,
-// RunningBoard and friends, so this dylib checks in its own listener under that name in the app's simns namespace and
+// RunningBoard and friends, so this module checks in its own listener under that name in the app's simns namespace and
 // implements the protocol, keeping the contents in simrund's NSPasteboard (include/pboard.h).
 //   * read:   a PBItemCollection that lists the Mac items' types only; UIKit loads a representation when it is
 //             pasted (-requestItemFromPasteboardWithName:...) -> "data" from the host.
@@ -17,7 +17,7 @@
 #include <mach/mach.h>
 #include <xpc/xpc.h>
 #include "pboard.h"
-#import "common.h"
+#import "app.h"
 
 // Pasteboard.framework (private; resolved at runtime)
 @interface NSObject (SRPasteboardSPI)
@@ -341,9 +341,8 @@ static void disable_paste_touch_authentication(void) {
   else LOG("no -[_UIEditMenuContentPresentation wantsPasteTouchAuthenticationInEditMenuListView:]; edit menu Paste may not respond\n");
 }
 
-__attribute__((constructor)) static void pboard_init(void) {
+void SRPasteboardStart(void) {
   gVerbose = getenv("PBOARD_VERBOSE") != NULL;
-  if (getenv("PBOARD_DISABLE") || SRProcessRole() != SRRoleApp) return;
   dlopen("/System/Library/PrivateFrameworks/Pasteboard.framework/Pasteboard", RTLD_NOW);
   Protocol *p = objc_getProtocol("PBClientToServerProtocol");
   if (!p || !objc_getProtocol("PBDataProviderProtocol")) { fprintf(stderr, "[pboard] Pasteboard.framework protocols not found; pasteboard unavailable\n"); return; }

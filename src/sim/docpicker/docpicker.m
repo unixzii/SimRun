@@ -1,4 +1,4 @@
-// docpicker.dylib — UIDocumentPickerViewController with the Mac's open and save panels (SIM platform; see
+// docpicker — app.dylib's UIDocumentPickerViewController with the Mac's open and save panels (SIM platform; see
 // docs/docpicker.md). SwiftUI's fileImporter and fileExporter are built on it.
 // On a device the picker's UI is a remote view controller from DocumentManager's extension, found through PlugInKit
 // (pkd). Under SimRun there is neither, so the picker presents an empty sheet that never fills. This dylib keeps the
@@ -16,7 +16,7 @@
 #include <mach/mach.h>
 #include <xpc/xpc.h>
 #include "docpicker.h"
-#import "common.h"
+#import "app.h"
 
 // UIDocumentPickerViewController's completion from its remote UI (private)
 @interface UIDocumentPickerViewController (SRDocumentManager)
@@ -241,9 +241,8 @@ static void patch_picker(void) {
   }), "v@:B");
 }
 
-__attribute__((constructor)) static void docpicker_init(void) {
+void SRDocPickerStart(void) {
   gVerbose = getenv("DOCPICKER_VERBOSE") != NULL;
-  if (getenv("DOCPICKER_DISABLE") || SRProcessRole() != SRRoleApp) return;
   if (![UIDocumentPickerViewController instancesRespondToSelector:@selector(documentBrowser:didPickDocumentURLs:)] ||
       ![UIDocumentPickerViewController instancesRespondToSelector:@selector(documentManagerWasCancelled:)]) {
     fprintf(stderr, "[docpicker] UIDocumentPickerViewController has no DocumentManager completion; document pickers stay empty\n");
