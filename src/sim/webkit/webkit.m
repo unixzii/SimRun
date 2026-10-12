@@ -50,11 +50,11 @@ static NSString *executable_for(NSString *bundleID) {
   return map[bundleID];
 }
 
-// Spawn `exe` as a child with our namespace as its bootstrap port and wait for its XPC listener port. It gets rshim
-// (Metal compiler service) and app.dylib, where only the modules for extensions run: no render server, scene host or
-// input in the extension.
+// Spawn `exe` as a child with our namespace as its bootstrap port and wait for its XPC listener port. It gets
+// xpcservices.dylib (the GPU process compiles shaders) and app.dylib, where only the modules for extensions run: no
+// render server, scene host or input in the extension.
 static pid_t spawn_extension(NSString *exe, NSString *bundleID, mach_port_t *listener) {
-  SRHelper h = { .path = exe.fileSystemRepresentation, .role = SRRoleExtension, .insert = "rshim.dylib:app.dylib",
+  SRHelper h = { .path = exe.fileSystemRepresentation, .role = SRRoleExtension, .insert = "xpcservices.dylib:app.dylib",
                  .environment = @[ [@"XPC_SERVICE_NAME=" stringByAppendingString:bundleID] ], .inNamespace = YES,
                  .timeoutSeconds = 30, .tag = "webkit" };
   pid_t pid = SRSpawnHelper(&h, listener);

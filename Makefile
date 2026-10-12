@@ -1,6 +1,6 @@
 # SimRun — build everything into build/.
 #   make            core components, tools and test programs
-#   make core       SimRun.app (server + launcher, simns, injected rshim.dylib and app.dylib, fake SimFramebuffer) and the simrun CLI
+#   make core       SimRun.app (server + launcher, simns, injected xpcservices.dylib and app.dylib, fake SimFramebuffer) and the simrun CLI
 #   make test-apps  sample/test apps (build/apps)
 #   make tests      test apps and test programs
 #   make install    install build/SimRun.app into /Applications
@@ -21,7 +21,7 @@ HDRS    := $(wildcard include/*.h)
 
 APP   := $(BUILD)/SimRun.app
 CORE  := $(APP) $(BIN)/simrun
-SIMLIBS := $(LIB)/rshim.dylib $(LIB)/app.dylib $(LIB)/SimFramebuffer
+SIMLIBS := $(LIB)/xpcservices.dylib $(LIB)/app.dylib $(LIB)/SimFramebuffer
 PARTS := $(BIN)/simrund $(BIN)/simrun $(BIN)/simns $(SIMLIBS)
 TOOLS := $(BIN)/hostinput
 TEST_APPS  := $(APPS)/Hello.app $(APPS)/SUI.app $(APPS)/HIDTest.app $(APPS)/Glass.app $(APPS)/DragTest.app $(APPS)/WebTest.app $(APPS)/BGDownload.app $(APPS)/PickerTest.app $(APPS)/Showcase.app $(APPS)/AudioPlayer.app
@@ -126,10 +126,9 @@ $(BIN)/simns: src/sim/simns/simns.c $(HDRS) | $(BIN)
 	xcrun -sdk iphonesimulator clang -arch arm64 -mios-simulator-version-min=17.0 -Wall -Wno-deprecated-declarations -Iinclude $< -framework CoreFoundation -o $@
 	@$(SIGN) $@ 2>/dev/null
 
-# rshim.dylib: rshim.m and mic.m (the microphone), linked to TCC.framework through a stub (tcc.tbd; not in the SDK)
-RSHIM_SRC := src/sim/rshim/rshim.m src/sim/rshim/mic.m
-$(LIB)/rshim.dylib: $(RSHIM_SRC) src/sim/rshim/tcc.tbd $(COMMON_DEPS) $(HDRS) | $(LIB)
-	$(SIMLIB) -dynamiclib $(RSHIM_SRC) $(COMMON) src/sim/rshim/tcc.tbd -framework Foundation -framework AudioToolbox -framework CoreAudio -o $@
+# xpcservices.dylib: in the app and every helper it spawns, so Foundation only
+$(LIB)/xpcservices.dylib: src/sim/xpcservices/xpcservices.m $(COMMON_DEPS) $(HDRS) | $(LIB)
+	$(SIMLIB) -dynamiclib $< $(COMMON) -framework Foundation -o $@
 	@$(SIGN) $@ 2>/dev/null
 
 $(LIB)/SimFramebuffer: src/sim/simfb/simfb.m $(HDRS) | $(LIB)
@@ -138,17 +137,20 @@ $(LIB)/SimFramebuffer: src/sim/simfb/simfb.m $(HDRS) | $(LIB)
 	@$(SIGN) $@ 2>/dev/null
 
 # app.dylib: the modules SimRun puts in the app (src/sim/app/app.h), one folder each; script/'s JS modules (js/*.js)
-# are embedded as C arrays (xxd -i: core.js -> core_js[]). The private frameworks' symbols (FrontBoardServices,
-# GraphicsServices, BackBoardServices...) are looked up at load.
-APP_MODULES := render scenes hid pboard drag docpicker keychain webkit mps script
+# are embedded as C arrays (xxd -i: core.js -> core_js[]). TCC.framework is linked through a stub (tcc/tcc.tbd; not in
+# the SDK); the other private frameworks' symbols (FrontBoardServices, GraphicsServices, BackBoardServices...) are
+# looked up at load.
+APP_MODULES := locale container render scenes hid pboard drag docpicker keychain webkit mps script tcc audio
 APP_SRC := src/sim/app/app.m $(foreach m,$(APP_MODULES),$(wildcard src/sim/$(m)/*.m))
 SCRIPT_JS := $(wildcard src/sim/script/js/*.js)
 $(BUILD)/gen/script_js.h: $(SCRIPT_JS)
 	@mkdir -p $(@D)
 	@(cd src/sim/script/js && for f in *.js; do xxd -i $$f; done) > $@.tmp && mv $@.tmp $@
-$(LIB)/app.dylib: $(APP_SRC) $(wildcard src/sim/app/*.h src/sim/script/*.h) $(BUILD)/gen/script_js.h $(COMMON_DEPS) $(HDRS) | $(LIB)
-	$(SIMLIB) -Isrc/sim/app -I$(BUILD)/gen -dynamiclib $(APP_SRC) $(COMMON) -framework Foundation -framework UIKit -framework QuartzCore \
-	  -framework CoreGraphics -framework IOKit -framework UniformTypeIdentifiers -framework Security -framework Metal \
+APP_HDRS := $(foreach m,app $(APP_MODULES),$(wildcard src/sim/$(m)/*.h))
+$(LIB)/app.dylib: $(APP_SRC) $(APP_HDRS) src/sim/tcc/tcc.tbd $(BUILD)/gen/script_js.h $(COMMON_DEPS) $(HDRS) | $(LIB)
+	$(SIMLIB) -Isrc/sim/app -Isrc/sim/tcc -I$(BUILD)/gen -dynamiclib $(APP_SRC) $(COMMON) src/sim/tcc/tcc.tbd -framework Foundation \
+	  -framework UIKit -framework QuartzCore -framework CoreGraphics -framework IOKit -framework UniformTypeIdentifiers \
+	  -framework Security -framework Metal -framework AudioToolbox -framework CoreAudio \
 	  -Wl,-undefined,dynamic_lookup -Wl,-w -o $@
 	@$(SIGN) $@ 2>/dev/null
 

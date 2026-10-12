@@ -1,7 +1,7 @@
-// app.dylib — what SimRun puts in the app process (DYLD_INSERT_LIBRARIES, after rshim.dylib), one module per folder of
-// src/sim (app.h). Its one constructor starts them in order, each only in the processes it belongs in: the app, and
-// for some the WebKit extensions the app spawns with this library (webkit/). Each module's *_DISABLE variable turns it
-// off (docs/reference.md).
+// app.dylib — what SimRun puts in the app process (DYLD_INSERT_LIBRARIES, after xpcservices.dylib), one module per
+// folder of src/sim (app.h). Its one constructor starts them in order, each only in the processes it belongs in: the
+// app, and for some the WebKit extensions the app spawns with this library (webkit/). Each module's *_DISABLE variable
+// turns it off (docs/reference.md).
 #import "app.h"
 
 enum { APP = 1u << SRRoleApp, EXTENSION = 1u << SRRoleExtension };
@@ -13,6 +13,8 @@ typedef struct {
 } SRModule;
 
 static const SRModule kModules[SRModuleCount] = {
+  [SRModuleLocale]     = { APP, "LOCALE_DISABLE", SRLocaleStart },
+  [SRModuleContainer]  = { APP | EXTENSION, NULL, SRContainerStart },
   [SRModuleRender]     = { APP, NULL, SRRenderStart },
   [SRModuleScenes]     = { APP, NULL, SRScenesStart },
   [SRModuleHID]        = { APP, NULL, SRHIDStart },
@@ -23,6 +25,8 @@ static const SRModule kModules[SRModuleCount] = {
   [SRModuleWebKit]     = { APP, "WEBKIT_DISABLE", SRWebKitStart },
   [SRModuleMPS]        = { APP, "MPS_DISABLE", SRMPSStart },
   [SRModuleScript]     = { APP, "SCRIPT_DISABLE", SRScriptStart },
+  [SRModuleTCC]        = { APP | EXTENSION, NULL, SRTCCStart },
+  [SRModuleAudio]      = { APP | EXTENSION, NULL, SRAudioStart },
 };
 
 BOOL SRModuleOn(SRModuleID module) {

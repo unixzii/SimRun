@@ -1,10 +1,8 @@
-// mic.m — part of rshim.dylib: the app's microphone.
+// mic.m — part of app.dylib's audio module: the app's microphone (the module's start is at the end).
 //  * Permission: AVAudioSession / AVAudioApplication (AudioSession.framework) and AVCaptureDevice (CMCapture) ask the
-//    device's tccd for kTCCServiceMicrophone. There is none in SimRun (no SpringBoard to show its prompt either); we
-//    answer instead, under SimRun's own permission on the Mac for what the app records (include/privacy.h): the
-//    microphone's for the Mac's microphone, recording what the Mac plays for AUDIO_INPUT=system, none for a file.
-//    Without it the app is denied. With it the app goes through iOS's flow: not determined until it asks, then allowed
-//    (as if the user tapped Allow), which is remembered in its data container. Until then it records silence.
+//    device's tccd for kTCCServiceMicrophone. The tcc module answers for us, under SimRun's own permission on the Mac
+//    for what the app records (include/privacy.h): the microphone's for the Mac's microphone, recording what the Mac
+//    plays for AUDIO_INPUT=system, none for a file. Until the app is allowed it records silence.
 //  * Input (AUDIO_INPUT): sim CoreAudio is a client of the Mac's coreaudiod, so recording takes the Mac's default input
 //    device (AUDIO_INPUT unset or "mac"). Every recording API (AudioQueue, RemoteIO, AVAudioEngine, AVAudioRecorder)
 //    ends in an IO proc on a HAL device, made by AudioToolbox with AudioDeviceCreateIOProcID; we wrap
@@ -25,153 +23,16 @@
 #include <os/lock.h>
 #include <pthread.h>
 #include <stdatomic.h>
-#include <xpc/xpc.h>
 #include "privacy.h"
-#import "common.h"
+#import "app.h"
+#include "tcc.h"
+#include "audio.h"
 
-static int gVerbose;
+int gAudioVerbose;
 static int gMode;   // the source: kInputMac (0), kInputSystem, kInputFile
-#define LOG(...) do { if (gVerbose) fprintf(stderr, "[rshim] " __VA_ARGS__); } while (0)
-
-// ---------- permission ----------
-// libTCC (TCC.framework; not in the SDK: rshim links a stub, tcc.tbd). AudioSession calls
-//   tcc_server_message_request_authorization(server, options, credential, service, NULL, ^(record, error) { ... })
-// and reads the answer with tcc_authorization_record_get_authorization_right(record): 0 denied, 1 not determined,
-// 2 allowed. The options say what is asked: recordPermission's never prompt (request prompt policy 2) and want the
-// reply before the call returns (reply handler policy 1); requestRecordPermission's may prompt (0) and are answered
-// later (0).
-typedef void (^SRTCCReply)(id record, id error);
-extern void tcc_server_message_request_authorization(id server, id options, id credential, id service, id unused, SRTCCReply reply);
-extern long tcc_authorization_record_get_authorization_right(id record);
-extern const char *tcc_service_get_name(id service);
-extern void tcc_message_options_set_request_prompt_policy(id options, int policy);
-extern void tcc_message_options_set_reply_handler_policy(id options, int policy);
-
-enum { kRightDenied = 0, kRightUndetermined = 1, kRightAllowed = 2 };
-static id gRecords[3];   // the records we answer with, one per right
-static char kPromptPolicy, kReplyPolicy;   // associated-object keys on the options
-
-static void my_tcc_message_options_set_request_prompt_policy(id options, int policy) {
-  if (options) objc_setAssociatedObject(options, &kPromptPolicy, @(policy), OBJC_ASSOCIATION_RETAIN);
-  tcc_message_options_set_request_prompt_policy(options, policy);
-}
-static void my_tcc_message_options_set_reply_handler_policy(id options, int policy) {
-  if (options) objc_setAssociatedObject(options, &kReplyPolicy, @(policy), OBJC_ASSOCIATION_RETAIN);
-  tcc_message_options_set_reply_handler_policy(options, policy);
-}
-
-// SimRun's side (SRPV_SERVICE in simrund): its permission on the Mac, and asking macOS for it.
-static xpc_connection_t privacy_host(void) {
-  static xpc_connection_t c; static dispatch_once_t once;
-  dispatch_once(&once, ^{
-    c = SRHostConnect(SRPV_SERVICE, dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), nil);
-    if (!c) fprintf(stderr, "[rshim] no %s: SimRun's permissions can't be checked, the microphone is denied\n", SRPV_SERVICE);
-  });
-  return c;
-}
-// SimRun's permission for what the app records, from its reply (one of privacy.h's strings, which outlive the reply);
-// denied if there is none.
-static const char *host_status(xpc_object_t reply) {
-  const char *st = reply && xpc_get_type(reply) == XPC_TYPE_DICTIONARY ? xpc_dictionary_get_string(reply, "status") : NULL;
-  if (!st) return SRPV_DENIED;
-  return !strcmp(st, SRPV_AUTHORIZED) ? SRPV_AUTHORIZED : !strcmp(st, SRPV_UNDETERMINED) ? SRPV_UNDETERMINED
-       : !strcmp(st, SRPV_RESTRICTED) ? SRPV_RESTRICTED : SRPV_DENIED;
-}
-static xpc_object_t host_message(const char *op, const char *service) {
-  xpc_object_t m = xpc_dictionary_create(NULL, NULL, 0);
-  xpc_dictionary_set_string(m, "op", op); xpc_dictionary_set_string(m, "service", service);
-  return m;
-}
-
-static const char *mac_service(void);
-
-// The app's own answer, remembered as iOS remembers it: in its data container, so it goes with the container (a reset
-// container is a reinstalled app).
-static NSString *decisions_path(void) {
-  const char *home = getenv("HOME");
-  return home ? [@(home) stringByAppendingPathComponent:@"Library/SimRun/Permissions.plist"] : nil;
-}
-static BOOL app_allowed(void) {
-  NSString *p = decisions_path();
-  NSDictionary *d = p ? [NSDictionary dictionaryWithContentsOfFile:p] : nil;
-  return [d isKindOfClass:NSDictionary.class] && [d[@"microphone"] isEqual:@"allowed"];
-}
-static void remember_allowed(void) {
-  NSString *p = decisions_path();
-  if (!p || app_allowed()) return;
-  NSMutableDictionary *d = [[NSDictionary dictionaryWithContentsOfFile:p] mutableCopy] ?: [NSMutableDictionary dictionary];
-  d[@"microphone"] = @"allowed";
-  [NSFileManager.defaultManager createDirectoryAtPath:p.stringByDeletingLastPathComponent withIntermediateDirectories:YES attributes:nil error:NULL];
-  [d writeToFile:p atomically:YES];
-}
-
-// On a device, an app that asks without saying why (NSMicrophoneUsageDescription) is ended by iOS. Only apps: a bare
-// binary has no Info.plist, and WebKit's helper processes ask for their app.
-static BOOL usage_missing(void) {
-  NSBundle *b = NSBundle.mainBundle;
-  if (![b.bundlePath.pathExtension isEqualToString:@"app"] || [b objectForInfoDictionaryKey:@"NSMicrophoneUsageDescription"]) return NO;
-  static dispatch_once_t once;
-  dispatch_once(&once, ^{
-    fprintf(stderr, "[rshim] %s asked for the microphone without NSMicrophoneUsageDescription in its Info.plist: iOS would end "
-            "the app here; SimRun denies it\n", getprogname());
-  });
-  return YES;
-}
 
 static _Atomic int gInputAllowed;   // the app may record: its input isn't silenced
 static void input_allowed(BOOL allowed);
-
-// What the app's permission is now, without asking anyone.
-static int current_right(void) {
-  const char *service = mac_service();
-  const char *mac = SRPV_AUTHORIZED;
-  if (service) {
-    xpc_connection_t c = privacy_host();
-    mac = c ? host_status(xpc_connection_send_message_with_reply_sync(c, host_message("status", service))) : SRPV_DENIED;
-  }
-  int right = !strcmp(mac, SRPV_AUTHORIZED) ? (app_allowed() ? kRightAllowed : kRightUndetermined)
-            : !strcmp(mac, SRPV_UNDETERMINED) ? kRightUndetermined : kRightDenied;
-  input_allowed(right == kRightAllowed);
-  return right;
-}
-
-// The app asks: SimRun asks macOS for its permission if it hasn't been decided (macOS's prompt), and with it the app is
-// allowed, as if the user tapped Allow. `done` is called once, on a global queue unless `sync`.
-static void request_right(BOOL sync, void (^done)(int right)) {
-  void (^finish)(const char *) = ^(const char *mac) {
-    int right = kRightDenied;
-    if (!strcmp(mac, SRPV_AUTHORIZED) && !usage_missing()) { remember_allowed(); right = kRightAllowed; }
-    LOG("microphone: SimRun's permission %s; the app is %s\n", mac, right == kRightAllowed ? "allowed" : "denied");
-    input_allowed(right == kRightAllowed);
-    done(right);
-  };
-  const char *service = mac_service();
-  xpc_connection_t c = service ? privacy_host() : NULL;
-  if (!service) finish(SRPV_AUTHORIZED);   // a file: nothing of the Mac's
-  else if (!c) finish(SRPV_DENIED);
-  else if (sync) finish(host_status(xpc_connection_send_message_with_reply_sync(c, host_message("request", service))));
-  else xpc_connection_send_message_with_reply(c, host_message("request", service), dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0),
-                                              ^(xpc_object_t r) { finish(host_status(r)); });
-}
-
-static void my_tcc_server_message_request_authorization(id server, id options, id credential, id service, id unused, SRTCCReply reply) {
-  const char *name = service ? tcc_service_get_name(service) : NULL;
-  if (!name || strcmp(name, "kTCCServiceMicrophone") || !reply) {
-    tcc_server_message_request_authorization(server, options, credential, service, unused, reply);
-    return;
-  }
-  NSNumber *prompt = options ? objc_getAssociatedObject(options, &kPromptPolicy) : nil;
-  NSNumber *replyPolicy = options ? objc_getAssociatedObject(options, &kReplyPolicy) : nil;
-  BOOL ask = prompt && prompt.intValue != 2;                 // 2: never prompt (a status check)
-  BOOL sync = !replyPolicy || replyPolicy.intValue == 1;     // 1: the caller waits for the reply
-  int right = current_right();
-  if (!ask || right != kRightUndetermined) { LOG("microphone: %s\n", right == kRightAllowed ? "allowed" : right == kRightDenied ? "denied" : "not determined"); reply(gRecords[right], nil); return; }
-  request_right(sync, ^(int r) { reply(gRecords[r], nil); });
-}
-static long my_tcc_authorization_record_get_authorization_right(id record) {
-  for (long r = 0; r < 3; r++) if (record && record == gRecords[r]) return r;
-  return tcc_authorization_record_get_authorization_right(record);
-}
 
 // ---------- the HAL (AudioHardware.h isn't in the iOS SDK; the functions are in sim CoreAudio and its stub) ----------
 typedef OSStatus (*SRIOProc)(AudioObjectID, const AudioTimeStamp *, const AudioBufferList *, const AudioTimeStamp *,
@@ -190,6 +51,8 @@ extern OSStatus AudioHardwareDestroyAggregateDevice(AudioObjectID);
 enum { kInputMac, kInputSystem, kInputFile };   // gMode
 // SimRun's permission the source needs (privacy.h), or NULL
 static const char *mac_service(void) { return gMode == kInputMac ? SRPV_MICROPHONE : gMode == kInputSystem ? SRPV_AUDIO_CAPTURE : NULL; }
+static void microphone_right(SRTCCRight right) { input_allowed(right == SRTCCAllowed); }
+static const SRTCCService kMicrophone = { "kTCCServiceMicrophone", "NSMicrophoneUsageDescription", mac_service, microphone_right };
 static const char *gPath;
 static int gLoop;
 static os_unfair_lock gPullLock = OS_UNFAIR_LOCK_INIT;   // sources are read by every input IO proc's thread
@@ -204,7 +67,7 @@ static void file_open(void) {
   OSStatus st = ExtAudioFileOpenURL(url, &gFile);
   CFRelease(url);
   if (st) {
-    fprintf(stderr, "[rshim] AUDIO_INPUT: can't read %s as audio (%d); the app records silence\n", gPath, (int)st);
+    fprintf(stderr, "[audio] AUDIO_INPUT: can't read %s as audio (%d); the app records silence\n", gPath, (int)st);
     gFile = NULL;
     return;
   }
@@ -218,7 +81,7 @@ static void file_pull(float *out, UInt32 frames, Float64 rate) {
   if (rate != gFileRate) {
     AudioStreamBasicDescription c = { rate, kAudioFormatLinearPCM, kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked, 8, 1, 8, 2, 32, 0 };
     OSStatus st = ExtAudioFileSetProperty(gFile, kExtAudioFileProperty_ClientDataFormat, sizeof c, &c);
-    if (st) { fprintf(stderr, "[rshim] AUDIO_INPUT: can't convert %s to %.0f Hz (%d)\n", gPath, rate, (int)st); ExtAudioFileDispose(gFile); gFile = NULL; memset(out, 0, frames * 8); return; }
+    if (st) { fprintf(stderr, "[audio] AUDIO_INPUT: can't convert %s to %.0f Hz (%d)\n", gPath, rate, (int)st); ExtAudioFileDispose(gFile); gFile = NULL; memset(out, 0, frames * 8); return; }
     gFileRate = rate;
   }
   UInt32 done = 0;
@@ -327,7 +190,7 @@ static void system_open(void) {
   void *ca = dlopen("/System/Library/Frameworks/CoreAudio.framework/CoreAudio", RTLD_LAZY);
   OSStatus (*createTap)(id, AudioObjectID *) = ca ? dlsym(ca, "AudioHardwareCreateProcessTap") : NULL;
   Class desc = NSClassFromString(@"CATapDescription");
-  if (!createTap || !desc) { fprintf(stderr, "[rshim] AUDIO_INPUT=system: this runtime's CoreAudio has no process taps; the app records silence\n"); return; }
+  if (!createTap || !desc) { fprintf(stderr, "[audio] AUDIO_INPUT=system: this runtime's CoreAudio has no process taps; the app records silence\n"); return; }
   pid_t pid = getpid(); AudioObjectID me = 0; UInt32 sz = sizeof me;
   AudioObjectPropertyAddress a = { 'id2p' /* kAudioHardwarePropertyTranslatePIDToProcessObject */, kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain };
   AudioObjectGetPropertyData(1 /* kAudioObjectSystemObject */, &a, sizeof pid, &pid, &sz, &me);
@@ -336,13 +199,13 @@ static void system_open(void) {
   [d setValue:[NSString stringWithFormat:@"SimRun microphone (%s %d)", getprogname(), pid] forKey:@"name"];
   NSString *tapUID = [[d valueForKey:@"UUID"] UUIDString];
   OSStatus st = createTap(d, &gTap);
-  if (st) { fprintf(stderr, "[rshim] AUDIO_INPUT=system: can't tap the Mac's audio (%d); the app records silence\n", (int)st); return; }
+  if (st) { fprintf(stderr, "[audio] AUDIO_INPUT=system: can't tap the Mac's audio (%d); the app records silence\n", (int)st); return; }
   NSDictionary *agg = @{ @"name": [d valueForKey:@"name"], @"uid": NSUUID.UUID.UUIDString, @"private": @YES,
                          @"tapautostart": @YES, @"taps": @[ @{ @"uid": tapUID, @"drift": @YES } ] };
   st = AudioHardwareCreateAggregateDevice((__bridge CFDictionaryRef)agg, &gTapDevice);
   if (!st) st = AudioDeviceCreateIOProcID(gTapDevice, tap_io, NULL, &gTapProc);
   if (st) {
-    fprintf(stderr, "[rshim] AUDIO_INPUT=system: can't read the Mac's audio (%d); the app records silence\n", (int)st);
+    fprintf(stderr, "[audio] AUDIO_INPUT=system: can't read the Mac's audio (%d); the app records silence\n", (int)st);
     if (gTapDevice) AudioHardwareDestroyAggregateDevice(gTapDevice);
     gTapDevice = 0;
     return;
@@ -474,9 +337,9 @@ static void input_started(SRWrap *w) {
   tap_update();
   pthread_mutex_unlock(&gInputsLock);
   LOG("AUDIO_INPUT: input on device %u started at %.0f Hz\n", w->device, w->rate);
-  if (first && current_right() == kRightUndetermined) {
+  if (first && SRTCCCurrentRight(kMicrophone.service) == SRTCCUndetermined) {
     LOG("microphone: the app records without having asked; asking\n");
-    request_right(NO, ^(int right) {});
+    SRTCCRequest(kMicrophone.service, NO, ^(SRTCCRight right) {});
   }
 }
 static void input_stopped(SRWrap *w) {
@@ -628,7 +491,7 @@ static void source_open(void) {
 }
 
 static OSStatus my_AudioDeviceCreateIOProcID(AudioObjectID dev, SRIOProc proc, void *client, SRIOProcID *outID) {
-  Float64 rate = proc && outID ? input_rate(dev) : 0;
+  Float64 rate = proc && outID && SRModuleOn(SRModuleAudio) ? input_rate(dev) : 0;
   if (rate <= 0) return AudioDeviceCreateIOProcID(dev, proc, client, outID);   // no input
   SRWrap *w = calloc(1, sizeof *w);
   w->proc = proc; w->client = client; w->device = dev; w->rate = rate;
@@ -663,11 +526,7 @@ static OSStatus my_AudioDeviceDestroyIOProcID(AudioObjectID dev, SRIOProcID proc
   return st;
 }
 
-__attribute__((used, section("__DATA,__interpose"))) static struct { const void *n, *o; } mic_interposers[] = {
-  { (const void *)my_tcc_server_message_request_authorization, (const void *)tcc_server_message_request_authorization },
-  { (const void *)my_tcc_authorization_record_get_authorization_right, (const void *)tcc_authorization_record_get_authorization_right },
-  { (const void *)my_tcc_message_options_set_request_prompt_policy, (const void *)tcc_message_options_set_request_prompt_policy },
-  { (const void *)my_tcc_message_options_set_reply_handler_policy, (const void *)tcc_message_options_set_reply_handler_policy },
+__attribute__((used, section("__DATA,__interpose"))) static struct { const void *n, *o; } interposers[] = {
   { (const void *)my_AudioDeviceCreateIOProcID, (const void *)AudioDeviceCreateIOProcID },
   { (const void *)my_AudioDeviceStart, (const void *)AudioDeviceStart },
   { (const void *)my_AudioDeviceStop, (const void *)AudioDeviceStop },
@@ -684,9 +543,11 @@ __attribute__((used, section("__DATA,__interpose"))) static struct { const void 
   { (const void *)my_AudioComponentInstanceDispose, (const void *)AudioComponentInstanceDispose },
 };
 
-__attribute__((constructor)) static void mic_init(void) {
-  gVerbose = getenv("RSHIM_VERBOSE") != NULL;
-  for (int r = 0; r < 3; r++) gRecords[r] = [NSObject new];
+// The audio module: muting (mute.m) and the microphone.
+void SRAudioStart(void) {
+  gAudioVerbose = getenv("AUDIO_VERBOSE") != NULL;
+  SRMuteStart();
+  SRTCCRegister(&kMicrophone);
   const char *in = getenv("AUDIO_INPUT");
   if (!in || !*in || !strcmp(in, "mac")) return;
   if (!strcmp(in, "system")) gMode = kInputSystem;

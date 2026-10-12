@@ -3,6 +3,8 @@
 #import "common.h"
 
 typedef enum {
+  SRModuleLocale,       // locale/: the Mac's language & region; first, before the others read preferences
+  SRModuleContainer,    // container/
   SRModuleRender,       // render/: the in-process render server; before scenes, which UIKit asks for the display
   SRModuleScenes,       // scenes/
   SRModuleHID,          // hid/
@@ -13,6 +15,8 @@ typedef enum {
   SRModuleWebKit,       // webkit/
   SRModuleMPS,          // mps/
   SRModuleScript,       // script/
+  SRModuleTCC,          // tcc/: privacy permissions; before the modules that register services with it
+  SRModuleAudio,        // audio/: muting and the microphone
   SRModuleCount
 } SRModuleID;
 
@@ -21,6 +25,8 @@ typedef enum {
 // (Nor do interposers see calls made from inside app.dylib: a module can't count on another's interposer.)
 SR_HIDDEN BOOL SRModuleOn(SRModuleID module);
 
+SR_HIDDEN void SRLocaleStart(void);
+SR_HIDDEN void SRContainerStart(void);
 SR_HIDDEN void SRRenderStart(void);
 SR_HIDDEN void SRScenesStart(void);
 SR_HIDDEN void SRHIDStart(void);
@@ -31,3 +37,5 @@ SR_HIDDEN void SRKeychainStart(void);
 SR_HIDDEN void SRWebKitStart(void);
 SR_HIDDEN void SRMPSStart(void);
 SR_HIDDEN void SRScriptStart(void);
+SR_HIDDEN void SRTCCStart(void);
+SR_HIDDEN void SRAudioStart(void);
