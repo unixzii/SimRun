@@ -2,8 +2,8 @@
 //   SIMULATOR_FRAMEBUFFER_FRAMEWORK=/path/to/render/SimFramebuffer
 // SimFramebufferClient dlsym()s ALL 58 symbols below at first use (abort if one is missing), so every one is exported,
 // even though QuartzCore (CAWindowServer / CA::WindowServer::SimDisplay) only calls ~21 of them.
-// Instead of talking to CoreSimulator's SimFramebufferServer, this exposes ONE local display and hands every presented
-// IOSurface to a frame handler (SimRunFBSetFrameHandler) in-process.
+// Instead of talking to CoreSimulator's SimFramebufferServer, this exposes ONE local display and sends every presented
+// frame to SimRun (the session port in mach_ports_lookup()[SR_PORT_SLOT_HOST]), which shows it in the app's window.
 //
 // Objects are plain NSObjects: QuartzCore only CFRetain/CFRelease/CFArray them, which works on ObjC objects.
 // Layouts/semantics reverse engineered from the real SimFramebuffer (CoreSimulator-1174.9.2) and QuartzCore (sim 27.1).
@@ -53,16 +53,10 @@ typedef void (^SFBSwapCallback)(CFErrorRef err, id swapchain, uint64_t t0, uint6
 @implementation SFBSwap @end
 
 static atomic_uint_fast64_t gSeq;
-static dispatch_queue_t gFrameQ; static SimRunFBFrameHandler gFrameHandler;
 static SFBDisp *gMain;
-
-EXPORT void SimRunFBSetFrameHandler(dispatch_queue_t q, SimRunFBFrameHandler h) {
-  gFrameQ = q; gFrameHandler = [h copy];
-}
 EXPORT uint64_t SimRunFBFrameCount(void) { return atomic_load(&gSeq); }
 
-// ---- optional viewer sink (protocol.h): if mach_ports_lookup()[SR_PORT_SLOT_HOST] holds a port and SIMFB_VIEWER != 0,
-// every presented frame is shown in the host's window.
+// ---- the viewer sink (protocol.h): every presented frame is shown in the host's window.
 //
 // The host must never display CA's swapchain buffers directly: CA reuses them on a fixed rotation (3 buffers, ~22 ms
 // apart at worst) whether or not the display is done with them — completion callbacks don't throttle it — so a window
@@ -95,7 +89,6 @@ static void ack_init(void) {
   dispatch_resume(src);
 }
 static void viewer_init(void) {
-  const char *e = getenv("SIMFB_VIEWER"); if (e && !strcmp(e, "0")) return;
   mach_port_array_t ports = NULL; mach_msg_type_number_t n = 0;
   if (mach_ports_lookup(mach_task_self(), &ports, &n) == KERN_SUCCESS && n > SR_PORT_SLOT_HOST) gViewer = ports[SR_PORT_SLOT_HOST];
   if (gViewer) { ack_init(); LOG("viewer sink: port %#x\n", gViewer); }
@@ -386,9 +379,6 @@ EXPORT bool SFBSwapchainSwapSubmit(CFTypeRef s, CFErrorRef *err) {
     CGRect rect; [sc->rects[i] getValue:&rect size:sizeof rect];
     check_present(surf, rect);
     viewer_present(surf, seq, sc->display);
-    SimRunFBFrameHandler h = gFrameHandler;
-    if (h && !gFrameQ) h(surf, seq);   // synchronous, on CA's display server thread: safe to read/blit the surface
-    else if (h) { CFRetain(surf); dispatch_async(gFrameQ, ^{ h(surf, seq); CFRelease(surf); }); }
   }
   [sc->surfaces removeAllObjects];
   if (sc->cb) {

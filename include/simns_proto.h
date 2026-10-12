@@ -12,15 +12,9 @@
 
 enum {
   SIMNS_MSG_BASE = 0x534e5300,        // 'SNS\0'
-  SIMNS_MSG_REGISTER,                 // simns_register_msg_t, optional reply (simns_reply_t) if msgh_local_port set
-  SIMNS_MSG_DECLARE,                  // simns_name_msg_t: create port now (receive right kept by server until check-in)
-  SIMNS_MSG_UNREGISTER,               // simns_name_msg_t
-  SIMNS_MSG_SET_FALLBACK,             // simns_port_msg_t: port receives SIMNS_MSG_FALLBACK_REQ for unknown names
-  SIMNS_MSG_FALLBACK_REQ,             // simns_name_msg_t sent BY the server, expects simns_fallback_reply_t
-  SIMNS_MSG_FALLBACK_REPLY,           // simns_fallback_reply_t
-  SIMNS_MSG_HELLO,                    // simns_port_msg_t sent BY the launcher to the host helper: port = send right to NS
-  SIMNS_MSG_READY,                    // header only, host -> NS: "host-side registrations done, start the app"
-  SIMNS_MSG_REPLY,                    // simns_reply_t
+  SIMNS_MSG_REGISTER,                 // simns_register_msg_t: a name in the global namespace
+  SIMNS_MSG_HELLO,                    // simns_port_msg_t sent BY simns to SimRun: port = send right to its control port
+  SIMNS_MSG_READY,                    // header only, SimRun -> control port: "host-side registrations done"
   SIMNS_MSG_DUMP,                     // header only: server prints its registry to its log
   SIMNS_MSG_NEW_NS,                   // header only, reply port in msgh_local_port: create a per-app namespace
   SIMNS_MSG_NS_REPLY,                 // simns_port_msg_t: port = send right to the new namespace (use as TASK_BOOTSTRAP_PORT).
@@ -30,7 +24,6 @@ enum {
 // flags for SIMNS_MSG_REGISTER
 enum {
   SIMNS_F_HOST_SIDE = 1u << 0,        // informational: port is served by a host (macOS) process (sim2host XPC service)
-  SIMNS_F_REPLACE   = 1u << 1,        // replace an existing entry (default: replace as well; kept for clarity)
 };
 
 typedef struct {
@@ -48,28 +41,9 @@ typedef struct {
   uint32_t flags;
 } simns_port_msg_t;
 
-typedef struct {
-  mach_msg_header_t h;
-  uint32_t flags;
-  char name[SIMNS_NAME_MAX];
-} simns_name_msg_t;
-
-typedef struct {
-  mach_msg_header_t h;
-  mach_msg_body_t b;
-  mach_msg_port_descriptor_t port;     // MACH_PORT_NULL = "don't know it"
-  uint32_t flags;                      // SIMNS_F_HOST_SIDE ...
-} simns_fallback_reply_t;
-
-typedef struct {
-  mach_msg_header_t h;
-  int32_t result;                      // 0 or errno-ish
-} simns_reply_t;
-
-// Launcher environment (see LAUNCHD.md):
-//   SIMNS_INSERT        DYLD_INSERT_LIBRARIES for the app only
-//   SIMNS_HOST_SLOT     n: mach_ports_lookup() slot holding the host helper's port; the launcher sends it
-//                        SIMNS_MSG_HELLO and waits (SIMNS_HOST_WAIT ms, default 5000) for SIMNS_MSG_READY
+// simns's environment (src/sim/simns/simns.c):
+//   SIMNS_HOST_SLOT     n: mach_ports_lookup() slot holding SimRun's port; simns sends it SIMNS_MSG_HELLO and waits
+//                        (SIMNS_HOST_WAIT ms, default 5000) for SIMNS_MSG_READY
 //   SIMNS_LOG           path: also append the log there
 //   SIMNS_QUIET         1: don't log to stderr
-//   SIMNS_PRELOAD       "name1,name2": declare these names up front (lookups succeed, messages queue until check-in)
+//   SIMNS_DAEMONS       "label,label" | none: the sim daemons it may launch on demand

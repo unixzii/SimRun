@@ -1,6 +1,6 @@
 // scenes.dylib — in-process "FrontBoard host" for iOS-Simulator UIKit apps run as plain host processes.
 //
-// Injected with DYLD_INSERT_LIBRARIES (see run.sh). No Mach services are needed.
+// No Mach services are needed.
 //
 // How it works (see SCENES.md):
 //  * UIKit's _UIApplicationMainPreparations calls FBSWorkspaceInitialize(options{delegate=UIApp}) (cross-image ->
@@ -17,21 +17,15 @@
 //
 // Also (each independent, see SCENES.md):
 //  * BKSDisplayServicesStart stub + GSSetMainScreenInfo (no backboardd).
-//  * os_trace_set_mode fix: NSLog/os_log visible with OS_ACTIVITY_DT_MODE=1 even in null-bootstrap mode.
 //  * BackBoard HID BSService endpoint ("com.apple.backboard.hid-services.xpc") -> in-process anonymous XPC sink.
 //  * No com.apple.runningboard: RBS assertion acquisition fails at once instead of a sleep-and-retry (~100 ms of launch).
 //  * No LaunchServices: -[UTType conformsToType:nil] (unresolvable type) is NO instead of an assertion (drag & drop).
-//  * Only when there is no CARenderServer: +[CADisplay displays] -> @[] (skips a 5 s retry loop), synthesized main
-//    FBSDisplayConfiguration for UIScreen, remote CAContext -> local CAContext fallback.
-// Exported API (scenes.h): SRScenesCreate, SRScenesUpdate, SRScenesSetLayersCallback, SRScenesGetMainContextID.
-// Env: SCENES_W/SCENES_H/SCENES_SCALE (default: the display, SIMULATOR_MAINSCREEN_*), SCENES_NO_AUTOCREATE,
-//      SCENES_CREATE_DELAY=sec, SCENES_DEMO_UPDATES, SCENES_VERBOSE, SCENES_DISABLE, SCENES_NO_SINK,
-//      SCENES_NO_SYNTH_DISPLAY, SCENES_KEEP_CADISPLAY.
+// Exported API (scenes.h): SRScenesUpdate, SRScenesSetLayersCallback, SRScenesGetMainContextID.
+// Env: SCENES_W/SCENES_H/SCENES_SCALE (default: the display, SIMULATOR_MAINSCREEN_*), SCENES_VERBOSE, SCENES_NO_SINK.
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import <objc/message.h>
-#include <os/log.h>
 #include <mach/mach.h>
 
 #define LOG(fmt, ...) fprintf(stderr, "[scenes] " fmt "\n", ##__VA_ARGS__)
@@ -63,7 +57,6 @@
 - (id)clientSettings;
 - (id)layers;
 - (uint32_t)contextID;
-- (void)_updateDisplayConfiguration:(id)c;
 @end
 // UIMutableApplicationSceneSettings / FBSMutableSceneSettings setters
 @protocol SRMutableSceneSettings
@@ -98,14 +91,12 @@
 static void SRSetIvar(id obj, const char *name, id value);
 static BOOL SRSetIvarIfPresent(id obj, const char *name, id value);
 static void SRWorkspaceAsync(dispatch_block_t block);
-static id SRSynthMainDisplayConfiguration(void);
 
 // ---------------------------------------------------------------- config
 static CGFloat gW = 402, gH = 874, gScale = 3;
 static NSString *gSceneID;
 static id gWorkspace, gScenesClient, gHost, gConn, gIdentity;
 static id gCurrentSettings; // last settings we sent (immutable FBSSceneSettings subclass)
-static BOOL gNoRenderServer;
 
 // ---------------------------------------------------------------- fake host (<FBSWorkspaceServiceClientInterface>)
 static void SRCallBlockWithNils(id blk) {
@@ -241,14 +232,6 @@ static void SRApplySettings(id<SRMutableSceneSettings> s, CGFloat w, CGFloat h, 
   }
 }
 
-static void SRCreateScene(void);
-// Integrator API: create the scene yourself (set SCENES_NO_AUTOCREATE=1 to disable the automatic one). Size in points
-// (portrait / display-native coordinates). Safe to call from any thread once UIApplicationMain has started.
-__attribute__((visibility("default"))) void SRScenesCreate(CGFloat w, CGFloat h) {
-  gW = w; gH = h;
-  SRWorkspaceAsync(^{ SRCreateScene(); });
-}
-
 static void SRCreateScene(void) {
   Class SpecC = NSClassFromString(@"UIApplicationSceneSpecification");
   Class ParamsC = NSClassFromString(@"FBSMutableSceneParameters");
@@ -256,8 +239,8 @@ static void SRCreateScene(void) {
   Class TCC = NSClassFromString(@"UIApplicationSceneTransitionContext");
   id spec = [SpecC specification];
   id params = [ParamsC parametersForSpecification:spec];
-  // When a render server exists UIScreen.mainScreen is backed by an FBSDisplayConfiguration; the scene must use the
-  // same display identity. Without one, mainScreen has displayIdentity nil and a nil display config maps to it.
+  // UIScreen.mainScreen is backed by the render server's FBSDisplayConfiguration; the scene must use the same display
+  // identity.
   id dc = [[UIScreen mainScreen] displayConfiguration];
   if (dc) [params setDisplay:dc];
   [params updateSettingsWithBlock:^(id s) { SRApplySettings(s, gW, gH, YES, UIInterfaceOrientationPortrait); }];
@@ -307,12 +290,7 @@ static void SRWorkspaceAsync(dispatch_block_t block) {
 extern id FBSWorkspaceInitialize(id options);
 static id my_FBSWorkspaceInitialize(id options) {
   id ws = FBSWorkspaceInitialize(options);
-  if (getenv("SCENES_DISABLE")) return ws;
   gWorkspace = ws;
-  // No render server: UIScreen's main screen was built with a nil FBSDisplayConfiguration (bounds 0x0, scale 1).
-  // Give it a synthesized one (UIScreen +initialize calls its designated init directly, so patch afterwards).
-  if (gNoRenderServer && !getenv("SCENES_NO_SYNTH_DISPLAY") && ![[UIScreen mainScreen] displayConfiguration])
-    [[UIScreen mainScreen] _updateDisplayConfiguration:SRSynthMainDisplayConfiguration()];
   id q = [ws valueForKey:@"_queue"];          // "com.apple.frontboardservices.workspace" (SRWorkspaceAsync)
   id cq = [ws valueForKey:@"_callOutQueue"];  // UIKit's main-thread callout queue
   gHost = [SRFakeHost new];
@@ -347,15 +325,7 @@ static id my_FBSWorkspaceInitialize(id options) {
   [ws _registerSource:c]; // -> -[FBSWorkspace _queue_registerSource:] on the workspace queue
   [gHost handshakeWithRemnants:nil];
   LOG("local scenes source registered: %s", [[gScenesClient description] UTF8String]);
-  const char *delay = getenv("SCENES_CREATE_DELAY"); // seconds; exercises SRScenesCreate() from the main queue
-  if (delay) dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(atof(delay) * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{ SRScenesCreate(gW, gH); });
-  else if (!getenv("SCENES_NO_AUTOCREATE")) SRWorkspaceAsync(^{ SRCreateScene(); });
-  if (getenv("SCENES_DEMO_UPDATES")) { // exercise SRScenesUpdate: resize, rotate, background, foreground
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{ SRScenesUpdate(600, 800, YES, UIInterfaceOrientationPortrait); });
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{ SRScenesUpdate(gW, gH, YES, UIInterfaceOrientationLandscapeRight); });
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 4 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{ SRScenesUpdate(gW, gH, NO, UIInterfaceOrientationLandscapeRight); });
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{ SRScenesUpdate(gW, gH, YES, UIInterfaceOrientationPortrait); });
-  }
+  SRWorkspaceAsync(^{ SRCreateScene(); });
   return ws;
 }
 
@@ -368,33 +338,10 @@ static Boolean my_BKSDisplayServicesStart(void) {
   return 1;
 }
 
-// ---------------------------------------------------------------- logging fix
-// libxpc's initializer calls os_trace_set_mode(0x100 = disabled) when it runs in null-bootstrap mode (no
-// launchd_sim); that kills os_log/NSLog entirely, even with OS_ACTIVITY_DT_MODE. Drop that bit.
-extern void os_trace_set_mode(uint32_t mode);
-static void my_os_trace_set_mode(uint32_t mode) { os_trace_set_mode(mode & ~0x100u); }
-
 __attribute__((used, section("__DATA,__interpose"))) static struct { void *n, *o; } interposers[] = {
   { (void *)my_BKSDisplayServicesStart, (void *)BKSDisplayServicesStart },
-  { (void *)my_os_trace_set_mode, (void *)os_trace_set_mode },
   { (void *)my_FBSWorkspaceInitialize, (void *)FBSWorkspaceInitialize },
 };
-
-// ---------------------------------------------------------------- no render server: skip CA's 5 s display query
-extern mach_port_t CARenderServerGetServerPort(void);
-static id sr_empty_displays(id self, SEL _cmd) { return @[]; }
-static id sr_nil_display(id self, SEL _cmd) { return nil; }
-// UIKit requires +[CAContext remoteContextWithOptions:] to succeed (else "Failed to create remote render context"
-// assertion). Without a render server, fall back to a local context so the scene/window lifecycle can proceed.
-static IMP gOrigRemoteContext;
-static id sr_remoteContextWithOptions(id self, SEL _cmd, NSDictionary *opts) {
-  id c = ((id (*)(id, SEL, NSDictionary *))gOrigRemoteContext)(self, _cmd, opts);
-  if (!c) {
-    static int once; if (!once++) LOG("no render server: remoteContextWithOptions -> localContextWithOptions (nothing will be displayed)");
-    c = ((id (*)(id, SEL, NSDictionary *))objc_msgSend)(self, NSSelectorFromString(@"localContextWithOptions:"), opts);
-  }
-  return c;
-}
 
 // BKSHIDEventDeliveryManager / BKSHIDEventObserver (used by UIKit's key-window / event-deferring code during
 // -makeKeyAndVisible) need a live BSServiceConnection to "com.apple.backboard.hid-services.xpc": a nil endpoint is a
@@ -478,30 +425,6 @@ static BOOL sr_conformsToType(id self, SEL _cmd, id type) {
   return type ? ((BOOL (*)(id, SEL, id))gOrigConformsToType)(self, _cmd, type) : NO;
 }
 
-// Without a render server UIKit creates the main UIScreen with a nil FBSDisplayConfiguration -> bounds {0,0},
-// scale 1. Synthesize a main-display configuration (what FrontBoardServices would build from the main CADisplay) so
-// UIScreen / trait displayScale are right. Only used when CADisplay has no displays.
-static id SRSynthMainDisplayConfiguration(void) {
-  static id cfg; if (cfg) return cfg;
-  unsigned long long pw = (unsigned long long)(gW * gScale), ph = (unsigned long long)(gH * gScale);
-  id ident = ((id (*)(id, SEL, long long, BOOL, unsigned, long long, unsigned, int, BOOL, id, BOOL, BOOL, id))objc_msgSend)(
-      [NSClassFromString(@"FBSDisplayIdentity") alloc],
-      NSSelectorFromString(@"_initWithType:UIKitMainLike:displayID:connectionType:connectionSeed:pid:external:uniqueIdentifier:secure:alwaysConnected:root:"),
-      0 /*main*/, YES, 1, 0, 0, 0, NO, nil, NO, YES, nil);
-  id mode = ((id (*)(id, SEL, unsigned long long, unsigned long long, unsigned long long, double, double, long long, long long, long long, BOOL, long long))objc_msgSend)(
-      [NSClassFromString(@"FBSDisplayMode") alloc],
-      NSSelectorFromString(@"_initWithWidth:height:preferredScale:scaleOverride:refreshRate:gamut:hdr:rotation:virtual:validityCheck:"),
-      pw, ph, (unsigned long long)gScale, 0.0, 60.0, 0, 0, 0, NO, 0);
-  id density = ((id (*)(id, SEL, double, double))objc_msgSend)([NSClassFromString(@"FBSDisplayPixelDensity") alloc],
-      NSSelectorFromString(@"initWithHorizontalPixelsPerInch:verticalPixelsPerInch:"), 460.0, 460.0);
-  cfg = ((id (*)(id, SEL, id, id, id, id, unsigned, BOOL, long long, id, id, id, BOOL, BOOL, long long, CGSize, CGSize, CGRect, CGRect, id, double, id, long long))objc_msgSend)(
-      [NSClassFromString(@"FBSDisplayConfiguration") alloc],
-      NSSelectorFromString(@"_initWithIdentity:hardwareIdentifier:name:deviceName:seed:comparable:tags:currentMode:preferredMode:otherModes:cloningSupported:overscanned:overscanCompensation:safeOverscanRatio:pixelSize:nativeBounds:bounds:pixelDensity:latency:originatingConfiguration:validityCheck:"),
-      ident, nil, @"Main", @"SimRun", 1, YES, 0, mode, mode, [NSSet set], NO, NO, 0,
-      CGSizeMake(1, 1), CGSizeMake(pw, ph), CGRectMake(0, 0, pw, ph), CGRectMake(0, 0, gW, gH), density, 0.0, nil, 0);
-  LOG("synthesized main display configuration: %s", [[cfg description] UTF8String]);
-  return cfg;
-}
 __attribute__((constructor)) static void scenes_init(void) {
   {
     Method m = class_getClassMethod(NSClassFromString(@"BSServiceConnectionEndpoint"), NSSelectorFromString(@"endpointForMachName:service:instance:"));
@@ -520,17 +443,4 @@ __attribute__((constructor)) static void scenes_init(void) {
   if ((e = getenv("SCENES_H"))) gH = atof(e);
   if ((e = getenv("SCENES_SCALE"))) gScale = atof(e);
   gSceneID = [NSString stringWithFormat:@"sceneID:%@-default", NSBundle.mainBundle.bundleIdentifier ?: @"app"];
-  // +[CADisplay displays] retries a missing render server for 5 s (usleep loop) and then returns @[] anyway.
-  // If there is no render server, short-circuit it (same result, no delay). The render workstream replaces this.
-  if (!getenv("SCENES_KEEP_CADISPLAY") && CARenderServerGetServerPort() == MACH_PORT_NULL) {
-    Class meta = object_getClass(NSClassFromString(@"CADisplay"));
-    method_setImplementation(class_getClassMethod(NSClassFromString(@"CADisplay"), @selector(displays)), (IMP)sr_empty_displays);
-    Method m = class_getClassMethod(NSClassFromString(@"CADisplay"), NSSelectorFromString(@"mainDisplay"));
-    if (m) method_setImplementation(m, (IMP)sr_nil_display);
-    Method rc = class_getClassMethod(NSClassFromString(@"CAContext"), NSSelectorFromString(@"remoteContextWithOptions:"));
-    gOrigRemoteContext = method_setImplementation(rc, (IMP)sr_remoteContextWithOptions);
-    (void)meta;
-    gNoRenderServer = YES;
-    LOG("no CARenderServer: +[CADisplay displays] -> @[]");
-  }
 }

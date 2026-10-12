@@ -1,8 +1,5 @@
 // rshim.dylib — SIM-platform dylib injected (DYLD_INSERT_LIBRARIES) into the sim process.
-// Minimal, self-contained service plumbing for the rendering pipeline:
-//  * com.apple.IOSurface.Remote / com.apple.metal.simulator (sim2host XPC services) -> listener ports passed by the
-//    host (render/gpuhost.m) via mach_ports_register slots 1/2.
-//  * com.apple.CARenderServer bootstrap name -> in-process CA render server port (bootstrap_check_in/look_up).
+//  * com.apple.MTLCompilerService (Metal's bundled XPC service): spawned per app, as launchd_sim would.
 //  * the Mac's language & region settings -> the device's global preferences (SIMRUN_HOST_INTL).
 //  * sandbox_container_path_for_pid(self) -> the app's HOME (its data container).
 //  * AUDIO_MUTE=1 (simrun run --mute, Launch Options ▸ Mute): the process is inaudible (CoreAudio's own per-process
@@ -16,42 +13,14 @@
 #include <spawn.h>
 #include <signal.h>
 #include <sys/wait.h>
-#include "gpuhost.h"
 #include <AudioToolbox/AudioServices.h>
 
-extern mach_port_t bootstrap_port;
-kern_return_t bootstrap_look_up(mach_port_t bp, const char *name, mach_port_t *out);
-kern_return_t bootstrap_check_in(mach_port_t bp, const char *name, mach_port_t *out);
-kern_return_t bootstrap_register(mach_port_t bp, const char *name, mach_port_t port);
 xpc_endpoint_t xpc_endpoint_create_mach_port_4sim(mach_port_t);
-void xpc_connection_enable_sim2host_4sim(xpc_connection_t);
-// (marked unavailable in the iOS SDK headers; they exist in the sim libxpc)
-extern xpc_connection_t sr_xpc_create_mach_service(const char *, dispatch_queue_t, uint64_t) __asm("_xpc_connection_create_mach_service");
+// (marked unavailable in the iOS SDK headers; it exists in the sim libxpc)
 extern xpc_connection_t sr_xpc_create_from_endpoint(xpc_endpoint_t) __asm("_xpc_connection_create_from_endpoint");
 
-static mach_port_t gSlots[3];
 static int gVerbose;
 #define LOG(...) do { if (gVerbose) fprintf(stderr, "[rshim] " __VA_ARGS__); } while (0)
-
-// ---------- sim2host XPC services ----------
-static mach_port_t service_port(const char *name) {
-  if (!name) return MACH_PORT_NULL;
-  if (!strcmp(name, "com.apple.IOSurface.Remote")) return gSlots[SR_PORT_SLOT_IOSURFACE];
-  if (!strcmp(name, "com.apple.metal.simulator")) return gSlots[SR_PORT_SLOT_METAL];
-  return MACH_PORT_NULL;
-}
-static xpc_connection_t my_xpc_connection_create_mach_service(const char *name, dispatch_queue_t q, uint64_t flags) {
-  mach_port_t p = service_port(name);
-  if (p && !(flags & 1 /*XPC_CONNECTION_MACH_SERVICE_LISTENER*/)) {
-    mach_port_mod_refs(mach_task_self(), p, MACH_PORT_RIGHT_SEND, 1);
-    xpc_endpoint_t ep = xpc_endpoint_create_mach_port_4sim(p);
-    xpc_connection_t c = sr_xpc_create_from_endpoint(ep);
-    if (q) xpc_connection_set_target_queue(c, q);
-    LOG("xpc service %s -> host listener port %#x (conn %p)\n", name, p, c);
-    return c;
-  }
-  return sr_xpc_create_mach_service(name, q, flags);
-}
 
 // ---------- bundled XPC service com.apple.MTLCompilerService (sim Metal shader compiler) ----------
 // Normally launchd_sim launches Metal.framework/XPCServices/MTLCompilerService.xpc on demand. We spawn it ourselves
@@ -202,29 +171,6 @@ static void my_xpc_main(void (*handler)(xpc_connection_t)) {
   dispatch_main();
 }
 
-// ---------- bootstrap names (CARenderServer only) ----------
-static mach_port_t gCAServerPort;   // receive right checked in by CA::Render::Server::register_name
-static int gRealBootstrap;          // a real namespace (launchd/simns) exists -> don't intercept CARenderServer
-static kern_return_t my_bootstrap_check_in(mach_port_t bp, const char *name, mach_port_t *out) {
-  if (name && !strcmp(name, "com.apple.CARenderServer") && !gRealBootstrap) {
-    if (!gCAServerPort) {
-      mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &gCAServerPort);
-      mach_port_insert_right(mach_task_self(), gCAServerPort, gCAServerPort, MACH_MSG_TYPE_MAKE_SEND);
-    }
-    *out = gCAServerPort; LOG("check_in %s -> %#x\n", name, gCAServerPort); return KERN_SUCCESS;
-  }
-  return bootstrap_check_in(bp, name, out);
-}
-static kern_return_t my_bootstrap_look_up(mach_port_t bp, const char *name, mach_port_t *out) {
-  if (name && !strcmp(name, "com.apple.CARenderServer") && gCAServerPort) {
-    mach_port_mod_refs(mach_task_self(), gCAServerPort, MACH_PORT_RIGHT_SEND, 1);
-    *out = gCAServerPort; LOG("look_up %s -> %#x\n", name, gCAServerPort); return KERN_SUCCESS;
-  }
-  kern_return_t kr = bootstrap_look_up(bp, name, out);
-  LOG("look_up %s -> kr=%#x\n", name, kr);
-  return kr;
-}
-
 // ---------- the Mac's language & region ----------
 // The device's language & region settings (AppleLocale, AppleLanguages, AppleFirstWeekday, 24-hour time, ...) live
 // in the global preferences domain, .GlobalPreferences.plist in the app's container; Simulator.app's devices get theirs
@@ -313,29 +259,13 @@ __attribute__((used, section("__DATA,__interpose"))) static struct { const void 
   { (const void *)my_AudioServicesPlaySystemSoundWithCompletion, (const void *)AudioServicesPlaySystemSoundWithCompletion },
   { (const void *)my_AudioServicesPlayAlertSoundWithCompletion, (const void *)AudioServicesPlayAlertSoundWithCompletion },
   { (const void *)my_sandbox_container_path_for_pid, (const void *)sandbox_container_path_for_pid },
-  { (const void *)my_xpc_connection_create_mach_service, (const void *)sr_xpc_create_mach_service },
-  { (const void *)my_bootstrap_check_in, (const void *)bootstrap_check_in },
   { (const void *)my_xpc_connection_create, (const void *)sr_xpc_connection_create },
   { (const void *)my_xpc_main, (const void *)sr_xpc_main },
-  { (const void *)my_bootstrap_look_up, (const void *)bootstrap_look_up },
 };
 
 __attribute__((constructor)) static void rshim_init(void) {
   gVerbose = getenv("RSHIM_VERBOSE") != NULL;
-  mach_port_array_t ports = NULL; mach_msg_type_number_t n = 0;
-  if (mach_ports_lookup(mach_task_self(), &ports, &n) == KERN_SUCCESS)
-    for (unsigned i = 0; i < n && i < 3; i++) gSlots[i] = ports[i];
-  // CA (and others) only call bootstrap_* when bootstrap_port is "valid" (not 0/-1). Give it a dead name so
-  // non-interposed lookups fail fast (MACH_SEND_INVALID_DEST) instead of hanging. Only if nobody set one.
-  gRealBootstrap = bootstrap_port != MACH_PORT_NULL;
-  if (bootstrap_port == MACH_PORT_NULL && !getenv("RSHIM_KEEP_BOOTSTRAP")) {
-    mach_port_t p; mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &p);
-    mach_port_insert_right(mach_task_self(), p, p, MACH_MSG_TYPE_MAKE_SEND);
-    mach_port_mod_refs(mach_task_self(), p, MACH_PORT_RIGHT_RECEIVE, -1);   // -> dead name
-    bootstrap_port = p;
-  }
-  LOG("loaded: slots iosurface=%#x metal=%#x bootstrap_port=%#x\n", gSlots[1], gSlots[2], bootstrap_port);
-  if (gRealBootstrap) sync_host_intl();   // needs cfprefsd (a namespace)
+  if (!getenv("RSHIM_ROLE")) sync_host_intl();   // not in the services we spawn: they have no namespace (cfprefsd)
   const char *mute = getenv("AUDIO_MUTE");
   if (mute && *mute && strcmp(mute, "0") && strcmp(getprogname(), "MTLCompilerService")) { gMuted = 1; mute_process(); }
 }

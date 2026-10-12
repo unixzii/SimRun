@@ -1,13 +1,12 @@
-// simns — minimal launchd_sim replacement (SIM platform). SimRun runs it as `simns --serve`; on its own (in a sim
-// environment): simns <app-binary> [args...]
-// Serves the launchd XPC-pipe protocol on a port that becomes the app's TASK_BOOTSTRAP_PORT.
+// simns — minimal launchd_sim replacement (SIM platform). SimRun runs it as `simns --serve`.
+// Serves the launchd XPC-pipe protocol on namespace ports that become the apps' TASK_BOOTSTRAP_PORT.
 // Sim libxpc only checks that XPC_SIMULATOR_LAUNCHD_NAME is set and then uses the bootstrap special port.
 //   request: msgh_id 0x40000000|routine (wants reply) / 0x10000000|routine, body = serialized xpc dictionary
 //   routines: 204 register {name,port}  206 check_in {name}->{port:recv}  207 look_up {name}->{port}  712 attrs {pid} (none)
 //             804 endpoint lookup {name}->{port}   805 listener check-in {name}->{port:recv}
-// Control port (simns_proto.h) lets the host viewer / app shim register names (e.g. host-side sim2host services).
-// Env: SIMNS_INSERT (DYLD_INSERT_LIBRARIES for the app), SIMNS_HOST_SLOT (mach_ports_lookup slot of host helper;
-//      launcher sends SIMNS_MSG_HELLO with the control port there and waits for SIMNS_MSG_READY), SIMNS_LOG, SIMNS_QUIET.
+// Control port (simns_proto.h): SimRun registers names (host-side sim2host services) and makes per-app namespaces.
+// Env: SIMNS_HOST_SLOT (mach_ports_lookup slot of SimRun's port; simns sends SIMNS_MSG_HELLO with the control port
+//      there and waits for SIMNS_MSG_READY), SIMNS_LOG, SIMNS_QUIET.
 #include "simns_proto.h"
 #include <xpc/xpc.h>
 #include <dispatch/dispatch.h>
@@ -322,8 +321,7 @@ static void *stop_idle_daemons(void *arg) {
   return NULL;
 }
 
-static pid_t gAppPid;
-static void on_term(int sig) { if (gAppPid > 0) kill(gAppPid, SIGKILL); stop_daemons(); _exit(128 + sig); }
+static void on_term(int sig) { stop_daemons(); _exit(128 + sig); }
 
 static void handle_pipe(mach_msg_header_t *h, pid_t pid) {
   uint32_t routine = h->msgh_id & 0xffffff;
@@ -455,8 +453,8 @@ static void *serve(void *arg) {
 }
 
 int main(int argc, char **argv) {
-  if (argc < 2) { fprintf(stderr, "usage: simns <app> [args]   |   simns --serve\n"); return 2; }
-  int serve_only = !strcmp(argv[1], "--serve");   // shared server: apps are spawned by the host with SIMNS_MSG_NEW_NS namespaces
+  // shared server: apps are spawned by SimRun with SIMNS_MSG_NEW_NS namespaces
+  if (argc != 2 || strcmp(argv[1], "--serve")) { fprintf(stderr, "usage: simns --serve (run by SimRun)\n"); return 2; }
   gQuiet = getenv("SIMNS_QUIET") != NULL;
   if (getenv("SIMNS_LOG")) gLog = fopen(getenv("SIMNS_LOG"), "w");
   mach_port_t me = mach_task_self();
@@ -467,13 +465,12 @@ int main(int argc, char **argv) {
   mach_port_move_member(me, gNS, gSet); mach_port_move_member(me, gCtl, gSet);
   mach_port_allocate(me, MACH_PORT_RIGHT_RECEIVE, &gReturned); mach_port_move_member(me, gReturned, gSet);
   mach_port_allocate(me, MACH_PORT_RIGHT_PORT_SET, &gIdle);
-  // The control port is itself discoverable in the namespace (for the app-side shim).
-  mach_port_mod_refs(me, gCtl, MACH_PORT_RIGHT_SEND, 1); reg(&gGlobal, "dev.simrun.simns.control", gCtl, 0);
   pthread_t th; pthread_create(&th, NULL, serve, NULL);
   pthread_t idle; pthread_create(&idle, NULL, idle_watch, NULL);
 
   const char *slot = getenv("SIMNS_HOST_SLOT");
-  if (slot) {
+  if (!slot) { fprintf(stderr, "simns: no SIMNS_HOST_SLOT (run by SimRun)\n"); return 2; }
+  {
     mach_port_array_t ports; mach_msg_type_number_t n = 0; int i = atoi(slot);
     if (mach_ports_lookup(me, &ports, &n) == KERN_SUCCESS && i < (int)n && ports[i]) {
       simns_port_msg_t m = {0};
@@ -488,43 +485,22 @@ int main(int argc, char **argv) {
     } else L("SIMNS_HOST_SLOT=%s: no port in that slot", slot);
   }
 
-  // child environment
+  // the daemons' environment: ours, in the namespace
   int envc = 0; while (environ[envc]) envc++;
-  char **env = calloc(envc + 5, sizeof(char *)); int k = 0;
+  gChildEnv = calloc(envc + 3, sizeof(char *)); int k = 0;
   for (int i = 0; i < envc; i++) {
     if (!strncmp(environ[i], "SIMNS_", 6) || !strncmp(environ[i], "DYLD_INSERT_LIBRARIES=", 22) || !strncmp(environ[i], "XPC_SIMULATOR_LAUNCHD_NAME=", 27) || !strncmp(environ[i], "XPC_FLAGS=", 10)) continue;
-    env[k++] = environ[i];
+    gChildEnv[k++] = environ[i];
   }
-  env[k++] = "XPC_SIMULATOR_LAUNCHD_NAME=dev.simrun.simns";
-  env[k++] = "XPC_FLAGS=0x0";  // sim posix_spawn would add XPC_FLAGS=0x2 (null-bootstrap mode) otherwise
-  char ins[2048]; if (getenv("SIMNS_INSERT")) { snprintf(ins, sizeof ins, "DYLD_INSERT_LIBRARIES=%s", getenv("SIMNS_INSERT")); env[k++] = ins; }
-  env[k] = NULL;
-  // daemons get the same environment minus the app's DYLD_INSERT_LIBRARIES
-  gChildEnv = calloc(k + 1, sizeof(char *)); int kd = 0;
-  for (int i = 0; i < k; i++) if (strncmp(env[i], "DYLD_INSERT_LIBRARIES=", 22)) gChildEnv[kd++] = env[i];
+  gChildEnv[k++] = "XPC_SIMULATOR_LAUNCHD_NAME=dev.simrun.simns";
+  gChildEnv[k++] = "XPC_FLAGS=0x0";  // sim posix_spawn would add XPC_FLAGS=0x2 (null-bootstrap mode) otherwise
   gRoot = getenv("SIMULATOR_ROOT") ? getenv("SIMULATOR_ROOT") : "";
   load_daemons();
 
-  if (serve_only) {
-    signal(SIGTERM, on_term); signal(SIGINT, on_term); signal(SIGHUP, on_term);
-    L("serving (shared)");
-    pid_t parent = getppid();
-    while (getppid() == parent) sleep(1);   // the host server went away
-    stop_daemons();
-    return 0;
-  }
-
-  posix_spawnattr_t attr; posix_spawnattr_init(&attr);
-  posix_spawnattr_setspecialport_np(&attr, gNS, TASK_BOOTSTRAP_PORT);
-  posix_spawnattr_setflags(&attr, POSIX_SPAWN_CLOEXEC_DEFAULT);   // stdio only (not our log)
-  posix_spawn_file_actions_t fa; posix_spawn_file_actions_init(&fa);
-  for (int i = 0; i < 3; i++) posix_spawn_file_actions_addinherit_np(&fa, i);
-  pid_t pid; int r = posix_spawn(&pid, argv[1], &fa, &attr, argv + 1, env);
-  if (r) { L("spawn %s failed: %s", argv[1], strerror(r)); return 1; }
-  L("spawned %s pid %d", argv[1], pid);
-  gAppPid = pid; signal(SIGTERM, on_term); signal(SIGINT, on_term); signal(SIGHUP, on_term);
-  int st = 0; while (waitpid(pid, &st, 0) < 0 && errno == EINTR) {}
+  signal(SIGTERM, on_term); signal(SIGINT, on_term); signal(SIGHUP, on_term);
+  L("serving (shared)");
+  pid_t parent = getppid();
+  while (getppid() == parent) sleep(1);   // the host server went away
   stop_daemons();
-  L("app exited: %s %d", WIFSIGNALED(st) ? "signal" : "status", WIFSIGNALED(st) ? WTERMSIG(st) : WEXITSTATUS(st));
-  return WIFEXITED(st) ? WEXITSTATUS(st) : 128 + WTERMSIG(st);
+  return 0;
 }

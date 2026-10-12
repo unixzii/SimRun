@@ -55,11 +55,6 @@ bool SRHIDDetachTouches(SRHIDDetachedTouchHandler handler, void *ctx);
 enum { SRHID_DRAG_WITHIN = 1, SRHID_DRAG_ENTERED = 2, SRHID_DRAG_EXITED = 3 };
 void SRHIDDragEvent(uint32_t sessionID, int locus, float x, float y, bool touching);
 
-// Start the viewer-protocol receiver (viewer/protocol.h): allocates a receive port, sends SR_MSG_HELLO with it to
-// mach_ports_lookup()[SR_PORT_SLOT_HOST], and turns SR_MSG_INPUT messages into the calls above. Called automatically
-// by the dylib constructor when a host port exists (disable with HID_NO_RECEIVER=1). Idempotent.
-void SRHIDStartReceiver(void);
-
 #ifdef __cplusplus
 }
 #endif

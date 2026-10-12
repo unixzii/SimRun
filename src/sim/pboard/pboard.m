@@ -2,8 +2,7 @@
 // UIKit reaches the pasteboard daemon (pasted, "com.apple.pasteboard.pasted") through Pasteboard.framework's
 // PBServerConnection: an NSXPCConnection speaking PBClientToServerProtocol. The real pasted wants SpringBoard, TCC,
 // RunningBoard and friends, so this dylib checks in its own listener under that name in the app's simns namespace and
-// implements the protocol, keeping the contents in simrund's NSPasteboard (include/pboard.h) — or in memory when
-// there is no simrund (standalone simns).
+// implements the protocol, keeping the contents in simrund's NSPasteboard (include/pboard.h).
 //   * read:   a PBItemCollection that lists the Mac items' types only; UIKit loads a representation when it is
 //             pasted (-requestItemFromPasteboardWithName:...) -> "data" from the host.
 //   * save:   replied to at once; then every representation is pulled from the app's data-provider endpoint and the
@@ -50,20 +49,17 @@ static NSError *SRError(NSString *what) {
   return [NSError errorWithDomain:@"dev.simrun.pboard" code:1 userInfo:@{ NSLocalizedDescriptionKey: what }];
 }
 
-// ---------------------------------------------------------------- store: simrund's NSPasteboard, else memory
+// ---------------------------------------------------------------- store: simrund's NSPasteboard
 // items: one array per item; read -> type names, write -> [type, data] pairs (in the item's preference order)
 static dispatch_queue_t gQ;          // serializes all pasteboard state and store access
-static xpc_connection_t gHost;       // SRPB_SERVICE, or NULL -> gMemory
-static NSMutableDictionary<NSString *, NSArray<NSArray<NSArray *> *> *> *gMemory;
-static NSInteger gMemoryCount;
+static xpc_connection_t gHost;       // SRPB_SERVICE
 static void host_changed(NSString *name, NSInteger count);
 
-static void store_open(void) {
+static BOOL store_open(void) {
   mach_port_t p = MACH_PORT_NULL;
   if (bootstrap_look_up(bootstrap_port, SRPB_SERVICE, &p) != KERN_SUCCESS) {
-    LOG("no %s: pasteboards stay inside this app\n", SRPB_SERVICE);
-    gMemory = [NSMutableDictionary dictionary];
-    return;
+    fprintf(stderr, "[pboard] no %s in this SimRun; pasteboard unavailable\n", SRPB_SERVICE);
+    return NO;
   }
   mach_port_deallocate(mach_task_self(), p);
   gHost = sr_xpc_create_mach_service(SRPB_SERVICE, gQ, 0);
@@ -74,6 +70,7 @@ static void store_open(void) {
     if (ev && name && !strcmp(ev, "changed")) host_changed(@(name), xpc_dictionary_get_int64(e, "count"));
   });
   xpc_connection_activate(gHost);
+  return YES;
 }
 
 static xpc_object_t host_call(const char *op, NSString *name, void (^fill)(xpc_object_t)) {
@@ -89,15 +86,6 @@ static xpc_object_t host_call(const char *op, NSString *name, void (^fill)(xpc_o
 
 static NSArray<NSArray<NSString *> *> *store_read(NSString *name, NSInteger *count) {
   NSMutableArray *items = [NSMutableArray array];
-  if (!gHost) {
-    for (NSArray<NSArray *> *reps in gMemory[name]) {
-      NSMutableArray *ts = [NSMutableArray array];
-      for (NSArray *rep in reps) [ts addObject:rep[0]];
-      [items addObject:ts];
-    }
-    *count = gMemoryCount;
-    return items;
-  }
   xpc_object_t r = host_call("read", name, nil);
   xpc_object_t a = r ? xpc_dictionary_get_value(r, "items") : NULL;
   if (a && xpc_get_type(a) == XPC_TYPE_ARRAY) xpc_array_apply(a, ^bool(size_t i, xpc_object_t types) {
@@ -112,7 +100,7 @@ static NSArray<NSArray<NSString *> *> *store_read(NSString *name, NSInteger *cou
 }
 
 // URLs: iOS encodes public.url / public.file-url as a binary plist [string, base string]; the Mac as the bare UTF-8
-// string. Neither side reads the other's form, so the host path converts.
+// string. Neither side reads the other's form, so they are converted on the way.
 static BOOL is_url_type(NSString *t) { return [t isEqual:@"public.url"] || [t isEqual:@"public.file-url"]; }
 static BOOL is_bplist(NSData *d) { return d.length > 8 && !memcmp(d.bytes, "bplist", 6); }
 static NSData *url_from_mac(NSData *d) {
@@ -132,11 +120,6 @@ static NSData *url_to_mac(NSData *d) {
 }
 
 static NSData *store_data(NSString *name, NSUInteger index, NSString *type) {
-  if (!gHost) {
-    NSArray<NSArray<NSArray *> *> *items = gMemory[name];
-    if (index < items.count) for (NSArray *rep in items[index]) if ([rep[0] isEqual:type]) return rep[1];
-    return nil;
-  }
   xpc_object_t r = host_call("data", name, ^(xpc_object_t m) {
     xpc_dictionary_set_uint64(m, "index", index);
     xpc_dictionary_set_string(m, "type", type.UTF8String);
@@ -147,7 +130,6 @@ static NSData *store_data(NSString *name, NSUInteger index, NSString *type) {
 }
 
 static NSInteger store_write(NSString *name, NSArray<NSArray<NSArray *> *> *items) {
-  if (!gHost) { gMemory[name] = items; return ++gMemoryCount; }
   xpc_object_t r = host_call("write", name, ^(xpc_object_t m) {
     xpc_object_t a = xpc_array_create(NULL, 0);
     for (NSArray<NSArray *> *reps in items) {
@@ -382,12 +364,12 @@ __attribute__((constructor)) static void pboard_init(void) {
   disable_paste_touch_authentication();
   gQ = dispatch_queue_create("dev.simrun.pboard", DISPATCH_QUEUE_SERIAL);
   gBoards = [NSMutableDictionary dictionary];
-  store_open();
+  if (!store_open()) return;
   // a launchd-style check-in: simns hands us the receive right for the name in this app's own namespace
   // (-initWithMachServiceName: is marked unavailable in the iOS SDK headers; sim Foundation has it)
   gListener = ((id (*)(id, SEL, NSString *))objc_msgSend)([NSXPCListener alloc], sel_registerName("initWithMachServiceName:"), @"com.apple.pasteboard.pasted");
   gServer = [SRPasteServer new];
   gListener.delegate = gServer;
   [gListener resume];
-  LOG("serving com.apple.pasteboard.pasted (%s)\n", gHost ? "Mac pasteboard" : "in memory");
+  LOG("serving com.apple.pasteboard.pasted\n");
 }

@@ -18,8 +18,8 @@
 //   * dictation availability forced off (AssistantServices livelock without assistantd)
 // and a receiver for the viewer protocol (viewer/protocol.h SR_MSG_INPUT).
 //
-// Exports: hid.h. Env: HID_VERBOSE, HID_NO_RECEIVER, HID_SCRIPT="cmd; cmd; ..." (SRHIDRunScript), HID_DEMO (HIDTest
-// script), HID_SOFTWARE_KEYBOARD, HID_NO_FOCUS, HID_KEEP_DICTATION, HID_KEEP_REMOTE_KEYBOARDS, HID_KB_SOURCE.
+// Exports: hid.h. Env: HID_VERBOSE, HID_SOFTWARE_KEYBOARD, HID_NO_FOCUS, HID_KEEP_DICTATION, HID_KEEP_REMOTE_KEYBOARDS,
+// HID_KB_SOURCE.
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
@@ -612,7 +612,9 @@ static void SRHIDHandleInput(const sr_input_msg_t *m) {
     default: VLOG("unknown input kind %u", m->kind);
   }
 }
-void SRHIDStartReceiver(void) {
+// The viewer-protocol receiver (protocol.h): a receive port sent with SR_MSG_HELLO to mach_ports_lookup()[SR_PORT_SLOT_HOST];
+// SR_MSG_INPUT messages become the calls in hid.h.
+static void SRHIDStartReceiver(void) {
   static dispatch_once_t once;
   dispatch_once(&once, ^{
     mach_port_array_t ports = NULL; mach_msg_type_number_t n = 0;
@@ -644,127 +646,6 @@ void SRHIDStartReceiver(void) {
   });
 }
 
-// ---------------------------------------------------------------- scripted input (testing)
-// HID_SCRIPT="wait 1; tap 201 105; drag 201 700 201 300 [steps] [seconds]; text hello; key 0x28; mac 0x7d [mods]; view <accessibilityId>"
-//   tap X Y | drag X0 Y0 X1 Y1 [steps=20] [secs=0.3] | pinch CX CY R0 R1 | text STRING | key USAGE | mac KEYCODE [MODS] | wait SECS
-//   wheel X Y DY [N] | tpscroll X Y DY [N] (trackpad scroll with phases) | tpmag X Y TOTAL [DEGREES] (trackpad magnify/rotate)
-//   dtap X Y (double tap)
-//   tapid ID (tap the center of the view with that accessibilityIdentifier)
-static UIView *SRHIDFindView(UIView *v, NSString *ident) {
-  if ([v.accessibilityIdentifier isEqualToString:ident]) return v;
-  for (UIView *s in v.subviews) { UIView *r = SRHIDFindView(s, ident); if (r) return r; }
-  return nil;
-}
-static void SRHIDRunScript(NSArray<NSString *> *cmds, NSUInteger i) {
-  if (i >= cmds.count) { LOG("script done"); return; }
-  NSArray<NSString *> *a = [[cmds[i] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet] componentsSeparatedByString:@" "];
-  NSString *op = a.firstObject; double next = 0.3;
-  #define ARG(k) ((a.count > (k)) ? a[k].doubleValue : 0)
-  if (op.length) LOG("script: %s", cmds[i].UTF8String);
-  if ([op isEqual:@"wait"]) next = ARG(1);
-  else if ([op isEqual:@"tap"] || [op isEqual:@"tapid"]) {
-    float x = ARG(1), y = ARG(2);
-    if ([op isEqual:@"tapid"]) {
-      UIWindowScene *ws = SRHIDScene(); UIView *v = nil;
-      for (UIWindow *w in ws.windows) if ((v = SRHIDFindView(w, a[1]))) break;
-      if (!v) { LOG("no view with id %s", a[1].UTF8String); }
-      CGPoint c = [v convertPoint:CGPointMake(CGRectGetMidX(v.bounds), CGRectGetMidY(v.bounds)) toCoordinateSpace:ws.coordinateSpace];
-      x = c.x; y = c.y;
-    }
-    SRHIDTouch(SRHID_TOUCH_BEGAN, x, y);
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 80 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{ SRHIDTouch(SRHID_TOUCH_ENDED, x, y); });
-  } else if ([op isEqual:@"drag"]) {
-    float x0 = ARG(1), y0 = ARG(2), x1 = ARG(3), y1 = ARG(4); int steps = a.count > 5 ? (int)ARG(5) : 20; double secs = a.count > 6 ? ARG(6) : 0.3;
-    SRHIDTouch(SRHID_TOUCH_BEGAN, x0, y0);
-    for (int s = 1; s <= steps; s++) {
-      float t = (float)s / steps;
-      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(secs * t * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        SRHIDTouch(SRHID_TOUCH_MOVED, x0 + (x1 - x0) * t, y0 + (y1 - y0) * t);
-        if (s == steps) SRHIDTouch(SRHID_TOUCH_ENDED, x1, y1);
-      });
-    }
-    next = secs + 0.3;
-  } else if ([op isEqual:@"pinch"]) {
-    float cx = ARG(1), cy = ARG(2), r0 = ARG(3), r1 = ARG(4); int steps = 20; double secs = 0.4;
-    SRHIDTouchFinger(0, SRHID_TOUCH_BEGAN, cx - r0, cy); SRHIDTouchFinger(1, SRHID_TOUCH_BEGAN, cx + r0, cy);
-    for (int s = 1; s <= steps; s++) {
-      float r = r0 + (r1 - r0) * s / steps;
-      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(secs * s / steps * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        SRHIDTouchFinger(0, SRHID_TOUCH_MOVED, cx - r, cy); SRHIDTouchFinger(1, SRHID_TOUCH_MOVED, cx + r, cy);
-        if (s == steps) { SRHIDTouchFinger(0, SRHID_TOUCH_ENDED, cx - r, cy); SRHIDTouchFinger(1, SRHID_TOUCH_ENDED, cx + r, cy); }
-      });
-    }
-    next = secs + 0.3;
-  } else if ([op isEqual:@"wheel"]) {   // wheel X Y DY [N]: N wheel ticks of DY points, 16 ms apart
-    float x = ARG(1), y = ARG(2), dy = ARG(3); int n = a.count > 4 ? (int)ARG(4) : 10;
-    for (int k = 0; k < n; k++)
-      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)k * 16 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{ SRHIDScroll(x, y, 0, dy); });
-    next = n * 0.016 + 0.5;
-  } else if ([op isEqual:@"tpscroll"]) {   // tpscroll X Y DY [N]: trackpad scroll, began + N changes of DY points 8 ms apart + ended
-    float x = ARG(1), y = ARG(2), dy = ARG(3); int n = a.count > 4 ? (int)ARG(4) : 10;
-    for (int k = 0; k <= n + 1; k++)
-      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)k * 8 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
-        int phase = k == 0 ? kPhaseBegan : k <= n ? kPhaseChanged : kPhaseEnded;
-        SRHIDTrackpadScroll(x, y, 0, k == 0 || k > n ? 0 : dy, phase, 0, 0);
-      });
-    next = (n + 2) * 0.008 + 1.5;
-  } else if ([op isEqual:@"tpmag"]) {   // tpmag X Y TOTAL [DEGREES]: trackpad magnify (and rotate) by TOTAL over 20 steps
-    float x = ARG(1), y = ARG(2), total = ARG(3), deg = ARG(4); int n = 20;
-    for (int k = 0; k <= n + 1; k++)
-      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)k * 16 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
-        int phase = k == 0 ? kPhaseBegan : k <= n ? kPhaseChanged : kPhaseEnded;
-        bool step = k > 0 && k <= n;
-        SRHIDTrackpadGesture(SR_GESTURE_MAGNIFY, x, y, step ? total / n : 0, 0, phase);
-        if (deg) SRHIDTrackpadGesture(SR_GESTURE_ROTATE, x, y, 0, step ? deg / n : 0, phase);
-      });
-    next = (n + 2) * 0.016 + 0.5;
-  } else if ([op isEqual:@"dtap"]) {   // dtap X Y: double tap (trackpad smart magnify)
-    SRHIDDoubleTap(ARG(1), ARG(2));
-    next = 0.6;
-  } else if ([op isEqual:@"text"]) {
-    NSString *t = [[a subarrayWithRange:NSMakeRange(1, a.count - 1)] componentsJoinedByString:@" "];
-    SRHIDText(t.UTF8String);
-  } else if ([op isEqual:@"key"]) {
-    uint32_t u = (uint32_t)strtoul(a[1].UTF8String, NULL, 0);
-    SRHIDKeyUsage(u, true); SRHIDKeyUsage(u, false);
-  } else if ([op isEqual:@"mac"]) {
-    uint16_t k = (uint16_t)strtoul(a[1].UTF8String, NULL, 0); uint32_t mods = a.count > 2 ? (uint32_t)strtoul(a[2].UTF8String, NULL, 0) : 0;
-    SRHIDKeyMac(k, true, mods); SRHIDKeyMac(k, false, mods); SRHIDReleaseModifiers();
-  } else if ([op isEqual:@"scene"]) {   // scene W H ORIENT (scenes.dylib SRScenesUpdate)
-    void (*upd)(double, double, BOOL, long) = dlsym(RTLD_DEFAULT, "SRScenesUpdate");
-    if (upd) upd(ARG(1), ARG(2), YES, (long)ARG(3)); else LOG("no SRScenesUpdate");
-    next = 1.0;
-  } else if ([op isEqual:@"where"]) {   // where ID: log the view's center in scene coordinates
-    UIWindowScene *ws = SRHIDScene(); UIView *v = nil;
-    for (UIWindow *w in ws.windows) if ((v = SRHIDFindView(w, a[1]))) break;
-    CGPoint c = [v convertPoint:CGPointMake(CGRectGetMidX(v.bounds), CGRectGetMidY(v.bounds)) toCoordinateSpace:ws.coordinateSpace];
-    LOG("where %s: (%.1f,%.1f) scene bounds %s orient %ld", a[1].UTF8String, c.x, c.y, NSStringFromCGRect(ws.coordinateSpace.bounds).UTF8String, (long)ws.effectiveGeometry.interfaceOrientation);
-  } else if ([op isEqual:@"dump"]) {
-    id kb = [NSClassFromString(@"UIKeyboardImpl") activeInstance];
-    id fr = [SRHIDScene().keyWindow firstResponder];
-    LOG("dump: keyboardImpl=%p hwMode=%d delegate=%s firstResponder=%s", (__bridge void *)kb,
-        kb ? ((BOOL (*)(id, SEL))objc_msgSend)(kb, NSSelectorFromString(@"isInHardwareKeyboardMode")) : -1,
-        [[[[kb valueForKey:@"inputDelegateManager"] valueForKey:@"keyInputDelegate"] description] UTF8String], [[fr description] UTF8String]);
-  } else if (op.length) LOG("unknown script op %s", op.UTF8String);
-  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(next * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{ SRHIDRunScript(cmds, i + 1); });
-}
-
-static NSString *const kDemoScript =
-  @"wait 1; tap 201 105; wait 0.5; "                                  // UIButton (touchUpInside action)
-   "drag 201 800 201 400 20 0.3; wait 2.5; "                           // UITableView pan + deceleration
-   "tap 30 300; wait 0.5; "                                            // table row selection
-   "tapid switch; wait 0.5; "                                          // UISwitch
-   "tapid field; wait 3; "                                             // UITextField focus (first focus loads keyboard: slow)
-   "text hello; wait 0.3; text , World!; wait 0.3; key 0x2A; wait 0.3; " // typing, shift, backspace
-   "mac 0x7b; mac 0x7b; text X; wait 0.3; "                            // left arrow x2 (mac keycodes) then insert
-   "mac 0x00 0x100000; text Z; wait 0.3; "                             // cmd-A (select all) then type over it
-   "text ü→; wait 0.3; "                                               // non-ASCII via insertText
-   "key 0x28; wait 0.5; "                                              // Return -> textFieldShouldReturn
-   "mac 0x7d; wait 0.2; mac 0x28 0x100000; wait 0.3; "                 // down arrow + cmd-K key commands
-   "pinch 201 600 40 120; wait 0.5; "                                 // two-finger pinch (multitouch)
-   "wheel 201 700 -10 25; wait 1; "                                    // emulated scroll wheel (no fling)
-   "tpscroll 201 700 -12 12";                                          // trackpad scroll: lift with velocity (fling)
-
 __attribute__((constructor)) static void hid_init(void) {
   gVerbose = getenv("HID_VERBOSE") != NULL;
   if (getenv("HID_SOFTWARE_KEYBOARD")) gHWKeyboard = 0;
@@ -773,18 +654,11 @@ __attribute__((constructor)) static void hid_init(void) {
   if (![NSBundle.mainBundle.bundlePath hasSuffix:@".app"]) return;
   if (!getenv("HID_KEEP_DICTATION")) SRHIDDisableDictation();
   if (!getenv("HID_KEEP_REMOTE_KEYBOARDS")) SRHIDNeutralizeRemoteKeyboards();
-  if (!getenv("HID_NO_RECEIVER")) SRHIDStartReceiver();
+  SRHIDStartReceiver();
   if (!getenv("HID_NO_FOCUS")) {
     for (NSNotificationName n in @[UISceneDidActivateNotification, UIWindowDidBecomeKeyNotification])
       [[NSNotificationCenter defaultCenter] addObserverForName:n object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
         SRHIDPushDeferringChains();
       }];
-  }
-  NSString *script = getenv("HID_SCRIPT") ? @(getenv("HID_SCRIPT")) : getenv("HID_DEMO") ? kDemoScript : nil;
-  if (script) {
-    [[NSNotificationCenter defaultCenter] addObserverForName:UISceneDidActivateNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n) {
-      static int once; if (once++) return;
-      SRHIDRunScript([script componentsSeparatedByString:@";"], 0);
-    }];
   }
 }

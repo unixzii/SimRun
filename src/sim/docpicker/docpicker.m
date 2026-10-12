@@ -34,7 +34,7 @@ extern xpc_connection_t sr_xpc_create_mach_service(const char *, dispatch_queue_
 static int gVerbose;
 #define LOG(...) do { if (gVerbose) fprintf(stderr, "[docpicker] " __VA_ARGS__); } while (0)
 
-static xpc_connection_t gHost;                         // SRDP_SERVICE; NULL: no simrund, pickers cancel at once
+static xpc_connection_t gHost;                         // SRDP_SERVICE; NULL: a SimRun without it, pickers cancel at once
 static __weak UIDocumentPickerViewController *gActive; // the picker whose panel is up
 
 static void host_open(void) {
@@ -262,5 +262,5 @@ __attribute__((constructor)) static void docpicker_init(void) {
   }
   patch_picker();
   host_open();
-  LOG("document pickers pick on the Mac%s\n", gHost ? "" : " (no simrund: they cancel at once)");
+  LOG("document pickers pick on the Mac%s\n", gHost ? "" : " (no file panels in this SimRun: they cancel at once)");
 }
