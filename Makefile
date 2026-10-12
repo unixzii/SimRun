@@ -3,6 +3,7 @@
 #   make core       SimRun.app (server + launcher, simns, injected dylibs, fake SimFramebuffer) and the simrun CLI
 #   make test-apps  sample/test apps (build/apps)
 #   make tests      test apps and test programs
+#   make install    install build/SimRun.app into /Applications
 #   make clean
 
 BUILD   := build
@@ -25,7 +26,7 @@ TOOLS := $(BIN)/hostinput
 TEST_APPS  := $(APPS)/Hello.app $(APPS)/SUI.app $(APPS)/HIDTest.app $(APPS)/Glass.app $(APPS)/DragTest.app $(APPS)/WebTest.app $(APPS)/BGDownload.app $(APPS)/PickerTest.app $(APPS)/Showcase.app $(APPS)/AudioPlayer.app
 TEST_PROGS := $(TBIN)/nettest $(TBIN)/nwtest $(TBIN)/pbtest $(TBIN)/kctest $(TBIN)/loctest $(TBIN)/mpstest $(TBIN)/audiotest
 
-.PHONY: all core tools test-apps test-programs tests clean $(APP)
+.PHONY: all core tools test-apps test-programs tests install clean $(APP)
 all: core tools test-programs
 core: $(CORE)
 tools: $(TOOLS)
@@ -43,10 +44,50 @@ $(BIN)/simrund: $(SIMRUND_SRC) $(wildcard src/host/simrund/*.h) $(HDRS) | $(BIN)
 	  -framework UniformTypeIdentifiers -framework ImageIO -o $@
 
 # App icon: the Icon Composer document compiled into Assets.car (Liquid Glass icon) and AppIcon.icns (fallback).
-ICON := $(BUILD)/icon
-$(ICON)/Assets.car: resources/AppIcon.icon/icon.json resources/AppIcon.icon/Assets
+# Xcode 27 reads "features" and a string specular (outside/inside/...). Xcode 26's actool crashes on
+# "features" and only accepts a boolean specular, so on 26 the document is rewritten before compiling.
+XCODE_MAJOR := $(shell xcodebuild -version | awk 'NR==1 { split($$2, v, "."); print v[1] }')
+ICON     := $(BUILD)/icon
+ICON_SRC := resources/AppIcon.icon
+ifeq ($(shell test "$(XCODE_MAJOR)" -ge 27 && echo y),y)
+ICON_DOC    := $(ICON_SRC)
+ICON_INPUTS := $(ICON_SRC)/icon.json $(ICON_SRC)/Assets
+else
+ICON_DOC    := $(BUILD)/icon-src/AppIcon.icon
+ICON_INPUTS := $(ICON_DOC)/icon.json
+ICON_ASSETS := $(shell find $(ICON_SRC)/Assets -type f ! -name .DS_Store | sed 's/ /\\ /g')
+define downgrade_icon
+import json, sys
+source_path, output_path = sys.argv[1], sys.argv[2]
+with open(source_path) as source_file:
+    document = json.load(source_file)
+document.pop("features", None)
+def walk(node):
+    if isinstance(node, dict):
+        specular = node.get("specular")
+        if isinstance(specular, str):
+            node["specular"] = specular not in ("none", "off", "false")
+        for child in node.values():
+            walk(child)
+    elif isinstance(node, list):
+        for child in node:
+            walk(child)
+walk(document)
+with open(output_path, "w") as output_file:
+    json.dump(document, output_file, indent=2)
+    output_file.write("\n")
+endef
+export downgrade_icon
+$(ICON_DOC)/icon.json: $(ICON_SRC)/icon.json $(ICON_ASSETS)
+	@rm -rf $(ICON_DOC)
+	@mkdir -p $(ICON_DOC)
+	@cp -R $(ICON_SRC)/Assets $(ICON_DOC)/
+	@python3 -c "$$downgrade_icon" $< $@
+	@echo "downgraded AppIcon.icon for Xcode $(XCODE_MAJOR)"
+endif
+$(ICON)/Assets.car: $(ICON_INPUTS)
 	@mkdir -p $(ICON)
-	xcrun actool resources/AppIcon.icon --compile $(ICON) --platform macosx --minimum-deployment-target 14.0 --app-icon AppIcon \
+	xcrun actool $(ICON_DOC) --compile $(ICON) --platform macosx --minimum-deployment-target 14.0 --app-icon AppIcon \
 	  --output-partial-info-plist $(ICON)/partial.plist >/dev/null
 
 # SimRun.app: the server/launcher executable, helpers (simns, simrun), the sim-side libraries and the agent skill.
@@ -212,6 +253,17 @@ $(TBIN)/mpstest: tests/mps/mpstest.m | $(TBIN)
 $(TBIN)/audiotest: tests/audio/audiotest.m | $(TBIN)
 	$(SIMCC) $< -framework Foundation -framework AVFoundation -framework AudioToolbox -framework CoreMedia -o $@
 	@$(SIGN) $@ 2>/dev/null
+
+# Install the built bundle into /Applications. ditto keeps the ad-hoc signature.
+# A running SimRun must be quit first; the installed bundle is replaced in place.
+install: $(APP)
+	@if pgrep -qx SimRun; then \
+	  echo "SimRun is running. Quit it, then run make install again." >&2; \
+	  exit 1; \
+	fi
+	@rm -rf /Applications/SimRun.app
+	@ditto $(APP) /Applications/SimRun.app
+	@echo "installed /Applications/SimRun.app"
 
 clean:
 	rm -rf $(BUILD)
