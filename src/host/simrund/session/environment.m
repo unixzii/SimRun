@@ -1,5 +1,6 @@
 // environment.m — see environment.h.
 #import "environment.h"
+#import <AppKit/AppKit.h>
 #include <mach-o/dyld.h>
 #include <pwd.h>
 
@@ -86,8 +87,8 @@ static NSString *const kRuntimeKey = @"SRRuntimeBuild";
 // The available iOS runtimes as CoreSimulator knows them, wherever they are mounted (disk images under
 // CoreSimulator/Volumes, cryptexes under /private/var/run/com.apple.security.cryptexd/mnt, bundles in
 // CoreSimulator/Profiles): { root: [supported device types' bundle paths] }; nil if simctl can't be run or doesn't
-// answer within 5 s.
-static NSDictionary<NSString *, NSArray<NSString *> *> *SimctlRuntimes(void) {
+// answer within 5 s. `developerDir`, if given, is the DEVELOPER_DIR xcrun runs with.
+static NSDictionary<NSString *, NSArray<NSString *> *> *SimctlRunning(NSString *developerDir) {
   NSTask *t = [NSTask new];
   t.executableURL = [NSURL fileURLWithPath:@"/usr/bin/xcrun"];
   t.arguments = @[ @"simctl", @"list", @"runtimes", @"--json" ];
@@ -97,6 +98,7 @@ static NSDictionary<NSString *, NSArray<NSString *> *> *SimctlRuntimes(void) {
     if (![k hasPrefix:@"DYLD_"] && ![k hasPrefix:@"SIMULATOR_"] && ![k hasPrefix:@"IPHONE_"] && ![@[ @"CFFIXED_USER_HOME", @"TMPDIR" ] containsObject:k]) env[k] = v;
   }];
   env[@"HOME"] = RealHome();
+  if (developerDir) env[@"DEVELOPER_DIR"] = developerDir;
   t.environment = env;
   NSPipe *out = [NSPipe pipe];
   t.standardOutput = out; t.standardError = [NSFileHandle fileHandleWithNullDevice];
@@ -125,13 +127,22 @@ static NSDictionary<NSString *, NSArray<NSString *> *> *SimctlRuntimes(void) {
   return runtimes;
 }
 
+// xcode-select may point at the Command Line Tools, which have no simctl: then try an installed Xcode instead.
+static NSDictionary<NSString *, NSArray<NSString *> *> *SimctlRuntimes(void) {
+  NSDictionary *runtimes = SimctlRunning(nil);
+  if (runtimes || NSProcessInfo.processInfo.environment[@"DEVELOPER_DIR"].length) return runtimes;
+  for (NSURL *xcode in [NSWorkspace.sharedWorkspace URLsForApplicationsWithBundleIdentifier:@"com.apple.dt.Xcode"])
+    if ((runtimes = SimctlRunning([xcode.path stringByAppendingPathComponent:@"Contents/Developer"]))) return runtimes;
+  return nil;
+}
+
 // Without simctl: the places runtimes are mounted or installed.
 static NSArray<NSString *> *ScannedRuntimeRoots(void) {
   NSFileManager *fm = NSFileManager.defaultManager;
   NSMutableArray<NSString *> *dirs = [NSMutableArray arrayWithObject:@"/Library/Developer/CoreSimulator/Profiles/Runtimes"];
   for (NSString *mounts in @[ @"/Library/Developer/CoreSimulator/Volumes", @"/private/var/run/com.apple.security.cryptexd/mnt" ])
     for (NSString *v in [fm contentsOfDirectoryAtPath:mounts error:nil])
-      if ([v hasPrefix:@"iOS_"]) [dirs addObject:[mounts stringByAppendingFormat:@"/%@/Library/Developer/CoreSimulator/Profiles/Runtimes", v]];
+      if ([v hasPrefix:@"iOS_"] || [v hasPrefix:@"com.apple.iPhoneOS.SimulatorRuntime"]) [dirs addObject:[mounts stringByAppendingFormat:@"/%@/Library/Developer/CoreSimulator/Profiles/Runtimes", v]];
   NSMutableArray *roots = [NSMutableArray array];
   for (NSString *dir in dirs)
     for (NSString *r in [fm contentsOfDirectoryAtPath:dir error:nil])

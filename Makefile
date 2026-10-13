@@ -6,6 +6,16 @@
 #   make install    install build/SimRun.app into /Applications
 #   make clean
 
+# The iOS Simulator SDK comes with Xcode: when xcode-select points at the Command Line Tools, use an installed Xcode.
+ifeq ($(origin DEVELOPER_DIR),undefined)
+ifneq ($(findstring CommandLineTools,$(shell xcode-select -p 2>/dev/null)),)
+XCODE_APP := $(firstword $(wildcard /Applications/Xcode.app) $(shell mdfind "kMDItemCFBundleIdentifier == 'com.apple.dt.Xcode'" 2>/dev/null | grep -v ' '))
+ifneq ($(XCODE_APP),)
+export DEVELOPER_DIR := $(XCODE_APP)/Contents/Developer
+endif
+endif
+endif
+
 BUILD   := build
 BIN     := $(BUILD)/bin
 LIB     := $(BUILD)/lib
@@ -49,7 +59,7 @@ $(BIN)/simrund: $(SIMRUND_SRC) $(wildcard src/host/simrund/*/*.h) $(HDRS) | $(BI
 # App icon: the Icon Composer document compiled into Assets.car (Liquid Glass icon) and AppIcon.icns (fallback).
 # Xcode 27 reads "features" and a string specular (outside/inside/...). Xcode 26's actool crashes on
 # "features" and only accepts a boolean specular, so on 26 the document is rewritten before compiling.
-XCODE_MAJOR := $(shell xcodebuild -version | awk 'NR==1 { split($$2, v, "."); print v[1] }')
+XCODE_MAJOR := $(shell $(if $(DEVELOPER_DIR),DEVELOPER_DIR=$(DEVELOPER_DIR)) xcodebuild -version | awk 'NR==1 { split($$2, v, "."); print v[1] }')
 ICON     := $(BUILD)/icon
 ICON_SRC := resources/AppIcon.icon
 ifeq ($(shell test "$(XCODE_MAJOR)" -ge 27 && echo y),y)

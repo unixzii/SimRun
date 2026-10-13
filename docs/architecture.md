@@ -124,7 +124,8 @@ they run in different profiles (`-p`).
 
 ## Runtimes
 
-SimRun finds the installed iOS runtimes the way Xcode does, with `xcrun simctl list runtimes`: they can be mounted
+SimRun finds the installed iOS runtimes the way Xcode does, with `xcrun simctl list runtimes` (with an installed Xcode's
+`DEVELOPER_DIR` when xcode-select points at the Command Line Tools, which have no simctl): they can be mounted
 under `/Library/Developer/CoreSimulator/Volumes` (disk images), under `/private/var/run/com.apple.security.cryptexd/mnt`
 (cryptexes) or installed in `/Library/Developer/CoreSimulator/Profiles/Runtimes`; those places are scanned only when
 simctl can't be run. SimRun has a runtime of its own: `SIMRUN_RUNTIME_ROOT`, else the one chosen in **SimRun ▸ iOS Runtime** (a build
