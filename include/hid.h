@@ -5,6 +5,7 @@
 #pragma once
 #include <stdint.h>
 #include <stdbool.h>
+#include <dispatch/dispatch.h>
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -40,9 +41,10 @@ void SRHIDKeyUsage(uint32_t hidUsage, bool down);
 void SRHIDKeyMac(uint16_t macKeyCode, bool down, uint32_t macModifierFlags);
 // Release all synthesized modifier keys (e.g. when the host window loses focus).
 void SRHIDReleaseModifiers(void);
-// Whether keys sent with the calls above are still waiting for UIKit to handle them (main thread). Keys are handled on a
-// later turn of the run loop, text goes in at once (textinput.h): text that should come after a key waits for this.
-bool SRHIDKeysPending(void);
+// Run `block` on the main thread once UIKit has handled the keys sent with the calls above before it; keys sent after it
+// wait for it to run. Keys are handled on a later turn of the run loop, text goes in at once (textinput.h): text that
+// comes after a key goes in from here.
+void SRHIDAfterKeys(dispatch_block_t block);
 
 // Drag & drop (the drag module, the in-process stand-in for the druid drag server). What backboardd does when a drag begins:
 // the fingers touching the screen are taken from UIKit (their touches are cancelled) and from then on their moves and

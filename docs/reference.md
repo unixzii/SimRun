@@ -69,8 +69,9 @@ select all) go to the app while one of its windows is key.
 ## Known gaps
 
 - No RunningBoard: backgrounded apps keep running.
-- No on-screen keyboard (needs SpringBoard hosting); the hardware keyboard mapping is US-positional
-  ([hid.md](hid.md)).
+- No on-screen keyboard (needs SpringBoard hosting). Text fields type through the Mac's input methods
+  ([textinput.md](textinput.md)), but keys sent as keys (shortcuts, and keys while no text field has focus) are
+  US-positional ([hid.md](hid.md)).
 - First text-field focus stalls ~2–3 s.
 - Rotation: scenes can be rotated ([scenes.md](scenes.md)), but the viewer has no way to rotate and doesn't map
   input into rotated space; `deviceOrientation` isn't wired. CoreMotion's accelerometer, gyro and device motion are

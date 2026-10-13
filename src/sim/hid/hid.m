@@ -376,13 +376,33 @@ void SRHIDDoubleTap(float x, float y) {
 }
 
 // ---------------------------------------------------------------- keyboard
-// Which keys UIKit hasn't handled yet. A key goes through UIKit's HID event queue and is handled on a later turn of the
-// run loop, but text goes in at once (the textinput module), so text sent after a key waits for SRHIDKeysPending() to
-// turn false. A key is handled once -[UIApplication _handleKeyHIDEvent:usingSyntheticEvent:] has returned for it.
-// UIKit drops keys when no window has keyboard focus, so a watchdog forgets them after a second in which the main
-// thread was free and none was handled (two checks in a row: the first text focus can block it for seconds).
+// Keys, then what comes after them. A key goes through UIKit's HID event queue and is handled on a later turn of the
+// run loop, but text goes in at once (the textinput module). So text sent after a key is a block given to
+// SRHIDAfterKeys: it runs once UIKit has handled the keys sent before it, and keys sent after it wait for it to run. A
+// key is handled once -[UIApplication _handleKeyHIDEvent:usingSyntheticEvent:] has returned for it. UIKit drops keys
+// when no window has keyboard focus, so a watchdog forgets them after a second in which the main thread was free and
+// none was handled (two checks in a row: the first text focus can block it for seconds).
 static NSMutableArray *gKeysInFlight;   // the IOHIDEvents passed on to UIKit that it hasn't handled yet
 static uint64_t gKeysHandled;           // how many of those it has handled, ever
+static NSMutableArray *gAfterKeys;      // waiting, in order: blocks, and keys (usage << 1 | down) sent after one
+static void SRHIDPostKeyMain(uint32_t usage, bool down);
+static void SRHIDRunAfterKeysMain(void) {
+  while (gAfterKeys.count) {
+    id next = gAfterKeys.firstObject;
+    bool isKey = [next isKindOfClass:NSNumber.class];
+    if (!isKey && gKeysInFlight.count) return;
+    [gAfterKeys removeObjectAtIndex:0];
+    if (isKey) SRHIDPostKeyMain([next unsignedIntValue] >> 1, [next unsignedIntValue] & 1);
+    else ((dispatch_block_t)next)();
+  }
+}
+void SRHIDAfterKeys(dispatch_block_t block) {
+  SRHIDOnMain(^{
+    if (!gKeysInFlight) { block(); return; }   // not tracking keys
+    [gAfterKeys addObject:[block copy]];
+    SRHIDRunAfterKeysMain();
+  });
+}
 static void SRHIDKeyWatchdogMain(void) {
   static BOOL armed, stalled;
   static uint64_t before;
@@ -395,6 +415,7 @@ static void SRHIDKeyWatchdogMain(void) {
       VLOG("%lu keys not handled (dropped?): forgetting them", (unsigned long)gKeysInFlight.count);
       stalled = NO;
       [gKeysInFlight removeAllObjects];
+      SRHIDRunAfterKeysMain();
       return;
     }
     stalled = gKeysHandled == before;
@@ -406,18 +427,22 @@ static SRHandleKeyIMP gHandleKey;
 static uintptr_t sr_handleKeyHIDEvent(id self, SEL _cmd, IOHIDEventRef e, id synthetic) {
   uintptr_t r = gHandleKey(self, _cmd, e, synthetic);
   NSUInteger i = [gKeysInFlight indexOfObjectIdenticalTo:(__bridge id)e];
-  if (i != NSNotFound) { [gKeysInFlight removeObjectAtIndex:i]; gKeysHandled++; }
+  if (i != NSNotFound) {
+    [gKeysInFlight removeObjectAtIndex:i];
+    gKeysHandled++;
+    if (!gKeysInFlight.count && gAfterKeys.count) dispatch_async(dispatch_get_main_queue(), ^{ SRHIDRunAfterKeysMain(); });   // outside UIKit's event handling
+  }
   return r;
 }
 static void SRHIDTrackKeys(void) {
   Method m = class_getInstanceMethod(UIApplication.class, NSSelectorFromString(@"_handleKeyHIDEvent:usingSyntheticEvent:"));
   if (!m) { LOG("no -[UIApplication _handleKeyHIDEvent:usingSyntheticEvent:]: text may go in ahead of keys sent before it"); return; }
   gKeysInFlight = [NSMutableArray array];
+  gAfterKeys = [NSMutableArray array];
   gHandleKey = (SRHandleKeyIMP)method_setImplementation(m, (IMP)sr_handleKeyHIDEvent);
 }
-bool SRHIDKeysPending(void) { return gKeysInFlight.count > 0; }
 
-static void SRHIDKeyUsageMain(uint32_t usage, bool down) {
+static void SRHIDPostKeyMain(uint32_t usage, bool down) {
   IOHIDEventRef e = IOHIDEventCreateKeyboardEvent(kCFAllocatorDefault, mach_absolute_time(), kHIDPage_KeyboardOrKeypad, usage, down, 0);
   IOHIDEventSetSenderID(e, kKeyboardSenderID);
   // keyboard events are routed by backboardd to the keyboard-focus deferring target (the app's key window context);
@@ -429,6 +454,10 @@ static void SRHIDKeyUsageMain(uint32_t usage, bool down) {
   if (gKeysInFlight) { [gKeysInFlight addObject:(__bridge id)e]; SRHIDKeyWatchdogMain(); }
   [UIApplication.sharedApplication _enqueueHIDEvent:e];
   CFRelease(e);
+}
+static void SRHIDKeyUsageMain(uint32_t usage, bool down) {
+  if (gAfterKeys.count) [gAfterKeys addObject:@(usage << 1 | down)];   // behind something waiting for the keys before it
+  else SRHIDPostKeyMain(usage, down);
 }
 void SRHIDKeyUsage(uint32_t usage, bool down) { SRHIDOnMain(^{ SRHIDKeyUsageMain(usage, down); }); }
 
@@ -589,7 +618,7 @@ static void SRHIDHandleInput(const sr_input_msg_t *m) {
     case SR_IN_KEY_UP: SRHIDKeyMac((uint16_t)m->keycode, m->kind == SR_IN_KEY_DOWN, m->modifiers); break;
     case SR_IN_TEXT: {
       NSString *t = [[NSString alloc] initWithBytes:m->text length:strnlen(m->text, sizeof m->text) encoding:NSUTF8StringEncoding];
-      if (t.length) SRHIDOnMain(^{ SRTextInsert(t); });
+      if (t.length) SRHIDAfterKeys(^{ SRTextInsert(t); });
       break;
     }
     case SR_IN_SCROLL: {
@@ -623,11 +652,18 @@ static void SRHIDStartReceiver(void) {
     dispatch_queue_t q = dispatch_queue_create("dev.simrun.hid.receiver", DISPATCH_QUEUE_SERIAL);
     dispatch_source_t src = dispatch_source_create(DISPATCH_SOURCE_TYPE_MACH_RECV, gRecvPort, 0, q);
     dispatch_source_set_event_handler(src, ^{
-      union { mach_msg_header_t h; sr_input_msg_t in; char buf[sizeof(sr_input_msg_t) + 256]; } m;
+      union { mach_msg_header_t h; sr_input_msg_t in; sr_text_msg_t text; char buf[sizeof(sr_text_msg_t) + 256]; } m;
       while (mach_msg(&m.h, MACH_RCV_MSG | MACH_RCV_TIMEOUT, 0, sizeof m, gRecvPort, 0, MACH_PORT_NULL) == KERN_SUCCESS) {
         if (m.h.msgh_id == SR_MSG_INPUT && m.h.msgh_size >= sizeof(sr_input_msg_t)) {
           VLOG("viewer input kind=%u (%.1f,%.1f) key=0x%x mods=0x%x", m.in.kind, m.in.x, m.in.y, m.in.keycode, m.in.modifiers);
           SRHIDHandleInput(&m.in);
+        } else if (m.h.msgh_id == SR_MSG_TEXT && m.h.msgh_size >= sizeof(sr_text_msg_t)) {
+          // the window's input methods (textinput.md), after the keys sent before them
+          uint32_t kind = m.text.kind;
+          NSString *t = [[NSString alloc] initWithBytes:m.text.text length:strnlen(m.text.text, sizeof m.text.text) encoding:NSUTF8StringEncoding] ?: @"";
+          NSRange sel = NSMakeRange(m.text.sel_location, m.text.sel_length);
+          VLOG("viewer text kind=%u \"%s\" sel={%u,%u}", kind, t.UTF8String, m.text.sel_location, m.text.sel_length);
+          SRHIDAfterKeys(^{ SRTextFromWindow(kind, t, sel); });
         } else mach_msg_destroy(&m.h);
       }
     });

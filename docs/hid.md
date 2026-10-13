@@ -114,9 +114,10 @@ Notes:
 - Mapping is **positional**, like Simulator.app's hardware keyboard: UIKit translates with its own HW layout (US by
   default), so a non-US host layout produces US characters.
 - Text isn't typed as keys: the textinput module puts it in (textinput.md). Keys are queued and handled on a later
-  turn of the run loop, while text goes in at once, so text that comes after a key waits for `SRHIDKeysPending()`
-  to turn false. hid records each key event it passes to UIKit until
-  `-[UIApplication _handleKeyHIDEvent:usingSyntheticEvent:]` has returned for it. Keys UIKit drops (no window with
+  turn of the run loop, while text goes in at once, so text that comes after a key goes in from a block given to
+  `SRHIDAfterKeys`. The block runs once the keys sent before it are handled, and keys sent after it wait for it to
+  run. hid records each key event it passes to UIKit until `-[UIApplication _handleKeyHIDEvent:usingSyntheticEvent:]`
+  has returned for it. Keys UIKit drops (no window with
   keyboard focus) are forgotten after a second in which the main thread was free and UIKit handled none of them.
 
 ### iOS 18 runtime differences
@@ -142,7 +143,7 @@ void SRHIDDoubleTap(float x, float y);
 void SRHIDKeyUsage(uint32_t hidUsage, bool down);                // USB HID page 7
 void SRHIDKeyMac(uint16_t macKeyCode, bool down, uint32_t macModifierFlags);
 void SRHIDReleaseModifiers(void);
-bool SRHIDKeysPending(void);                                     // keys UIKit hasn't handled yet (main thread)
+void SRHIDAfterKeys(dispatch_block_t block);                     // block on main once the keys before it are handled
 ```
 - All functions are thread-safe. They run on the main thread, asynchronously when called from elsewhere, in call
   order. Coordinates are scene points.
@@ -153,6 +154,8 @@ bool SRHIDKeysPending(void);                                     // keys UIKit h
   - `SR_IN_KEY_DOWN/UP` → `SRHIDKeyMac(keycode, modifiers)`. The characters field is not used, because keys are
     positional.
   - `SR_IN_TEXT` → `SRTextInsert` (textinput.md)
+  - `SR_MSG_TEXT` (the window's input methods, `sr_text_msg_t`) → `SRTextFromWindow` (textinput.md), from
+    `SRHIDAfterKeys`
   - `SR_IN_RESIZE` → `SRScenesUpdate(x, y, YES, portrait)` (the scenes module)
   - `SR_IN_SCROLL` (`sr_scroll_payload_t`: deltas, NSEvent phase/momentumPhase, timestamp) → `SRHIDTrackpadScroll`
   - `SR_IN_GESTURE` (`sr_gesture_payload_t`: magnify or rotate delta + phase) → `SRHIDTrackpadGesture`
@@ -246,11 +249,11 @@ finger on the glass, not just those that opt into scroll events.
 - **Pointer / hover:** not implemented. Hover (UIHoverGestureRecognizer, iPad pointer effects) needs digitizer
   range-without-touch or pointer events with BKSHIDEventPointerAttributes, plus an iPad device profile.
 - **Text input / IME:**
-  - There is no marked-text (IME composition) bridge from the host yet; the plan is in textinput.md. Committed text
-    can be sent with `SR_IN_TEXT` → `SRTextInsert` (inserted, not composed).
-  - The host keyboard layout is not mirrored, because the mapping is positional and US. Proper support would set the
-    HW layout (`BKSHIDKeyboardSetLayout` / GSKeyboard) from the host's input source, or send characters for printable
-    keys.
+  - While a text input has focus, the window types through the Mac's input methods (textinput.md): marked text,
+    commits and any layout.
+  - Keys that go as keys (shortcuts, and all keys while no text input has focus) are positional and US: the host
+    layout is not mirrored. Mirroring it would mean setting the HW layout (`BKSHIDKeyboardSetLayout` / GSKeyboard) from
+    the host's input source.
   - Caps lock is not mirrored.
   - Key repeat: we send one down/up per host event. Host autorepeat arrives as repeated keyDowns without keyUp, which
     UIKit accepts as repeats.

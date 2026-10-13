@@ -13,7 +13,7 @@
 #define SR_PORT_SLOT_HOST 0
 enum { SR_MSG_HELLO = 0x5352000, SR_MSG_SURFACE, SR_MSG_FRAME, SR_MSG_INPUT, SR_MSG_FRAME_ACK,
        SR_MSG_SCRIPT_HELLO, SR_MSG_SCRIPT_EVAL, SR_MSG_SCRIPT_OUTPUT, SR_MSG_INSPECT_START, SR_MSG_INSPECT_BATCH,
-       SR_MSG_INSPECT_EDIT };
+       SR_MSG_INSPECT_EDIT, SR_MSG_TEXT, SR_MSG_TEXT_STATE };
 typedef struct { mach_msg_header_t h; mach_msg_body_t b; mach_msg_port_descriptor_t port; uint32_t w, h_px; float scale; } sr_port_msg_t;
 // surface_id/checksum/present_time are optional (a shorter message has only seq); checksum is sr_surface_checksum()
 // at present time when the sim side runs with SIMFB_CHECK=1, else 0.
@@ -37,6 +37,7 @@ static inline uint32_t sr_surface_checksum(IOSurfaceRef s) {
   IOSurfaceUnlock(s, kIOSurfaceLockReadOnly, NULL);
   return hash;
 }
+// SR_IN_TEXT: up to 63 bytes of text, committed (the textinput module); SR_MSG_TEXT is what the window sends.
 enum { SR_IN_TOUCH_BEGAN = 1, SR_IN_TOUCH_MOVED, SR_IN_TOUCH_ENDED, SR_IN_KEY_DOWN, SR_IN_KEY_UP, SR_IN_TEXT, SR_IN_RESIZE,
        SR_IN_SCROLL,        // x,y cursor; sr_scroll_payload_t in text
        SR_IN_GESTURE,       // trackpad magnify/rotate: x,y cursor; sr_gesture_payload_t in text
@@ -51,6 +52,18 @@ typedef struct { float dx, dy; uint32_t phase, momentumPhase; double timestamp; 
 // magnification: NSEvent.magnification delta (scale += m); rotation: NSEvent.rotation delta in degrees, counterclockwise.
 enum { SR_GESTURE_MAGNIFY = 1, SR_GESTURE_ROTATE = 2 };
 typedef struct { float magnification, rotation; uint32_t phase, type; } sr_gesture_payload_t;
+
+// Text from the window's input methods (host -> app, SR_MSG_TEXT to the input port; the textinput module, textinput.md),
+// in order with SR_MSG_INPUT's keys. `text` is UTF-8, NUL-terminated. SR_TEXT_INSERT commits it in place of the marked
+// text or the selection (longer text comes in several, split between characters); SR_TEXT_MARK makes it the marked
+// text, composing, with sel_location/sel_length the selection within it in UTF-16 units ("" removes it);
+// SR_TEXT_UNMARK commits the marked text as it is.
+enum { SR_TEXT_INSERT = 1, SR_TEXT_MARK, SR_TEXT_UNMARK };
+typedef struct { mach_msg_header_t h; uint32_t kind, sel_location, sel_length; char text[1024]; } sr_text_msg_t;
+// The focused text input (app -> host, SR_MSG_TEXT_STATE to the host port), sent when it changes: whether a text input
+// has keyboard focus, and where its marked text or caret is, in scene points (width and height 0: not known). While
+// one has focus, the window sends its keys through the Mac's input methods.
+typedef struct { mach_msg_header_t h; uint32_t focused; float x, y, width, height; } sr_text_state_msg_t;
 
 // Scripts (the script module, scripting.md). The app sends SR_MSG_SCRIPT_HELLO (an sr_port_msg_t; w, h_px, scale unused)
 // with its script port when it starts. The host runs a script with SR_MSG_SCRIPT_EVAL to that port: the source as

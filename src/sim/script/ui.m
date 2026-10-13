@@ -57,8 +57,11 @@ void SRInstallUIBindings(JSValue *native) {
     SRHIDKeyUsage(usage, down);
     return [V valueWithUndefinedInContext:SRCurrentContext()];
   };
-  // keysPending(): whether keys sent with key() are still waiting for UIKit (hid.h); text sent after them waits
-  ui[@"keysPending"] = ^BOOL(void) { return SRHIDKeysPending(); };
+  // afterKeys(fn): fn called once UIKit has handled the keys sent with key() (hid.h); text sent after keys waits for it
+  ui[@"afterKeys"] = ^JSValue *(JSValue *fn) {
+    SRHIDAfterKeys(^{ [fn callWithArguments:@[]]; });
+    return [V valueWithUndefinedInContext:SRCurrentContext()];
+  };
   // type(string): into the focused text input, one character at a time, as typed (textinput.h); false if none has focus
   ui[@"type"] = ^BOOL(NSString *text) {
     __block BOOL focused = YES;

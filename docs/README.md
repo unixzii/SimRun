@@ -14,7 +14,7 @@ Write-ups of each part:
 - [scenes.md](scenes.md) — how UIKit obtains a UIWindowScene and the in-process FrontBoard host
 - [hid.md](hid.md) — input injection, keyboard focus/deferring, event fields
 - [textinput.md](textinput.md) — the app's input method: text into the focused text input through UITextInput, as
-  the keyboard puts it there; in order with keys
+  the keyboard puts it there; in order with keys; the window's Mac input methods (marked text, candidate window)
 - [pasteboard.md](pasteboard.md) — UIPasteboard ⇄ Mac pasteboard: the pasted protocol, UIKit's cache, the fake server
 - [dragdrop.md](dragdrop.md) — drag & drop within an app: the druid protocols, drag HID events, the in-process drag
   server

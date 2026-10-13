@@ -17,11 +17,24 @@ extern int posix_spawnattr_setspecialport_np(posix_spawnattr_t *, mach_port_t, i
 extern int posix_spawn_file_actions_addchdir_np(posix_spawn_file_actions_t *, const char *);
 
 // ---------------------------------------------------------------- content view: forwards mouse/keyboard to the app
-@interface SRView : NSView
+// Keys go to the app as keys (SR_IN_KEY_*, the hid module), except while a text input in the app has focus
+// (SR_MSG_TEXT_STATE): then they go through this view's NSTextInputContext, the Mac's input methods, and what they type
+// goes to the app as text (SR_MSG_TEXT, the textinput module): commits, and marked text while composing. Keys they
+// don't type with (arrows, Return, Delete, Escape: -doCommandBySelector:) and ⌘/⌃ shortcuts still go as keys.
+@interface SRView : NSView <NSTextInputClient>
 @property mach_port_t inputPort;
 @property NSSize pointSize;   // the app's screen in points; the view may be scaled (window resized)
+- (void)textInputFocused:(BOOL)focused caret:(NSRect)caret;
 @end
-@implementation SRView
+@implementation SRView {
+  BOOL _textFocused;            // a text input in the app has keyboard focus
+  NSRect _caret;                // where its marked text or caret is, in app points (empty: not known)
+  NSEvent *_keyEvent;           // the key down the input context is handling
+  BOOL _keyUsed;                // and whether it typed with it or sent it on
+  NSString *_marked;            // the marked text, while composing
+  NSRange _markedSelection;
+  NSMutableIndexSet *_keysDown; // keys sent down to the app, to send up
+}
 - (BOOL)acceptsFirstResponder { return YES; }
 - (BOOL)acceptsFirstMouse:(NSEvent *)e { return YES; }
 - (BOOL)isFlipped { return YES; }
@@ -75,8 +88,93 @@ extern int posix_spawn_file_actions_addchdir_np(posix_spawn_file_actions_t *, co
 - (void)magnifyWithEvent:(NSEvent *)e { [self sendGesture:SR_GESTURE_MAGNIFY event:e magnification:e.magnification rotation:0]; }
 - (void)rotateWithEvent:(NSEvent *)e { [self sendGesture:SR_GESTURE_ROTATE event:e magnification:0 rotation:e.rotation]; }
 - (void)smartMagnifyWithEvent:(NSEvent *)e { [self send:SR_IN_SMART_MAGNIFY event:e]; }
-- (void)keyDown:(NSEvent *)e { [self send:SR_IN_KEY_DOWN event:e]; }
-- (void)keyUp:(NSEvent *)e { [self send:SR_IN_KEY_UP event:e]; }
+- (void)sendKeyDown:(NSEvent *)e {
+  if (!_keysDown) _keysDown = [NSMutableIndexSet indexSet];
+  [_keysDown addIndex:e.keyCode];
+  [self send:SR_IN_KEY_DOWN event:e];
+}
+- (void)keyDown:(NSEvent *)e {
+  if (!_textFocused || (e.modifierFlags & (NSEventModifierFlagCommand | NSEventModifierFlagControl))) { [self sendKeyDown:e]; return; }
+  _keyEvent = e; _keyUsed = NO;
+  [self.inputContext handleEvent:e];
+  if (!_keyUsed) [self sendKeyDown:e];   // the input context did nothing with it
+  _keyEvent = nil;
+}
+- (void)keyUp:(NSEvent *)e {
+  if (![_keysDown containsIndex:e.keyCode]) return;   // it typed text: the app saw no key down
+  [_keysDown removeIndex:e.keyCode];
+  [self send:SR_IN_KEY_UP event:e];
+}
+
+// ---------------------------------------------------------------- the Mac's input methods (NSTextInputClient)
+// The view keeps no text: it knows only the marked text, as if that were the whole document.
+- (void)sendText:(uint32_t)kind text:(NSString *)text selection:(NSRange)sel {
+  if (!self.inputPort) return;
+  sr_text_msg_t m = {0};
+  m.kind = kind; m.sel_location = (uint32_t)sel.location; m.sel_length = (uint32_t)sel.length;
+  strlcpy(m.text, text.UTF8String ?: "", sizeof m.text);
+  m.h.msgh_bits = MACH_MSGH_BITS(MACH_MSG_TYPE_COPY_SEND, 0); m.h.msgh_size = sizeof m;
+  m.h.msgh_remote_port = self.inputPort; m.h.msgh_id = SR_MSG_TEXT;
+  mach_msg(&m.h, MACH_SEND_MSG | MACH_SEND_TIMEOUT, sizeof m, 0, 0, 0, 0);
+}
+static NSString *SRPlainString(id s) { return [s isKindOfClass:NSAttributedString.class] ? [s string] : s; }
+- (void)insertText:(id)string replacementRange:(NSRange)replacementRange {
+  NSString *s = SRPlainString(string);
+  _keyUsed = YES; _marked = nil;
+  // in pieces that fit, split between characters: the first takes the marked text's place, the rest follow it
+  NSMutableString *piece = [NSMutableString string];
+  __block BOOL sent = NO;
+  void (^flush)(void) = ^{ [self sendText:SR_TEXT_INSERT text:piece selection:NSMakeRange(0, 0)]; [piece setString:@""]; sent = YES; };
+  [s enumerateSubstringsInRange:NSMakeRange(0, s.length) options:NSStringEnumerationByComposedCharacterSequences
+                     usingBlock:^(NSString *ch, NSRange r, NSRange er, BOOL *stop) {
+    if (strlen(piece.UTF8String) + strlen(ch.UTF8String) >= sizeof(((sr_text_msg_t *)0)->text)) flush();
+    [piece appendString:ch];
+  }];
+  if (piece.length || !sent) flush();   // "" too: it removes the marked text
+}
+- (void)setMarkedText:(id)string selectedRange:(NSRange)selectedRange replacementRange:(NSRange)replacementRange {
+  NSString *s = SRPlainString(string);
+  _keyUsed = YES;
+  _marked = s.length ? s : nil; _markedSelection = selectedRange;
+  [self sendText:SR_TEXT_MARK text:s selection:selectedRange];
+}
+- (void)unmarkText {
+  _keyUsed = YES;
+  if (!_marked) return;
+  _marked = nil;
+  [self sendText:SR_TEXT_UNMARK text:@"" selection:NSMakeRange(0, 0)];
+}
+- (void)doCommandBySelector:(SEL)selector {   // a key the input method doesn't type with: the app gets the key
+  if (!_keyEvent || _keyUsed) return;
+  _keyUsed = YES;
+  [self sendKeyDown:_keyEvent];
+}
+- (BOOL)hasMarkedText { return _marked != nil; }
+- (NSRange)markedRange { return _marked ? NSMakeRange(0, _marked.length) : NSMakeRange(NSNotFound, 0); }
+- (NSRange)selectedRange { return _marked ? _markedSelection : NSMakeRange(0, 0); }
+- (NSArray<NSAttributedStringKey> *)validAttributesForMarkedText { return @[]; }
+- (NSAttributedString *)attributedSubstringForProposedRange:(NSRange)range actualRange:(NSRangePointer)actual {
+  if (!_marked) return nil;
+  NSRange r = NSIntersectionRange(range, NSMakeRange(0, _marked.length));
+  if (actual) *actual = r;
+  return [[NSAttributedString alloc] initWithString:[_marked substringWithRange:r]];
+}
+- (NSUInteger)characterIndexForPoint:(NSPoint)point { return NSNotFound; }
+- (NSRect)firstRectForCharacterRange:(NSRange)range actualRange:(NSRangePointer)actual {   // for the candidate window
+  if (actual) *actual = range;
+  CGFloat s = self.scale;   // not known: the screen's top-left corner
+  NSRect r = NSMakeRect(_caret.origin.x * s, _caret.origin.y * s, _caret.size.width * s, _caret.size.height * s);
+  return [self.window convertRectToScreen:[self convertRect:r toView:nil]];
+}
+- (void)textInputFocused:(BOOL)focused caret:(NSRect)caret {
+  BOOL moved = !NSEqualRects(caret, _caret);
+  _caret = caret;
+  if (focused != _textFocused) {
+    _textFocused = focused;
+    if (!focused && _marked) { _marked = nil; [self.inputContext discardMarkedText]; }   // its text input is gone
+  }
+  if (moved) [self.inputContext invalidateCharacterCoordinates];
+}
 
 // Edit menu: its key equivalents (⌘C, ⌘V, ⌘Z…) are matched before -keyDown:, so forward them to the app as typed; a
 // click on the menu item sends the app the same shortcut (Mac virtual keycodes, as -keyDown: does).
@@ -502,12 +600,16 @@ extern int posix_spawn_file_actions_addchdir_np(posix_spawn_file_actions_t *, co
 }
 
 - (void)drain {
-  union { mach_msg_header_t h; sr_port_msg_t p; sr_frame_msg_t f; char buf[1024]; } m;
+  union { mach_msg_header_t h; sr_port_msg_t p; sr_frame_msg_t f; sr_text_state_msg_t t; char buf[1024]; } m;
   while (mach_msg(&m.h, MACH_RCV_MSG | MACH_RCV_TIMEOUT, 0, sizeof m, _port, 0, 0) == KERN_SUCCESS) {
     switch (m.h.msgh_id) {
       case SR_MSG_HELLO:
         if (_view.inputPort) mach_port_deallocate(mach_task_self(), _view.inputPort);
         _view.inputPort = m.p.port.name;
+        break;
+      case SR_MSG_TEXT_STATE:
+        if (m.h.msgh_size >= sizeof(sr_text_state_msg_t))
+          [_view textInputFocused:m.t.focused != 0 caret:NSMakeRect(m.t.x, m.t.y, m.t.width, m.t.height)];
         break;
       case SR_MSG_SCRIPT_HELLO:
         if (_scriptPort) mach_port_deallocate(mach_task_self(), _scriptPort);

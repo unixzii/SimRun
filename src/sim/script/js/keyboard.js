@@ -31,9 +31,7 @@ internal.press = spec => {
 // type(action, text) / fill(action, text): text into the focused text input through the app's input method
 // (textinput.md), once the keys sent before it have reached the app: keys go through UIKit's event queue, text goes in
 // at once. type commits one character at a time, as typed, with Enter and Tab as keys; fill replaces all the text.
-const keysHandled = async () => {
-  for (const end = Date.now() + 5000; native.ui.keysPending() && Date.now() < end;) await internal.sleep(10);
-};
+const keysHandled = () => new Promise(resolve => native.ui.afterKeys(resolve));
 const noFocus = action => new Error(`${action}: no text input has keyboard focus`);
 internal.type = async (action, text) => {
   for (const part of String(text).split(/([\n\t])/)) {
