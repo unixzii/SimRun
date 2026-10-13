@@ -21,7 +21,8 @@ command -v simrun || ls /Applications/SimRun.app/Contents/Helpers/simrun
 ```
 
 If neither exists, ask the user where SimRun is. A SimRun checkout has it at `build/bin/simrun`. Use whichever path
-you find in place of `simrun` below.
+you find in place of `simrun` below. If only the app's copy exists, the user can put `simrun` on `PATH` with
+**SimRun ▸ Install Command Line Tool…**.
 
 ## 1. Build the app for the Simulator
 

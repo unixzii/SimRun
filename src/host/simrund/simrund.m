@@ -32,6 +32,7 @@
 #include "services/permissions.h"
 #include "services/sensors.h"
 #include "services/keychainwindow.h"
+#include "services/clitool.h"
 #include "inspector/layerwindow.h"
 #include "inspector/layermirror.h"
 #include "inspector/layerscene.h"
@@ -184,6 +185,7 @@ static BOOL SameProfile(NSString *a, NSString *b) { return a == b || [a isEqualT
   NSMenu *runtimes = [[NSMenu alloc] initWithTitle:@"iOS Runtime"];
   runtimes.delegate = self;   // filled when opened: menuNeedsUpdate:
   [appMenu addItemWithTitle:@"iOS Runtime" action:nil keyEquivalent:@""].submenu = runtimes;
+  [appMenu addItemWithTitle:@"Install Command Line Tool…" action:@selector(installCommandLineTool:) keyEquivalent:@""].target = self;
   [appMenu addItem:NSMenuItem.separatorItem];
   [appMenu addItemWithTitle:@"Hide SimRun" action:@selector(hide:) keyEquivalent:@"h"];
   NSMenuItem *ho = [appMenu addItemWithTitle:@"Hide Others" action:@selector(hideOtherApplications:) keyEquivalent:@"h"];
@@ -254,6 +256,7 @@ static BOOL SameProfile(NSString *a, NSString *b) { return a == b || [a isEqualT
   if (a == @selector(relaunchFrontAppWith:)) return r.appPath != nil;
   if (a == @selector(quitFrontApp:) || a == @selector(showFrontAppLog:) || a == @selector(showFrontAppLayers:)) return r != nil;
   if (a == @selector(showFrontAppKeychain:)) return r.appPath != nil;
+  if (a == @selector(installCommandLineTool:)) return SRCommandLineTool.canInstall;
   return YES;
 }
 - (void)addApp:(id)s { _interactive = YES; [_launcher addAppWithPanel]; }
@@ -262,6 +265,7 @@ static BOOL SameProfile(NSString *a, NSString *b) { return a == b || [a isEqualT
 - (void)quitFrontApp:(id)s { [[self frontRequest].session terminate]; }
 - (void)showFrontAppLog:(id)s { [[self frontRequest].session showLog]; }
 - (void)showKeychain:(id)s { [SRKeychainWindow.shared showWithFilter:nil]; }
+- (void)installCommandLineTool:(id)s { [SRCommandLineTool install]; }
 - (void)showFrontAppLayers:(id)s { SRSession *session = [self frontRequest].session; if (session) [SRLayerWindow showForSession:session]; }
 - (void)showFrontAppKeychain:(id)s {
   NSString *path = [self frontRequest].appPath;

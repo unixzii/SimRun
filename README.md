@@ -122,12 +122,8 @@ build/bin/simrun run build/apps/Showcase.app
 
 The app opens in a window, and its output appears in your terminal. Press Ctrl-C or close the window to quit it.
 Anything after the app's path is passed to the app as launch arguments. `simrun` is also inside the app, at
-`SimRun.app/Contents/Helpers/simrun`; link either one into your `PATH` to type just `simrun`. With a downloaded
-release, that's:
-
-```bash
-sudo ln -s /Applications/SimRun.app/Contents/Helpers/simrun /usr/local/bin/simrun
-```
+`SimRun.app/Contents/Helpers/simrun`. To type just `simrun`, choose **SimRun ▸ Install Command Line Tool…**: it
+links `/usr/local/bin/simrun` to the one in the app, asking for an administrator's password if it needs one.
 
 If SimRun isn't open, this starts it in the background without the launcher. It quits by itself after 10 minutes
 with no apps running.
