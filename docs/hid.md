@@ -111,6 +111,9 @@ Notes:
   modifiers and Eisu/Kana.
 - Before each non-modifier key, the synthesized shift/control/option/command keys are pressed or released to match the
   flags. This is needed because the viewer sends no `flagsChanged:`. Caps lock (0x39) is ignored.
+- Key ups while ⌘ is held: `-[NSApplication sendEvent:]` doesn't send them to the window, so the viewer catches them
+  with a local `NSEvent` monitor. Without them, UIKit thinks the key is still held and ignores its next key down, so a
+  ⌘ shortcut (⌘V pasting, a UIKeyCommand) worked once per process.
 - Mapping is **positional**, like Simulator.app's hardware keyboard: UIKit translates with its own HW layout (US by
   default), so a non-US host layout produces US characters.
 - Text isn't typed as keys: the textinput module puts it in (textinput.md). Keys are queued and handled on a later

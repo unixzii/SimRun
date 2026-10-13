@@ -34,8 +34,24 @@ extern int posix_spawn_file_actions_addchdir_np(posix_spawn_file_actions_t *, co
   NSString *_marked;            // the marked text, while composing
   NSRange _markedSelection;
   NSMutableIndexSet *_keysDown; // keys sent down to the app, to send up
+  id _keyUpMonitor;
 }
 - (BOOL)acceptsFirstResponder { return YES; }
+// AppKit doesn't send a key up to the window while ⌘ is held (-[NSApplication sendEvent:] drops it). The app would never
+// see ⌘V's V go up, and UIKit ignores a key down for a key it thinks is still held, so every ⌘ shortcut would work only
+// once. A local monitor sees those key ups as they come off the queue: pass them on.
+- (void)viewDidMoveToWindow {
+  if (_keyUpMonitor) [NSEvent removeMonitor:_keyUpMonitor];
+  _keyUpMonitor = nil;
+  if (!self.window) return;
+  __weak SRView *weakSelf = self;
+  _keyUpMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyUp handler:^NSEvent *(NSEvent *e) {
+    SRView *v = weakSelf;
+    if (v && e.window == v.window && v.window.firstResponder == v && (e.modifierFlags & NSEventModifierFlagCommand)) [v keyUp:e];
+    return e;
+  }];
+}
+- (void)dealloc { if (_keyUpMonitor) [NSEvent removeMonitor:_keyUpMonitor]; }
 - (BOOL)acceptsFirstMouse:(NSEvent *)e { return YES; }
 - (BOOL)isFlipped { return YES; }
 - (void)post:(sr_input_msg_t *)m {
