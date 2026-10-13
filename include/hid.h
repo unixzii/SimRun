@@ -40,9 +40,9 @@ void SRHIDKeyUsage(uint32_t hidUsage, bool down);
 void SRHIDKeyMac(uint16_t macKeyCode, bool down, uint32_t macModifierFlags);
 // Release all synthesized modifier keys (e.g. when the host window loses focus).
 void SRHIDReleaseModifiers(void);
-// Type UTF-8 text: US-ASCII characters become key down/up pairs (with shift as needed); anything else is inserted via
-// the active keyboard input delegate (UIKeyboardImpl insertText:), like the software keyboard / IME commit.
-void SRHIDText(const char *utf8);
+// Whether keys sent with the calls above are still waiting for UIKit to handle them (main thread). Keys are handled on a
+// later turn of the run loop, text goes in at once (textinput.h): text that should come after a key waits for this.
+bool SRHIDKeysPending(void);
 
 // Drag & drop (the drag module, the in-process stand-in for the druid drag server). What backboardd does when a drag begins:
 // the fingers touching the screen are taken from UIKit (their touches are cancelled) and from then on their moves and

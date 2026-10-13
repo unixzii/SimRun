@@ -3,7 +3,8 @@
 **Status: working, early.** `simrun eval` runs a JavaScript script inside a running app, on its main thread. The API
 follows Playwright's, which coding agents already know: a snapshot of the screen as text with a ref for each element,
 locators that find elements by role, name or identifier, actions that wait for their element and act through real
-touches and keys (the same path as the window's mouse and keyboard, hid.md), and assertions. Scripts can also call
+touches and keys (the same path as the window's mouse and keyboard, hid.md) and text through the app's input method
+(textinput.md), and assertions. Scripts can also call
 into Objective-C. Meant for automating UI checks, and for agents driving an app.
 
 ```bash
@@ -100,8 +101,8 @@ timeout, the error lists elements with similar names.
 | | |
 |---|---|
 | `tap()`, `longPress({ duration })` | at the element's activation point (where VoiceOver taps: the switch of a Toggle row, say) |
-| `fill(text)` | focus the text field, replace its text |
-| `type(text)` | focus the text field, type at the cursor |
+| `fill(text)` | focus the text field, replace its text in one edit |
+| `type(text)` | focus the text field, type at the cursor one character at a time (`\n`, `\t`: the Enter and Tab keys) |
 | `press(key)` | a key, Playwright's names: `"Enter"`, `"Meta+A"`, `"Shift+Tab"`, `"ArrowDown"` |
 | `scrollIntoView()` | |
 | `activate()` | the element's accessibility action (a VoiceOver double tap), for when a tap can't reach it |
@@ -120,7 +121,8 @@ check once: `expect(n).toBe(3)`, `toEqual`, `toContain`, `toMatch`, `toBeTruthy`
 | | |
 |---|---|
 | `app.tap(x, y)`, `app.longPress(x, y, { duration })`, `app.swipe(x0, y0, x1, y1, { duration })` | touches at scene points |
-| `app.type(text)`, `app.press(key)` | keys, into whatever has keyboard focus |
+| `app.type(text)` | text, into whatever text input has keyboard focus |
+| `app.press(key)` | a key, into whatever has keyboard focus |
 | `app.waitForIdle({ quiet, timeout })` | until no frame has been drawn for `quiet` ms (100), at most `timeout` ms (2000) |
 | `app.screen()` | `{ width, height, scale }`, in points |
 | `await app.ax.elements({ all })` | the elements as records: `{ ref, role, name, value, id, traits, selected, disabled, focused, frame, visible, visibleFrame, tapPoint, groups }` |

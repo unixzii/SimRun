@@ -94,14 +94,13 @@ class Locator {
   // fill(text): focus the text field, replace what is in it with text
   async fill(text, opts = {}) {
     await this._focus('fill', opts);
-    internal.press('Meta+a');
-    if (String(text) === '') internal.press('Backspace'); else native.ui.text(String(text));
+    await internal.fill('fill', text);
     await waitForIdle();
   }
   // type(text): focus the text field, type text where the cursor is
   async type(text, opts = {}) {
     await this._focus('type', opts);
-    native.ui.text(String(text));
+    await internal.type('type', text);
     await waitForIdle();
   }
   // press(key): a key (Playwright's names: "Enter", "Meta+A"…), into the element if it is a text field

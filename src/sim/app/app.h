@@ -8,6 +8,7 @@ typedef enum {
   SRModuleRender,       // render/: the in-process render server; before scenes, which UIKit asks for the display
   SRModuleScenes,       // scenes/
   SRModuleHID,          // hid/
+  SRModuleTextInput,    // textinput/: the input method, text into the focused text input
   SRModulePasteboard,   // pboard/
   SRModuleDrag,         // drag/
   SRModuleDocPicker,    // docpicker/
@@ -31,6 +32,7 @@ SR_HIDDEN void SRContainerStart(void);
 SR_HIDDEN void SRRenderStart(void);
 SR_HIDDEN void SRScenesStart(void);
 SR_HIDDEN void SRHIDStart(void);
+SR_HIDDEN void SRTextInputStart(void);
 SR_HIDDEN void SRPasteboardStart(void);
 SR_HIDDEN void SRDragStart(void);
 SR_HIDDEN void SRDocPickerStart(void);

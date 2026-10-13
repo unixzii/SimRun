@@ -1,11 +1,12 @@
 // ui.m — what scripts do to the app and learn about its screen, beyond accessibility (native.ui, used by js/app.js):
-// touches, keys and text through the hid module (the same path as the window's mouse and keyboard, hid.md), how many frames
-// have been presented (SimFramebuffer; the UI has settled once that stops moving), the screen's size, and a dump of
+// touches and keys through the hid module (the same path as the window's mouse and keyboard, hid.md), text through the
+// textinput module (the app's input method, textinput.md), how many frames have been presented (SimFramebuffer; the UI has settled once that stops moving), the screen's size, and a dump of
 // the view hierarchy.
 #import <UIKit/UIKit.h>
 #include <dlfcn.h>
 #include "script.h"
 #include "hid.h"
+#include "textinput.h"
 
 UIWindowScene *SRActiveScene(void) {
   UIWindowScene *any = nil;
@@ -56,11 +57,17 @@ void SRInstallUIBindings(JSValue *native) {
     SRHIDKeyUsage(usage, down);
     return [V valueWithUndefinedInContext:SRCurrentContext()];
   };
-  // text(string): key presses for each character, into whatever has keyboard focus
-  ui[@"text"] = ^JSValue *(NSString *text) {
-    SRHIDText(text.UTF8String);
-    return [V valueWithUndefinedInContext:SRCurrentContext()];
+  // keysPending(): whether keys sent with key() are still waiting for UIKit (hid.h); text sent after them waits
+  ui[@"keysPending"] = ^BOOL(void) { return SRHIDKeysPending(); };
+  // type(string): into the focused text input, one character at a time, as typed (textinput.h); false if none has focus
+  ui[@"type"] = ^BOOL(NSString *text) {
+    __block BOOL focused = YES;
+    [text enumerateSubstringsInRange:NSMakeRange(0, text.length) options:NSStringEnumerationByComposedCharacterSequences
+                          usingBlock:^(NSString *ch, NSRange r, NSRange er, BOOL *stop) { *stop = !(focused = SRTextInsert(ch)); }];
+    return focused;
   };
+  // fill(string): the focused text input's text replaced with it (textinput.h); false if none has focus
+  ui[@"fill"] = ^BOOL(NSString *text) { return SRTextReplaceAll(text); };
   // frameCount(): frames presented so far, or -1 if SimRun's SimFramebuffer isn't there to ask
   ui[@"frameCount"] = ^double(void) {
     uint64_t (*f)(void) = SRFrameCountFunction();

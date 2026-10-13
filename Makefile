@@ -141,7 +141,7 @@ $(LIB)/SimFramebuffer: src/sim/simfb/simfb.m $(HDRS) | $(LIB)
 # are embedded as C arrays (xxd -i: core.js -> core_js[]). TCC.framework is linked through a stub (tcc/tcc.tbd; not in
 # the SDK); the other private frameworks' symbols (FrontBoardServices, GraphicsServices, BackBoardServices...) are
 # looked up at load.
-APP_MODULES := locale container render scenes hid pboard drag docpicker keychain webkit mps script tcc audio motion
+APP_MODULES := locale container render scenes hid textinput pboard drag docpicker keychain webkit mps script tcc audio motion
 APP_SRC := src/sim/app/app.m $(foreach m,$(APP_MODULES),$(wildcard src/sim/$(m)/*.m))
 SCRIPT_JS := $(wildcard src/sim/script/js/*.js)
 $(BUILD)/gen/script_js.h: $(SCRIPT_JS)

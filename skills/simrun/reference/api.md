@@ -65,8 +65,8 @@ in ms. The default is 5000, changed with `app.setDefaultTimeout(ms)`.
 |---|---|
 | `tap()` | Taps the element's activation point, where VoiceOver taps. |
 | `longPress({ duration = 800 })` | A long press at the activation point. |
-| `fill(text)` | Focuses the text field and replaces its text. `fill("")` clears it. |
-| `type(text)` | Focuses the text field and types at the cursor. |
+| `fill(text)` | Focuses the text field and replaces its text, as one edit. `fill("")` clears it. |
+| `type(text)` | Focuses the text field and types at the cursor, one character at a time. `\n` and `\t` press Enter and Tab. |
 | `press(key)` | Presses a key, into the element if it's a text field. |
 | `scrollIntoView()` | Scrolls until the element is on screen. |
 | `activate()` | Performs the element's accessibility action, as a VoiceOver double tap does. Use it when a tap can't reach the element. It needs no visibility. |
@@ -116,7 +116,7 @@ error shows what was expected and what was found.
 |---|---|
 | `app.tap(x, y)`, `app.longPress(x, y, { duration })` | A touch at screen points. |
 | `app.swipe(x0, y0, x1, y1, { duration = 300 })` | A one-finger drag. Drag upwards to scroll down. |
-| `app.type(text)` | Types into whatever has keyboard focus. |
+| `app.type(text)` | Types into whatever text input has keyboard focus. |
 | `app.press(key)` | Presses a key on whatever has keyboard focus. |
 | `app.waitForIdle({ quiet = 100, timeout = 2000 })` | Waits until no frame has been drawn for `quiet` ms. Returns false if that didn't happen within `timeout`. |
 | `app.screen()` | `{ width, height, scale }`, in points. |
@@ -138,7 +138,8 @@ error shows what was expected and what was found.
   - the punctuation keys `-` `=` `[` `]` `\` `;` `'` `,` `.` `/` and `` ` ``
 - **Modifiers:** `Shift`, `Control`, `Alt` (or `Option`), and `Meta` (or `Command`, `ControlOrMeta`), which is ⌘.
 
-To type text, use `fill`, `type` or `app.type`. They take any characters. Keys are mapped as on a US keyboard.
+To type text, use `fill`, `type` or `app.type`. They take any characters and put them in as the keyboard would, in
+order, without key presses. Use `press` for keys; keys are mapped as on a US keyboard.
 
 ## Objective-C
 

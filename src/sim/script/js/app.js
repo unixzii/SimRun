@@ -17,7 +17,7 @@ const app = Object.freeze({
   tap: async (x, y) => { await internal.tapAt(x, y); await waitForIdle(); },
   longPress: async (x, y, { duration = 800 } = {}) => { await internal.tapAt(x, y, duration); await waitForIdle(); },
   swipe: async (x0, y0, x1, y1, { duration = 300 } = {}) => { await internal.swipe(x0, y0, x1, y1, duration); await waitForIdle(); },
-  type: async text => { native.ui.text(String(text)); await waitForIdle(); },
+  type: async text => { await internal.type('type', text); await waitForIdle(); },
   press: async key => { internal.press(key); await waitForIdle(); },
 
   // waitForIdle({ quiet, timeout }): until no frame has been drawn for `quiet` ms (true), or `timeout` ms (false)

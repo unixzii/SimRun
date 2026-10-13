@@ -18,6 +18,7 @@ static const SRModule kModules[SRModuleCount] = {
   [SRModuleRender]     = { APP, NULL, SRRenderStart },
   [SRModuleScenes]     = { APP, NULL, SRScenesStart },
   [SRModuleHID]        = { APP, NULL, SRHIDStart },
+  [SRModuleTextInput]  = { APP, NULL, SRTextInputStart },
   [SRModulePasteboard] = { APP, "PBOARD_DISABLE", SRPasteboardStart },
   [SRModuleDrag]       = { APP, "DRAG_DISABLE", SRDragStart },
   [SRModuleDocPicker]  = { APP, "DOCPICKER_DISABLE", SRDocPickerStart },

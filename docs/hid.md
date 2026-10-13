@@ -5,7 +5,8 @@ that has no backboardd or SpringBoard. All of the following were verified:
 - UIButton `touchUpInside` actions, UISwitch, UITapGestureRecognizer, UITableView row selection.
 - UIScrollView/UITableView panning, deceleration and tap-to-stop.
 - Two-finger pinch (UIPinchGestureRecognizer).
-- Typing into UITextField: shift, backspace, arrows, cmd-A, Return/`textFieldShouldReturn`, non-ASCII text.
+- Typing into UITextField: shift, backspace, arrows, cmd-A, Return/`textFieldShouldReturn`. Text no key types goes
+  through the textinput module (textinput.md).
 - `pressesBegan`/UIKey, UIKeyCommand (arrow keys, cmd-K).
 - SwiftUI: Stepper, TextField, NavigationLink push, interactive edge-swipe back.
 - Landscape scenes.
@@ -13,7 +14,7 @@ that has no backboardd or SpringBoard. All of the following were verified:
   rotation), smart magnify (double tap). See §4a.
 
 It runs in every app SimRun starts: the app window's mouse, trackpad and keyboard come in through it, and so do
-`simrun eval`'s taps and typing (the script module calls the API below). `build/apps/HIDTest.app` logs every input
+`simrun eval`'s taps and keys (the script module calls the API below; its text goes through textinput.md). `build/apps/HIDTest.app` logs every input
 callback with an "[app]" prefix; `HID_VERBOSE=1` logs every injected event.
 
 Proof screenshots (from the workstream, not in the repository):
@@ -112,12 +113,11 @@ Notes:
   flags. This is needed because the viewer sends no `flagsChanged:`. Caps lock (0x39) is ignored.
 - Mapping is **positional**, like Simulator.app's hardware keyboard: UIKit translates with its own HW layout (US by
   default), so a non-US host layout produces US characters.
-- `SRHIDText(utf8)`:
-  - US-ASCII characters become key down/up pairs, with shift where needed. They behave like real keys: they appear as
-    `pressesBegan` and go through `shouldChangeCharactersInRange:`.
-  - Every other composed character is collected and inserted with `[UIKeyboardImpl activeInstance] insertText:`, the
-    path the software keyboard or an IME commit takes. The fallback is the first responder's `UIKeyInput insertText:`.
-    This path fires `editingChanged` but not `shouldChangeCharacters`.
+- Text isn't typed as keys: the textinput module puts it in (textinput.md). Keys are queued and handled on a later
+  turn of the run loop, while text goes in at once, so text that comes after a key waits for `SRHIDKeysPending()`
+  to turn false. hid records each key event it passes to UIKit until
+  `-[UIApplication _handleKeyHIDEvent:usingSyntheticEvent:]` has returned for it. Keys UIKit drops (no window with
+  keyboard focus) are forgotten after a second in which the main thread was free and UIKit handled none of them.
 
 ### iOS 18 runtime differences
 
@@ -142,7 +142,7 @@ void SRHIDDoubleTap(float x, float y);
 void SRHIDKeyUsage(uint32_t hidUsage, bool down);                // USB HID page 7
 void SRHIDKeyMac(uint16_t macKeyCode, bool down, uint32_t macModifierFlags);
 void SRHIDReleaseModifiers(void);
-void SRHIDText(const char *utf8);
+bool SRHIDKeysPending(void);                                     // keys UIKit hasn't handled yet (main thread)
 ```
 - All functions are thread-safe. They run on the main thread, asynchronously when called from elsewhere, in call
   order. Coordinates are scene points.
@@ -152,7 +152,7 @@ void SRHIDText(const char *utf8);
   - `SR_IN_TOUCH_*` → `SRHIDTouch`
   - `SR_IN_KEY_DOWN/UP` → `SRHIDKeyMac(keycode, modifiers)`. The characters field is not used, because keys are
     positional.
-  - `SR_IN_TEXT` → `SRHIDText`
+  - `SR_IN_TEXT` → `SRTextInsert` (textinput.md)
   - `SR_IN_RESIZE` → `SRScenesUpdate(x, y, YES, portrait)` (the scenes module)
   - `SR_IN_SCROLL` (`sr_scroll_payload_t`: deltas, NSEvent phase/momentumPhase, timestamp) → `SRHIDTrackpadScroll`
   - `SR_IN_GESTURE` (`sr_gesture_payload_t`: magnify or rotate delta + phase) → `SRHIDTrackpadGesture`
@@ -246,8 +246,8 @@ finger on the glass, not just those that opt into scroll events.
 - **Pointer / hover:** not implemented. Hover (UIHoverGestureRecognizer, iPad pointer effects) needs digitizer
   range-without-touch or pointer events with BKSHIDEventPointerAttributes, plus an iPad device profile.
 - **Text input / IME:**
-  - There is no marked-text (IME composition) bridge from the host. Committed host IME text can be sent with
-    `SR_IN_TEXT` → `SRHIDText` (inserted, not composed).
+  - There is no marked-text (IME composition) bridge from the host yet; the plan is in textinput.md. Committed text
+    can be sent with `SR_IN_TEXT` → `SRTextInsert` (inserted, not composed).
   - The host keyboard layout is not mirrored, because the mapping is positional and US. Proper support would set the
     HW layout (`BKSHIDKeyboardSetLayout` / GSKeyboard) from the host's input source, or send characters for printable
     keys.
