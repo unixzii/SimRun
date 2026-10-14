@@ -3,10 +3,16 @@
 #pragma once
 #import <Foundation/Foundation.h>
 
-// An iOS Simulator runtime: its RuntimeRoot and version.
+// The simulator platforms SimRun runs apps for, named as simctl names them.
+typedef NSString *SRPlatform NS_TYPED_ENUM;
+extern SRPlatform const SRPlatformIOS;       // "iOS"
+extern SRPlatform const SRPlatformWatchOS;   // "watchOS"
+
+// A Simulator runtime: its RuntimeRoot, platform and version.
 @interface SRRuntime : NSObject
 @property (readonly) NSString *root, *version, *build;   // ".../RuntimeRoot", "27.1", "24A94401"
-@property (readonly) NSString *name;                     // "iOS 27.1 (24A94401)"
+@property (readonly) SRPlatform platform;                // SRPlatformIOS, SRPlatformWatchOS
+@property (readonly) NSString *name;                     // "iOS 27.1 (24A94401)", "watchOS 27.0 (24R362)"
 + (instancetype)runtimeAtRoot:(NSString *)root;          // nil if it has no SystemVersion.plist
 @end
 
@@ -14,7 +20,7 @@
 // answers from in every sim process (SIMULATOR_CAPABILITIES: Dynamic Island, corner radius, home button, artwork
 // traits, ...); its screen is the display SimRun gives the app.
 @interface SRDeviceType : NSObject
-@property (readonly) NSString *identifier, *name, *family;   // "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro", "iPhone 17 Pro", "iPhone"
+@property (readonly) NSString *identifier, *name, *family;   // "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro", "iPhone 17 Pro", "iPhone" (or "iPad", "Apple Watch")
 @property (readonly) NSString *bundlePath, *capabilitiesPath;
 @property (readonly) NSString *modelIdentifier, *productClass, *minRuntimeVersion;   // "iPhone18,1", "V53", "26.0"
 @property (readonly) NSUInteger screenWidth, screenHeight;   // main screen, pixels (portrait)
@@ -26,14 +32,18 @@
 @end
 
 @interface SREnvironment : NSObject
-// The installed iOS Simulator runtimes, newest first, as CoreSimulator lists them (`simctl list runtimes`; cached for
-// 30 s, reloadInstalledRuntimes forgets that); the one with this build version, or nil.
+// The installed Simulator runtimes of a platform (installedRuntimes: iOS's), newest first, as CoreSimulator lists them
+// (`simctl list runtimes`; cached for 30 s, reloadInstalledRuntimes forgets that); the one with this build version
+// (any platform), or nil.
 + (NSArray<SRRuntime *> *)installedRuntimes;
++ (NSArray<SRRuntime *> *)installedRuntimesForPlatform:(SRPlatform)platform;
 + (void)reloadInstalledRuntimes;
 + (SRRuntime *)installedRuntimeWithBuild:(NSString *)build;
-// The runtime `spec` names: a RuntimeRoot, or an installed runtime's build ("23A343"), name ("iOS 26.0 (23A343)") or
-// version ("26.0"; the newest such build); nil if none.
+// The runtime of `platform` that `spec` names: a RuntimeRoot, or an installed runtime's build ("23A343"), name
+// ("iOS 26.0 (23A343)") or version ("26.0"; the newest such build), or the platform ("watchOS": its default
+// runtime); nil if none. runtimeMatching: is iOS's.
 + (SRRuntime *)runtimeMatching:(NSString *)spec;
++ (SRRuntime *)runtimeMatching:(NSString *)spec platform:(SRPlatform)platform;
 // The runtime chosen in SimRun ▸ iOS Runtime (its build version; nil = the newest installed). Takes effect the next
 // time SimRun starts: runtimeRoot is read once.
 @property (class, copy) NSString *preferredRuntimeBuild;
@@ -41,6 +51,9 @@
 // SIMRUN_RUNTIME_ROOT, else the preferred runtime, else the newest installed one; nil if none.
 + (NSString *)runtimeRoot;
 + (BOOL)runtimeRootFromEnvironment;   // SIMRUN_RUNTIME_ROOT chose it
+// What apps of `platform` run on unless they have their own runtime: for iOS, runtimeRoot's; for watchOS,
+// SIMRUN_WATCH_RUNTIME_ROOT, else the newest installed watchOS runtime; nil if none.
++ (SRRuntime *)defaultRuntimeForPlatform:(SRPlatform)platform;
 // The variables that select a runtime (DYLD_ROOT_PATH, SIMULATOR_ROOT, SIMULATOR_RUNTIME_VERSION, ...).
 + (NSDictionary<NSString *, NSString *> *)runtimeVariablesForRoot:(NSString *)root;
 // The device types `runtime` supports, as CoreSimulator lists them (newest first, iPhones before iPads); without simctl,
@@ -49,8 +62,9 @@
 // The one of those with this identifier (or name), or nil.
 + (SRDeviceType *)deviceTypeWithIdentifier:(NSString *)identifier runtime:(SRRuntime *)runtime;
 // What an app runs as unless it is set to another one (Launch With…): SIMRUN_DEVICE (identifier or name) if `runtime`
-// supports it, else the newest supported iPhone with a 1206x2622 screen (a 6.3-inch Pro, preferably), else the newest
-// supported iPhone, else the first supported device type; nil if there is none.
+// supports it, else for iOS the newest supported iPhone with a 1206x2622 screen (a 6.3-inch Pro, preferably), else
+// the newest supported iPhone, and for watchOS the newest supported Apple Watch; else the first supported device
+// type; nil if there is none.
 + (SRDeviceType *)defaultDeviceTypeForRuntime:(SRRuntime *)runtime;
 // Variables a sim process needs (DYLD_ROOT_PATH, HOME = the simulated device's data dir, SIMULATOR_*, ...), for
 // `root` or this process's runtime, simulating `deviceType` (nil: the runtime's default device type).
@@ -81,9 +95,15 @@
 // they can't be read.
 + (NSString *)hostInternationalSettings;
 
+// SimRun's sim-side pieces, built for each platform: lib/ has iOS's, lib/watchos/ the same ones marked for the watchOS
+// Simulator. The methods without a platform are iOS's.
 + (NSString *)simnsPath;                 // the simns helper
++ (NSString *)simnsPathForPlatform:(SRPlatform)platform;
 + (NSString *)libraryDirectory;          // xpcservices.dylib, app.dylib + SimFramebuffer
++ (NSString *)libraryDirectoryForPlatform:(SRPlatform)platform;
 + (NSString *)injectedLibraries;         // SIMNS_INSERT value for apps (+ SIMAPP_EXTRA_INSERT)
 + (NSString *)injectedLibrariesWithExtra:(NSString *)extra;   // ... + this dylib instead
++ (NSString *)injectedLibrariesForPlatform:(SRPlatform)platform extra:(NSString *)extra;
 + (NSString *)framebufferFramework;      // SIMULATOR_FRAMEBUFFER_FRAMEWORK value
++ (NSString *)framebufferFrameworkForPlatform:(SRPlatform)platform;
 @end

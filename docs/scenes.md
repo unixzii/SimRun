@@ -185,6 +185,13 @@ Written against iOS 27.1; the iOS 18.6 runtime differs in three places, handled 
 - `BSServiceConnectionEndpoint` holds the XPC endpoint itself (`_endpoint`, `_targetDescription`); iOS 26+ puts it in an
   underlying `BSXPCServiceConnectionEndpoint` (`_xpcEndpoint`). The HID sink endpoint is built either way.
 
+### watchOS
+
+A watch app's scene is Carousel's rather than SpringBoard's: `CUISWKApplicationSceneSpecification` (settings
+`PUICApplicationSceneSettings`), `PUICApplicationSceneTransitionContext`, the bundle identifier as the scene
+identifier, and CarouselUIServices' metrics for the display instead of the safe-area defaults above
+([watchos.md](watchos.md#launch-what-carousel-and-launchservices-give-a-watch-app)).
+
 ## 6. Open problems / next steps
 - **Scene destruction / app termination.** `sceneID:destroyWithTransitionContext:completion:` and
   `willTerminateWithTransitionContext:` are not exercised yet.

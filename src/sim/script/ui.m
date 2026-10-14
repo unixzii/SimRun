@@ -7,6 +7,7 @@
 #include "script.h"
 #include "hid.h"
 #include "textinput.h"
+#import "common.h"
 
 UIWindowScene *SRActiveScene(void) {
   UIWindowScene *any = nil;
@@ -51,6 +52,13 @@ void SRInstallUIBindings(JSValue *native) {
   ui[@"touch"] = ^JSValue *(int finger, int phase, double x, double y) {
     SRHIDTouchFinger(finger, phase, (float)x, (float)y);
     return [V valueWithUndefinedInContext:SRCurrentContext()];
+  };
+  // crown(dy): on a watch, the Digital Crown turned as a scroll of dy points would (hid.h, content-follows direction:
+  // dy < 0 scrolls down); false elsewhere
+  ui[@"crown"] = ^BOOL(double dy) {
+    if (!SRIsWatch()) return NO;
+    SRHIDScroll(0, 0, 0, (float)dy);
+    return YES;
   };
   // key(usage, down): a key by its HID usage (page 7), e.g. 0x28 Return, 0xE3 left Command
   ui[@"key"] = ^JSValue *(uint32_t usage, BOOL down) {

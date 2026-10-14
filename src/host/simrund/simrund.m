@@ -405,13 +405,21 @@ static BOOL ProcessGone(pid_t pid) {
   if (running) { [running.session bringToFront]; return; }   // no-op while it is still launching
   // the app's launch options (Launch With…): its runtime, device, arguments, environment
   SRLaunchOptions *o = [SRLaunchOptions optionsForAppAtPath:app.path profile:profile];
-  NSString *root = SREnvironment.runtimeRoot;
+  NSString *root = [SREnvironment defaultRuntimeForPlatform:app.platform].root;
+  if (!root) {
+    NSAlert *al = [NSAlert new]; al.messageText = [NSString stringWithFormat:@"Couldn't launch %@", app.name];
+    al.informativeText = [NSString stringWithFormat:@"It is a %@ app, and no %@ Simulator runtime is installed. Install one in "
+                                                     "Xcode ▸ Settings ▸ Components.", app.platform, app.platform];
+    [al runModal];
+    return;
+  }
   if (o.runtimeBuild && ![o.runtimeBuild isEqualToString:[SRRuntime runtimeAtRoot:root].build]) {
-    root = [SREnvironment installedRuntimeWithBuild:o.runtimeBuild].root;
+    SRRuntime *own = [SREnvironment installedRuntimeWithBuild:o.runtimeBuild];
+    root = [own.platform isEqualToString:app.platform] ? own.root : nil;
     if (!root) {
       NSAlert *al = [NSAlert new]; al.messageText = [NSString stringWithFormat:@"Couldn't launch %@", app.name];
-      al.informativeText = [NSString stringWithFormat:@"It is set to run on iOS runtime %@, which isn't installed. Choose another "
-                                                       "runtime in its Launch Options (in the launcher).", o.runtimeBuild];
+      al.informativeText = [NSString stringWithFormat:@"It is set to run on %@ runtime %@, which isn't installed. Choose another "
+                                                       "runtime in its Launch Options (in the launcher).", app.platform, o.runtimeBuild];
       [al runModal];
       return;
     }
@@ -430,7 +438,7 @@ static BOOL ProcessGone(pid_t pid) {
   r.cwd = app.path; r.title = app.name; r.appPath = app.path; r.bundleID = app.bundleIdentifier; r.runtimeRoot = root; r.profile = profile;
   if (app.deviceBuild) r.deviceBuild = app.path;
   r.device = device ?: [SREnvironment defaultDeviceTypeForRuntime:[SRRuntime runtimeAtRoot:root]];
-  r.env = [self environmentFrom:[SREnvironment processEnvironment] for:r libraries:[SREnvironment injectedLibraries]
+  r.env = [self environmentFrom:[SREnvironment processEnvironment] for:r extraLibrary:NSProcessInfo.processInfo.environment[@"SIMAPP_EXTRA_INSERT"]
                       overrides:o.environmentVariables];
   // no terminal: stdout/stderr go to the session's log window
   int p[2]; pipe(p);
@@ -439,12 +447,14 @@ static BOOL ProcessGone(pid_t pid) {
 }
 
 // `base` (the launcher's environment, or a client's) with the simulator environment for `r`'s runtime and device, the
-// libraries to inject (SIMNS_INSERT) and SimRun's framebuffer; then `overrides`.
-- (NSArray<NSString *> *)environmentFrom:(NSArray<NSString *> *)base for:(SRRequest *)r libraries:(NSString *)libraries
+// libraries to inject (SIMNS_INSERT: SimRun's for the runtime's platform, then `extra`) and SimRun's framebuffer;
+// then `overrides`.
+- (NSArray<NSString *> *)environmentFrom:(NSArray<NSString *> *)base for:(SRRequest *)r extraLibrary:(NSString *)extra
                                overrides:(NSDictionary<NSString *, NSString *> *)overrides {
+  SRPlatform platform = [SRRuntime runtimeAtRoot:r.runtimeRoot].platform ?: SRPlatformIOS;
   NSMutableDictionary *vars = [[SREnvironment simulatorVariablesForRoot:r.runtimeRoot deviceType:r.device] mutableCopy];
-  vars[@"SIMNS_INSERT"] = libraries;
-  vars[@"SIMULATOR_FRAMEBUFFER_FRAMEWORK"] = [SREnvironment framebufferFramework];
+  vars[@"SIMNS_INSERT"] = [SREnvironment injectedLibrariesForPlatform:platform extra:extra];
+  vars[@"SIMULATOR_FRAMEBUFFER_FRAMEWORK"] = [SREnvironment framebufferFrameworkForPlatform:platform];
   if (overrides) [vars addEntriesFromDictionary:overrides];
   return [SREnvironment environment:base withOverrides:vars];
 }
@@ -467,7 +477,7 @@ static BOOL ProcessGone(pid_t pid) {
   dispatch_source_set_event_handler(ns.ctlSource, ^{ [weakSelf drainControlOf:weakNS]; });
   dispatch_resume(ns.ctlSource);
 
-  NSString *simns = [SREnvironment simnsPath];
+  NSString *simns = [SREnvironment simnsPathForPlatform:[SRRuntime runtimeAtRoot:root].platform ?: SRPlatformIOS];
   NSMutableDictionary *vars = [[SREnvironment simulatorVariablesForRoot:root] mutableCopy];
   vars[@"SIMNS_HOST_SLOT"] = @"0";
   NSMutableArray *env = [NSMutableArray array];
@@ -686,18 +696,23 @@ static BOOL ProcessGone(pid_t pid) {
   return out;
 }
 
-// Why `r`'s executable can't run on `rt` (its minimum iOS is newer: dyld would refuse to load it and the app would just
-// exit), or nil.
+// Why `r`'s executable can't run on `rt` (it is built for another platform's Simulator, or its minimum OS is newer:
+// dyld would refuse to load it and the app would just exit), or nil.
 - (NSString *)runtimeProblemFor:(SRRequest *)r runtime:(SRRuntime *)rt {
   NSString *exe = r.argv.firstObject;
   if (!exe.absolutePath && r.cwd) exe = [r.cwd stringByAppendingPathComponent:exe];   // a client's path is relative to its cwd
+  NSString *name = r.title ?: r.argv.firstObject.lastPathComponent;
+  SRPlatform platform = [SRAppInfo platformOfExecutable:exe];
+  if (![platform isEqualToString:rt.platform])
+    return [NSString stringWithFormat:@"%@ is built for the %@ Simulator, and can't run on %@.", name, platform, rt.name];
   NSString *min = [SRAppInfo minimumOSVersionOfExecutable:exe];
   if (!min || [min compare:rt.version options:NSNumericSearch] != NSOrderedDescending) return nil;
-  NSString *name = r.title ?: r.argv.firstObject.lastPathComponent;
   NSString *how = r.sock >= 0
       ? @"Run it on a newer runtime with simrun run --runtime (simrun runtimes lists them)."
-      : @"Choose a newer runtime for it in its Launch Options (in the launcher), or for SimRun in SimRun ▸ iOS Runtime.";
-  return [NSString stringWithFormat:@"%@ requires iOS %@ or later, but it would run on %@. %@", name, min, rt.name, how];
+      : [platform isEqualToString:SRPlatformIOS]
+      ? @"Choose a newer runtime for it in its Launch Options (in the launcher), or for SimRun in SimRun ▸ iOS Runtime."
+      : @"Choose a newer runtime for it in its Launch Options (in the launcher).";
+  return [NSString stringWithFormat:@"%@ requires %@ %@ or later, but it would run on %@. %@", name, platform, min, rt.name, how];
 }
 
 // The screen `env` gives the app (SIMULATOR_MAINSCREEN_*), in points, for the app's window.
@@ -727,7 +742,7 @@ static NSSize ScreenSize(NSDictionary<NSString *, NSString *> *env) {
   mach_port_t ns = MACH_PORT_NULL;
   SRRuntime *rt = [SRRuntime runtimeAtRoot:r.runtimeRoot];
   if (r.problem) err = r.problem;
-  else if (!rt) err = [NSString stringWithFormat:@"Not an iOS Simulator runtime: %@", r.runtimeRoot];
+  else if (!rt) err = [NSString stringWithFormat:@"Not an iOS or watchOS Simulator runtime: %@", r.runtimeRoot];
   else if ((err = [self runtimeProblemFor:r runtime:rt])) {}
   else ns = [self newNamespaceIn:_simns[r.runtimeRoot.stringByStandardizingPath]];
   int fds[3] = { r.fd0, r.fd1, r.fd2 };
@@ -1026,15 +1041,17 @@ static void SendReply(int c, NSDictionary *reply, dispatch_block_t then) {
     r.pickPresets = presets;
   }
   NSString *rtSpec = Str(d, @"runtime"), *devSpec = Str(d, @"device");
-  SRRuntime *rt = rtSpec ? [SREnvironment runtimeMatching:rtSpec] : [SRRuntime runtimeAtRoot:SREnvironment.runtimeRoot];
-  if (!rt) return [NSString stringWithFormat:@"No installed iOS runtime matches \"%@\" (simrun runtimes lists them)", rtSpec];
+  SRPlatform platform = [SRAppInfo platformOfExecutable:exe];
+  SRRuntime *rt = rtSpec ? [SREnvironment runtimeMatching:rtSpec platform:platform] : [SREnvironment defaultRuntimeForPlatform:platform];
+  if (!rt && rtSpec) return [NSString stringWithFormat:@"No installed %@ runtime matches \"%@\" (simrun runtimes lists them)", platform, rtSpec];
+  if (!rt) return [NSString stringWithFormat:@"%@ is a %@ app, and no %@ Simulator runtime is installed", r.title, platform, platform];
   r.runtimeRoot = rt.root;
   r.device = devSpec ? [SREnvironment deviceTypeWithIdentifier:devSpec runtime:rt] : [SREnvironment defaultDeviceTypeForRuntime:rt];
   if (devSpec && !r.device)
     return [NSString stringWithFormat:@"%@ has no device type \"%@\" (simrun devices --runtime %@ lists them)", rt.name, devSpec, rt.build];
   NSMutableArray *env = [NSMutableArray array];
   if ([d[@"env"] isKindOfClass:NSArray.class]) for (id kv in d[@"env"]) if ([kv isKindOfClass:NSString.class]) [env addObject:kv];
-  r.env = [self environmentFrom:env for:r libraries:[SREnvironment injectedLibrariesWithExtra:Str(d, @"insert")] overrides:nil];
+  r.env = [self environmentFrom:env for:r extraLibrary:Str(d, @"insert") overrides:nil];
   return nil;
 }
 
@@ -1111,10 +1128,14 @@ static void SendReply(int c, NSDictionary *reply, dispatch_block_t then) {
     SRRuntime *current = [SRRuntime runtimeAtRoot:SREnvironment.runtimeRoot];
     NSMutableArray *list = [NSMutableArray array];
     BOOL listed = NO;
-    for (SRRuntime *rt in SREnvironment.installedRuntimes) {
-      BOOL cur = [rt.build isEqualToString:current.build];
-      listed |= cur;
-      [list addObject:@{ @"name": rt.name, @"version": rt.version, @"build": rt.build, @"root": rt.root, @"current": @(cur) }];
+    NSArray<SRRuntime *> *all = [SREnvironment.installedRuntimes
+        arrayByAddingObjectsFromArray:[SREnvironment installedRuntimesForPlatform:SRPlatformWatchOS]];
+    NSString *watch = [SREnvironment defaultRuntimeForPlatform:SRPlatformWatchOS].build;
+    for (SRRuntime *rt in all) {
+      BOOL ios = [rt.platform isEqualToString:SRPlatformIOS], cur = [rt.build isEqualToString:ios ? current.build : watch];
+      listed |= cur && ios;
+      [list addObject:@{ @"name": rt.name, @"version": rt.version, @"build": rt.build, @"root": rt.root, @"current": @(cur),
+                         @"platform": rt.platform }];
     }
     if (current && !listed)   // SIMRUN_RUNTIME_ROOT outside the installed ones
       [list addObject:@{ @"name": current.name, @"version": current.version, @"build": current.build, @"root": current.root, @"current": @YES }];
@@ -1122,8 +1143,9 @@ static void SendReply(int c, NSDictionary *reply, dispatch_block_t then) {
   }
   if ([action isEqual:@"devices"]) {
     NSString *spec = Str(d, @"runtime");
-    SRRuntime *rt = spec ? [SREnvironment runtimeMatching:spec] : [SRRuntime runtimeAtRoot:SREnvironment.runtimeRoot];
-    if (!rt) return @{ @"error": [NSString stringWithFormat:@"No installed iOS runtime matches \"%@\" (simrun runtimes lists them)", spec] };
+    SRRuntime *rt = !spec ? [SRRuntime runtimeAtRoot:SREnvironment.runtimeRoot]
+                          : [SREnvironment runtimeMatching:spec] ?: [SREnvironment runtimeMatching:spec platform:SRPlatformWatchOS];
+    if (!rt) return @{ @"error": [NSString stringWithFormat:@"No installed runtime matches \"%@\" (simrun runtimes lists them)", spec] };
     SRDeviceType *def = [SREnvironment defaultDeviceTypeForRuntime:rt];
     NSMutableArray *list = [NSMutableArray array];
     for (SRDeviceType *t in [SREnvironment deviceTypesForRuntime:rt])

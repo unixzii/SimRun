@@ -78,12 +78,13 @@ static uint32_t Arm64Platform(NSString *path, uint32_t *minos, BOOL *encrypted) 
   if (!exe.length) return @"Info.plist has no CFBundleExecutable.";
   BOOL encrypted;
   switch (Arm64Platform([path stringByAppendingPathComponent:exe], NULL, &encrypted)) {
-    case PLATFORM_IOSSIMULATOR: return nil;
+    case PLATFORM_IOSSIMULATOR: case PLATFORM_WATCHOSSIMULATOR: return nil;
     case PLATFORM_IOS:   // SimRun runs a converted copy (devicebuild.h)
       return encrypted ? @"This is an encrypted App Store build. SimRun can run builds for iPhone/iPad devices from Xcode or for "
                           "development, ad hoc or enterprise distribution, not App Store ones." : nil;
-    case 0: return @"The executable has no arm64 slice (SimRun needs an arm64 iOS Simulator build).";
-    default: return @"The executable isn't built for the iOS Simulator.";
+    case PLATFORM_WATCHOS: return @"This is a build for Apple Watch devices. SimRun runs watchOS apps built for the watchOS Simulator.";
+    case 0: return @"The executable has no arm64 slice (SimRun needs an arm64 iOS or watchOS Simulator build).";
+    default: return @"The executable isn't built for the iOS or watchOS Simulator.";
   }
 }
 
@@ -94,6 +95,10 @@ static uint32_t Arm64Platform(NSString *path, uint32_t *minos, BOOL *encrypted) 
                     : [NSString stringWithFormat:@"%u.%u", v >> 16, (v >> 8) & 0xff];
 }
 
++ (SRPlatform)platformOfExecutable:(NSString *)path {
+  return Arm64Platform(path, NULL, NULL) == PLATFORM_WATCHOSSIMULATOR ? SRPlatformWatchOS : SRPlatformIOS;
+}
+
 + (instancetype)infoWithPath:(NSString *)path {
   SRAppInfo *a = [SRAppInfo new];
   NSDictionary *info = [NSDictionary dictionaryWithContentsOfFile:[path stringByAppendingPathComponent:@"Info.plist"]];
@@ -101,7 +106,9 @@ static uint32_t Arm64Platform(NSString *path, uint32_t *minos, BOOL *encrypted) 
   a->_name = info[@"CFBundleDisplayName"] ?: info[@"CFBundleName"] ?: path.lastPathComponent.stringByDeletingPathExtension;
   a->_bundleIdentifier = info[@"CFBundleIdentifier"] ?: @"";
   a->_executablePath = [path stringByAppendingPathComponent:info[@"CFBundleExecutable"] ?: @""];
-  a->_deviceBuild = Arm64Platform(a->_executablePath, NULL, NULL) == PLATFORM_IOS;
+  uint32_t platform = Arm64Platform(a->_executablePath, NULL, NULL);
+  a->_deviceBuild = platform == PLATFORM_IOS;
+  a->_platform = platform == PLATFORM_WATCHOSSIMULATOR ? SRPlatformWatchOS : SRPlatformIOS;
   a->_icon = [self iconForBundle:path];
   return a;
 }
@@ -202,7 +209,7 @@ static uint32_t Arm64Platform(NSString *path, uint32_t *minos, BOOL *encrypted) 
   for (NSString *proj in [fm contentsOfDirectoryAtPath:dd error:nil]) {
     NSString *products = [dd stringByAppendingFormat:@"/%@/Build/Products", proj];
     for (NSString *cfg in [fm contentsOfDirectoryAtPath:products error:nil]) {
-      if (![cfg hasSuffix:@"-iphonesimulator"]) continue;
+      if (![cfg hasSuffix:@"-iphonesimulator"] && ![cfg hasSuffix:@"-watchsimulator"]) continue;
       NSString *dir = [products stringByAppendingPathComponent:cfg];
       for (NSString *f in [fm contentsOfDirectoryAtPath:dir error:nil]) {
         NSString *p = [dir stringByAppendingPathComponent:f];

@@ -257,7 +257,8 @@ static NSImage *Symbol(NSString *name, NSString *description) {
   [self show];
   NSOpenPanel *p = [NSOpenPanel openPanel];
   p.allowedContentTypes = @[ UTTypeApplicationBundle ]; p.allowsMultipleSelection = YES; p.treatsFilePackagesAsDirectories = NO;
-  p.message = @"Choose iOS app bundles: built for an iOS Simulator destination, or for devices (not from the App Store).";
+  p.message = @"Choose app bundles built for an iOS or watchOS Simulator destination, or iOS apps built for devices (not from "
+               "the App Store).";
   [p beginSheetModalForWindow:_window completionHandler:^(NSModalResponse r) {
     if (r != NSModalResponseOK) return;
     NSMutableArray *paths = [NSMutableArray array]; for (NSURL *u in p.URLs) [paths addObject:u.path];
@@ -274,9 +275,10 @@ static NSImage *Symbol(NSString *name, NSString *description) {
   NSUInteger added = SRLibrary.shared.apps.count - before;
   NSAlert *al = [NSAlert new];
   al.messageText = added ? [NSString stringWithFormat:@"Added %lu app%@ from Xcode", (unsigned long)added, added == 1 ? @"" : @"s"]
-                         : @"No new iOS Simulator builds found";
+                         : @"No new Simulator builds found";
   al.informativeText = builds.count ? @"Found in ~/Library/Developer/Xcode/DerivedData." :
-      @"Build a project for an iOS Simulator destination in Xcode first; SimRun looks in ~/Library/Developer/Xcode/DerivedData.";
+      @"Build a project for an iOS or watchOS Simulator destination in Xcode first; SimRun looks in "
+       "~/Library/Developer/Xcode/DerivedData.";
   [al beginSheetModalForWindow:_window completionHandler:nil];
 }
 
@@ -395,7 +397,7 @@ static NSMenuItem *AddItem(NSMenu *menu, NSString *title, SEL action, id target,
     NSMenuToolbarItem *it = [[NSMenuToolbarItem alloc] initWithItemIdentifier:ident];
     NSMenu *m = [NSMenu new];
     if ([ident isEqualToString:kAddItem]) {
-      it.image = Symbol(@"plus", @"Add Apps"); it.label = @"Add Apps"; it.toolTip = @"Add iOS Simulator apps";
+      it.image = Symbol(@"plus", @"Add Apps"); it.label = @"Add Apps"; it.toolTip = @"Add iOS and watchOS Simulator apps";
       [m addItemWithTitle:@"Add App…" action:@selector(addApp:) keyEquivalent:@""].target = self;
       [m addItemWithTitle:@"Add Xcode Simulator Builds" action:@selector(addXcodeBuilds:) keyEquivalent:@""].target = self;
     } else {

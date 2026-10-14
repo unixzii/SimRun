@@ -15,6 +15,9 @@ typedef enum {
   SRRoleExtension,    // a WebKit extension spawned for the app (WebContent, Networking, GPU)
 } SRRole;
 SR_HIDDEN SRRole SRProcessRole(void);
+// Whether this is a watchOS Simulator process. SimRun's sim libraries are built once and marked for each platform
+// (lib/watchos/), so this is decided when they run: dyld's platform for the process.
+SR_HIDDEN BOOL SRIsWatch(void);
 
 // ---------- SimRun
 // SimRun's port for this app's session (mach_ports_lookup()[SR_PORT_SLOT_HOST], protocol.h), MACH_PORT_NULL if none.

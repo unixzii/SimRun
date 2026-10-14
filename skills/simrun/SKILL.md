@@ -38,6 +38,10 @@ xcodebuild -scheme MyApp -destination 'generic/platform=iOS Simulator' -derivedD
 
 Add `-workspace MyApp.xcworkspace` or `-project MyApp.xcodeproj` when the directory has more than one.
 
+A watchOS app works the same way: build it for `generic/platform=watchOS Simulator` (the app is in
+`Debug-watchsimulator`), and SimRun runs it on the newest watchOS runtime as an Apple Watch. Turn its Digital Crown
+with `app.crown(delta)`. Its text fields can't be typed into.
+
 ## 2. Launch it
 
 `simrun run` stays in the foreground for as long as the app runs. The app's stdout and stderr go to it, and **the

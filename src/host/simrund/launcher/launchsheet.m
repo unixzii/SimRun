@@ -176,8 +176,11 @@ static NSView *Page(NSView *content) {
 
 - (NSView *)infoPage {
   _runtime = [NSPopUpButton new]; _runtime.target = self; _runtime.action = @selector(runtimeChanged:);
-  NSTextField *note = Note(@"SimRun's own runtime is chosen in SimRun ▸ iOS Runtime. An app on another runtime gets that "
-                            "runtime's system services; its data container stays the same.");
+  NSTextField *note = Note([_app.platform isEqualToString:SRPlatformIOS]
+      ? @"SimRun's own runtime is chosen in SimRun ▸ iOS Runtime. An app on another runtime gets that runtime's system "
+         "services; its data container stays the same."
+      : @"A watchOS app runs on the newest installed watchOS runtime unless you choose another. Its data container stays "
+         "the same on every runtime.");
   _device = [NSPopUpButton new]; _device.target = self; _device.action = @selector(deviceChanged:);
   NSTextField *deviceNote = Note(@"The device types the runtime supports. The app gets that model's screen, safe areas and "
                                   "hardware features (Dynamic Island, home button, ...).");
@@ -377,12 +380,15 @@ static NSView *Page(NSView *content) {
 // ---------------------------------------------------------------- state
 - (void)refresh {
   [_runtime removeAllItems];
-  SRRuntime *mine = [SRRuntime runtimeAtRoot:SREnvironment.runtimeRoot];
-  [_runtime addItemWithTitle:mine ? [NSString stringWithFormat:@"Same as SimRun — %@", mine.name] : @"Same as SimRun"];
+  // an iOS app runs on SimRun's runtime by default, a watchOS app on the newest watchOS runtime
+  BOOL ios = [_app.platform isEqualToString:SRPlatformIOS];
+  SRRuntime *mine = [SREnvironment defaultRuntimeForPlatform:_app.platform];
+  NSString *byDefault = ios ? @"Same as SimRun" : @"Newest Installed";
+  [_runtime addItemWithTitle:mine ? [NSString stringWithFormat:@"%@ — %@", byDefault, mine.name] : byDefault];
   [_runtime.menu addItem:NSMenuItem.separatorItem];
   NSString *want = _options.runtimeBuild;
   NSMenuItem *selected = nil;
-  for (SRRuntime *r in SREnvironment.installedRuntimes) {
+  for (SRRuntime *r in [SREnvironment installedRuntimesForPlatform:_app.platform]) {
     NSMenuItem *it = [_runtime.menu addItemWithTitle:r.name action:nil keyEquivalent:@""];
     it.representedObject = r.build;
     if ([r.build isEqualToString:want]) selected = it;
@@ -399,9 +405,11 @@ static NSView *Page(NSView *content) {
   [_argsTable reloadData]; [_envTable reloadData];
 }
 
-// The runtime the app would run on: its own, or SimRun's; nil if its own isn't installed.
+// The runtime the app would run on: its own, or its platform's default; nil if its own isn't installed (or is another
+// platform's).
 - (SRRuntime *)selectedRuntime {
-  return _options.runtimeBuild ? [SREnvironment installedRuntimeWithBuild:_options.runtimeBuild] : [SRRuntime runtimeAtRoot:SREnvironment.runtimeRoot];
+  SRRuntime *rt = _options.runtimeBuild ? [SREnvironment installedRuntimeWithBuild:_options.runtimeBuild] : [SREnvironment defaultRuntimeForPlatform:_app.platform];
+  return [rt.platform isEqualToString:_app.platform] ? rt : nil;
 }
 
 // The Device menu: the selected runtime's default device type, then the others it supports, iPhones and iPads apart.

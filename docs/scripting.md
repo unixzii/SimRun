@@ -121,6 +121,7 @@ check once: `expect(n).toBe(3)`, `toEqual`, `toContain`, `toMatch`, `toBeTruthy`
 | | |
 |---|---|
 | `app.tap(x, y)`, `app.longPress(x, y, { duration })`, `app.swipe(x0, y0, x1, y1, { duration })` | touches at scene points |
+| `app.crown(delta, { duration })` | watchOS: the Digital Crown turned as a scroll of `delta` points would turn it (positive: down), through hid like the Mac's scroll wheel ([watchos.md](watchos.md#the-digital-crown)); throws in an iPhone app |
 | `app.type(text)` | text, into whatever text input has keyboard focus |
 | `app.press(key)` | a key, into whatever has keyboard focus |
 | `app.waitForIdle({ quiet, timeout })` | until no frame has been drawn for `quiet` ms (100), at most `timeout` ms (2000) |

@@ -12,10 +12,12 @@ fi
 
 # Explicitly sign the Simulator payload too: --deep signing is not a substitute
 # for enumerating code in Contents/Resources, or for per-executable entitlements.
-for file in xpcservices.dylib app.dylib SimFramebuffer; do
-    "${SIGN[@]}" "$APP/Contents/Resources/lib/$file"
+for lib in lib lib/watchos; do
+    for file in xpcservices.dylib app.dylib SimFramebuffer; do
+        "${SIGN[@]}" "$APP/Contents/Resources/$lib/$file"
+    done
+    "${SIGN[@]}" --entitlements "$ROOT/resources/release-simns.entitlements" "$APP/Contents/Resources/$lib/simns"
 done
-"${SIGN[@]}" --entitlements "$ROOT/resources/release-simns.entitlements" "$APP/Contents/Resources/lib/simns"
 "${SIGN[@]}" "$APP/Contents/Helpers/simrun"
 "${SIGN[@]}" --entitlements "$ROOT/resources/release-host.entitlements" "$APP"
 

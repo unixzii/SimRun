@@ -39,7 +39,7 @@ window, controlled with your mouse, trackpad and keyboard.
 
 - A Mac with Apple silicon
 - Xcode, with an iOS Simulator runtime installed (SimRun uses the newest one it finds; pick another in SimRun ▸ iOS
-  Runtime, or for one app with Launch With…)
+  Runtime, or for one app with Launch With…). For Apple Watch apps, a watchOS Simulator runtime too
 - System Integrity Protection (SIP) turned off. SimRun needs to load its own code into iOS apps, which macOS only
   allows with SIP off. Apple describes how to change this setting in
   [Disabling and Enabling System Integrity Protection](https://developer.apple.com/documentation/security/disabling-and-enabling-system-integrity-protection).
@@ -137,6 +137,10 @@ with no apps running.
   and choose **Show Keychain Items** to see only that app's items.
 - **Apps follow your Mac's language and region settings**: language, date and number formats, 24-hour time, and
   the first day of the week.
+- **Apple Watch apps run too.** Add a watchOS Simulator build (`Debug-watchsimulator`) like any app. It runs on the
+  newest watchOS runtime, in a window the size of the watch's screen. Scrolling with the mouse or trackpad turns the
+  Digital Crown. Text fields, the status bar clock and a paired iPhone aren't supported yet
+  ([details](docs/watchos.md)).
 - **Run as a different iPhone or iPad**: hold ⌥ in the app's menu, choose **Launch With…** and pick a **Device**. You
   can choose any device type the app's runtime supports. The app gets that model's screen size, safe areas and
   features such as the Dynamic Island. From the terminal, set `SIMRUN_DEVICE`:

@@ -5,6 +5,7 @@
 typedef enum {
   SRModuleLocale,       // locale/: the Mac's language & region; first, before the others read preferences
   SRModuleContainer,    // container/
+  SRModuleWatch,        // watch/: WatchKit's launch without LaunchServices (watchOS apps only)
   SRModuleRender,       // render/: the in-process render server; before scenes, which UIKit asks for the display
   SRModuleScenes,       // scenes/
   SRModuleHID,          // hid/
@@ -29,6 +30,7 @@ SR_HIDDEN BOOL SRModuleOn(SRModuleID module);
 
 SR_HIDDEN void SRLocaleStart(void);
 SR_HIDDEN void SRContainerStart(void);
+SR_HIDDEN void SRWatchStart(void);
 SR_HIDDEN void SRRenderStart(void);
 SR_HIDDEN void SRScenesStart(void);
 SR_HIDDEN void SRHIDStart(void);

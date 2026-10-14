@@ -268,7 +268,7 @@ static NSImage *Symbol(NSString *name, CGFloat size, NSFontWeight weight) {
   if (!self.isViewLoaded) return;
   _appView.hidden = _app == nil; _emptyView.hidden = _app != nil;
   _emptyTitle.stringValue = _libraryEmpty ? @"No Apps" : @"No App Selected";
-  _emptyMessage.stringValue = _libraryEmpty ? @"Drag iOS Simulator apps here, or add the apps you've built for the Simulator in Xcode."
+  _emptyMessage.stringValue = _libraryEmpty ? @"Drag iOS or watchOS Simulator apps here, or add the apps you've built for the Simulator in Xcode."
                                             : @"Select an app in the sidebar to see its details and profiles.";
   _emptyButtons.hidden = !_libraryEmpty;
   [self reloadInfo];
@@ -285,7 +285,7 @@ static NSImage *Symbol(NSString *name, CGFloat size, NSFontWeight weight) {
   _version.stringValue = shortVersion && build && ![shortVersion isEqualToString:build] ? [NSString stringWithFormat:@"%@ (%@)", shortVersion, build]
                                                                                        : shortVersion ?: build ?: @"—";
   NSString *min = [SRAppInfo minimumOSVersionOfExecutable:_app.executablePath];
-  _requires.stringValue = min ? [NSString stringWithFormat:@"iOS %@ or later", min] : @"—";
+  _requires.stringValue = min ? [NSString stringWithFormat:@"%@ %@ or later", _app.platform, min] : @"—";
   _location.stringValue = _app.path.stringByAbbreviatingWithTildeInPath; _location.toolTip = _app.path;
   [_runsOn removeAllObjects];   // the launch options may have changed
   [self reloadState];
@@ -296,10 +296,13 @@ static NSImage *Symbol(NSString *name, CGFloat size, NSFontWeight weight) {
   NSString *key = profile ?: kDefaultProfile;
   if (_runsOn[key]) return _runsOn[key];
   SRLaunchOptions *o = [SRLaunchOptions optionsForAppAtPath:_app.path profile:profile];
-  SRRuntime *rt = o.runtimeBuild ? [SREnvironment installedRuntimeWithBuild:o.runtimeBuild] : [SRRuntime runtimeAtRoot:SREnvironment.runtimeRoot];
+  SRRuntime *rt = o.runtimeBuild ? [SREnvironment installedRuntimeWithBuild:o.runtimeBuild] : [SREnvironment defaultRuntimeForPlatform:_app.platform];
+  if (rt && ![rt.platform isEqualToString:_app.platform]) rt = nil;
   SRDeviceType *device = !rt ? nil : o.deviceType ? [SREnvironment deviceTypeWithIdentifier:o.deviceType runtime:rt]
                                                   : [SREnvironment defaultDeviceTypeForRuntime:rt];
-  NSString *runtime = rt ? [@"iOS " stringByAppendingString:rt.version] : [NSString stringWithFormat:@"iOS %@ (not installed)", o.runtimeBuild];
+  NSString *runtime = rt ? [NSString stringWithFormat:@"%@ %@", rt.platform, rt.version]
+                         : o.runtimeBuild ? [NSString stringWithFormat:@"%@ %@ (not installed)", _app.platform, o.runtimeBuild]
+                                          : [NSString stringWithFormat:@"no %@ runtime installed", _app.platform];
   return _runsOn[key] = device ? [NSString stringWithFormat:@"%@ · %@", device.name, runtime] : runtime;
 }
 

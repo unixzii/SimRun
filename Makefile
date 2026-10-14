@@ -1,6 +1,7 @@
 # SimRun — build everything into build/.
 #   make            core components, tools and test programs
-#   make core       SimRun.app (server + launcher, simns, injected xpcservices.dylib and app.dylib, fake SimFramebuffer) and the simrun CLI
+#   make core       SimRun.app (server + launcher, simns, injected xpcservices.dylib and app.dylib, fake SimFramebuffer, the
+#                   same for watchOS) and the simrun CLI
 #   make test-apps  sample/test apps (build/apps)
 #   make tests      test apps and test programs
 #   make install    install build/SimRun.app into /Applications
@@ -32,9 +33,12 @@ HDRS    := $(wildcard include/*.h)
 APP   := $(BUILD)/SimRun.app
 CORE  := $(APP) $(BIN)/simrun
 SIMLIBS := $(LIB)/xpcservices.dylib $(LIB)/app.dylib $(LIB)/SimFramebuffer
-PARTS := $(BIN)/simrund $(BIN)/simrun $(BIN)/simns $(SIMLIBS)
+WATCHLIB := $(LIB)/watchos
+WATCHLIBS := $(WATCHLIB)/simns $(WATCHLIB)/xpcservices.dylib $(WATCHLIB)/app.dylib $(WATCHLIB)/SimFramebuffer
+PARTS := $(BIN)/simrund $(BIN)/simrun $(BIN)/simns $(SIMLIBS) $(WATCHLIBS)
 TOOLS := $(BIN)/hostinput
-TEST_APPS  := $(APPS)/Hello.app $(APPS)/SUI.app $(APPS)/HIDTest.app $(APPS)/Glass.app $(APPS)/DragTest.app $(APPS)/WebTest.app $(APPS)/BGDownload.app $(APPS)/PickerTest.app $(APPS)/Showcase.app $(APPS)/AudioPlayer.app
+TEST_APPS  := $(APPS)/Hello.app $(APPS)/SUI.app $(APPS)/HIDTest.app $(APPS)/Glass.app $(APPS)/DragTest.app $(APPS)/WebTest.app $(APPS)/BGDownload.app $(APPS)/PickerTest.app $(APPS)/Showcase.app $(APPS)/AudioPlayer.app \
+              $(APPS)/WatchTest.app
 TEST_PROGS := $(TBIN)/nettest $(TBIN)/nwtest $(TBIN)/pbtest $(TBIN)/kctest $(TBIN)/loctest $(TBIN)/mpstest $(TBIN)/audiotest $(TBIN)/motiontest
 
 .PHONY: all core tools test-apps test-programs tests install clean $(APP)
@@ -45,7 +49,7 @@ test-apps: $(TEST_APPS)
 test-programs: $(TEST_PROGS)
 tests: test-apps test-programs
 
-$(BIN) $(LIB) $(APPS) $(TBIN):
+$(BIN) $(LIB) $(WATCHLIB) $(APPS) $(TBIN):
 	@mkdir -p $@
 
 # ---------------------------------------------------------------- host (macOS)
@@ -109,13 +113,14 @@ $(ICON)/Assets.car: $(ICON_INPUTS)
 SKILL_FILES := $(shell find skills -type f ! -name .DS_Store)
 $(APP): $(SKILL_FILES) $(PARTS) resources/Info.plist $(ICON)/Assets.car
 	@rm -rf $(BUILD)/.SimRun.app.new $(BUILD)/.SimRun.app.old
-	@mkdir -p $(BUILD)/.SimRun.app.new/Contents/MacOS $(BUILD)/.SimRun.app.new/Contents/Helpers $(BUILD)/.SimRun.app.new/Contents/Resources/lib
+	@mkdir -p $(BUILD)/.SimRun.app.new/Contents/MacOS $(BUILD)/.SimRun.app.new/Contents/Helpers $(BUILD)/.SimRun.app.new/Contents/Resources/lib/watchos
 	@cp resources/Info.plist $(BUILD)/.SimRun.app.new/Contents/Info.plist
 	@cp $(ICON)/Assets.car $(ICON)/AppIcon.icns $(BUILD)/.SimRun.app.new/Contents/Resources/
 	@cp $(BIN)/simrund $(BUILD)/.SimRun.app.new/Contents/MacOS/SimRun
 	@cp $(BIN)/simrun $(BUILD)/.SimRun.app.new/Contents/Helpers/
 	@cp $(BIN)/simns $(BUILD)/.SimRun.app.new/Contents/Resources/lib/
 	@cp $(SIMLIBS) $(BUILD)/.SimRun.app.new/Contents/Resources/lib/
+	@cp $(WATCHLIBS) $(BUILD)/.SimRun.app.new/Contents/Resources/lib/watchos/
 	@rsync -a --exclude .DS_Store skills $(BUILD)/.SimRun.app.new/Contents/Resources/
 	@$(SIGN) --deep $(BUILD)/.SimRun.app.new 2>/dev/null
 	@if [ -d $@ ]; then mv $@ $(BUILD)/.SimRun.app.old; fi
@@ -151,7 +156,7 @@ $(LIB)/SimFramebuffer: src/sim/simfb/simfb.m $(HDRS) | $(LIB)
 # are embedded as C arrays (xxd -i: core.js -> core_js[]). TCC.framework is linked through a stub (tcc/tcc.tbd; not in
 # the SDK); the other private frameworks' symbols (FrontBoardServices, GraphicsServices, BackBoardServices...) are
 # looked up at load.
-APP_MODULES := locale container render scenes hid textinput pboard drag docpicker keychain webkit mps script tcc audio motion
+APP_MODULES := locale container watch render scenes hid textinput pboard drag docpicker keychain webkit mps script tcc audio motion
 APP_SRC := src/sim/app/app.m $(foreach m,$(APP_MODULES),$(wildcard src/sim/$(m)/*.m))
 SCRIPT_JS := $(wildcard src/sim/script/js/*.js)
 $(BUILD)/gen/script_js.h: $(SCRIPT_JS)
@@ -164,6 +169,21 @@ $(LIB)/app.dylib: $(APP_SRC) $(APP_HDRS) src/sim/tcc/tcc.tbd $(BUILD)/gen/script
 	  -framework Security -framework Metal -framework AudioToolbox -framework CoreAudio \
 	  -Wl,-undefined,dynamic_lookup -Wl,-w -o $@
 	@$(SIGN) $@ 2>/dev/null
+
+# watchOS: the same simns and libraries, marked for the watchOS Simulator (LC_BUILD_VERSION), which is all that tells
+# them apart. dyld_sim skips an inserted library of another platform without a word, and the watchOS SDK can't build
+# them (it has no IOSurface, and marks mach_msg, posix_spawn and UIKit unavailable); what they call exists in the
+# watchOS runtime too. In the app, SRIsWatch() says which platform it is in.
+WATCH_SDK := $(or $(shell xcrun -sdk watchsimulator --show-sdk-version 2>/dev/null),10.0)
+define watchos_copy
+	@cp $< $@.tmp && codesign --remove-signature $@.tmp
+	xcrun vtool -set-build-version watchossim 10.0 $(WATCH_SDK) -replace -output $@ $@.tmp
+	@rm $@.tmp && $(SIGN) $@ 2>/dev/null
+endef
+$(WATCHLIB)/simns: $(BIN)/simns | $(WATCHLIB)
+	$(watchos_copy)
+$(WATCHLIB)/%: $(LIB)/% | $(WATCHLIB)
+	$(watchos_copy)
 
 # ---------------------------------------------------------------- tests
 $(APPS)/Hello.app: tests/apps/hello/main.m tests/apps/hello/Info.plist | $(APPS)
@@ -206,6 +226,12 @@ $(APPS)/PickerTest.app: tests/apps/pickertest/main.m tests/apps/pickertest/Info.
 $(APPS)/BGDownload.app: tests/apps/bgdownload/main.m tests/apps/bgdownload/Info.plist tests/apps/bgdownload/Entitlements.plist | $(APPS)
 	@mkdir -p $@ && cp tests/apps/bgdownload/Info.plist $@/
 	$(SIMCC) $< -framework UIKit -Wl,-sectcreate,__TEXT,__entitlements,tests/apps/bgdownload/Entitlements.plist -o $@/BGDownload
+	@$(SIGN) $@ 2>/dev/null
+
+# WatchTest: a watch-only SwiftUI app, built for the watchOS Simulator.
+$(APPS)/WatchTest.app: tests/apps/watchtest/WatchTest.swift tests/apps/watchtest/Info.plist | $(APPS)
+	@mkdir -p $@ && cp tests/apps/watchtest/Info.plist $@/
+	xcrun -sdk watchsimulator swiftc -target arm64-apple-watchos10.0-simulator -parse-as-library $< -o $@/WatchTest
 	@$(SIGN) $@ 2>/dev/null
 
 $(APPS)/AudioPlayer.app: tests/apps/audioplayer/AudioPlayer.swift tests/apps/audioplayer/Info.plist | $(APPS)

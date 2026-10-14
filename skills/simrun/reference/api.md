@@ -116,6 +116,7 @@ error shows what was expected and what was found.
 |---|---|
 | `app.tap(x, y)`, `app.longPress(x, y, { duration })` | A touch at screen points. |
 | `app.swipe(x0, y0, x1, y1, { duration = 300 })` | A one-finger drag. Drag upwards to scroll down. |
+| `app.crown(delta, { duration = 300 })` | watchOS: turns the Digital Crown as a scroll of `delta` points would. Positive scrolls down; watchOS decides how far. It scrolls what the Crown scrolls (the focused list or scroll view) and turns `.digitalCrownRotation` values. Throws in an iPhone app. |
 | `app.type(text)` | Types into whatever text input has keyboard focus. |
 | `app.press(key)` | Presses a key on whatever has keyboard focus. |
 | `app.waitForIdle({ quiet = 100, timeout = 2000 })` | Waits until no frame has been drawn for `quiet` ms. Returns false if that didn't happen within `timeout`. |

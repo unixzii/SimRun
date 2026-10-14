@@ -3,6 +3,7 @@
 #include "spi.h"
 #include "protocol.h"
 #include <dlfcn.h>
+#include <mach-o/loader.h>
 #include <signal.h>
 #include <sys/wait.h>
 
@@ -19,6 +20,9 @@ SRRole SRProcessRole(void) {
   });
   return role;
 }
+
+extern uint32_t dyld_get_active_platform(void);
+BOOL SRIsWatch(void) { return dyld_get_active_platform() == PLATFORM_WATCHOSSIMULATOR; }
 
 // ---------- SimRun
 mach_port_t SRSessionPort(void) {

@@ -46,6 +46,7 @@ extern IOHIDEventRef IOHIDEventCreateDigitizerEvent(CFAllocatorRef, uint64_t ts,
 extern IOHIDEventRef IOHIDEventCreateDigitizerFingerEvent(CFAllocatorRef, uint64_t ts, uint32_t index, uint32_t identity, uint32_t eventMask,
     IOHIDFloat x, IOHIDFloat y, IOHIDFloat z, IOHIDFloat tipPressure, IOHIDFloat twist, Boolean range, Boolean touch, uint32_t options);
 extern IOHIDEventRef IOHIDEventCreateKeyboardEvent(CFAllocatorRef, uint64_t ts, uint32_t usagePage, uint32_t usage, Boolean down, uint32_t flags);
+extern IOHIDEventRef IOHIDEventCreateScrollEvent(CFAllocatorRef, uint64_t ts, IOHIDFloat x, IOHIDFloat y, IOHIDFloat z, uint32_t options);
 extern void IOHIDEventAppendEvent(IOHIDEventRef parent, IOHIDEventRef child, uint32_t options);
 extern void IOHIDEventSetIntegerValue(IOHIDEventRef, uint32_t field, long value);
 extern void IOHIDEventSetFloatValue(IOHIDEventRef, uint32_t field, IOHIDFloat value);
@@ -69,6 +70,7 @@ enum { kMaskRange = 0x1, kMaskTouch = 0x2, kMaskPosition = 0x4, kMaskIdentity = 
 // Arbitrary but stable sender IDs (UIKit keys some per-device state, e.g. hardware keyboard tracking, by sender).
 static const uint64_t kDigitizerSenderID = 0x000000010000AB1DULL;
 static const uint64_t kKeyboardSenderID  = 0x000000010000AB1EULL;
+static const uint64_t kCrownSenderID     = 0x000000010000AB1FULL;
 static uint32_t kKeyboardSource = 1;
 
 @interface NSObject (SRHIDPrivate)
@@ -232,6 +234,29 @@ void SRHIDDragEvent(uint32_t sessionID, int locus, float x, float y, bool touchi
 }
 void SRHIDTouch(int phase, float x, float y) { SRHIDTouchFinger(0, phase, x, y); }
 
+// ---------------------------------------------------------------- watchOS: scrolling -> the Digital Crown
+// On a watch, scrolling turns the Crown instead of dragging a finger: what scrolls a watch app's lists, pickers and
+// .digitalCrownRotation. The Crown is a scroll IOHIDEvent (kIOHIDEventTypeScroll) whose integer ScrollY PepperUICore
+// reads as 1/200 of a revolution (-[UIEvent _puic_crownHIDEvent], PUICCrownInputSequencer); UIKit hands it to the
+// focused view as a UIWheelEvent. Like a key, it is addressed to the key window's context. One unit scrolls about
+// 1.5 points, so a delta of d points is d / 1.5 units, the remainder carried to the next.
+static float gCrownRemainder;
+static void SRHIDCrownMain(float dy) {
+  float units = dy / 1.5f + gCrownRemainder;
+  long whole = lroundf(units);
+  gCrownRemainder = units - whole;
+  if (!whole) return;
+  // the content follows the fingers (dy > 0: down); the Crown turned up scrolls it down
+  IOHIDEventRef e = IOHIDEventCreateScrollEvent(kCFAllocatorDefault, mach_absolute_time(), 0, -whole, 0, 0);
+  IOHIDEventSetSenderID(e, kCrownSenderID);
+  UIWindowScene *ws = SRHIDScene();
+  UIWindow *kw = ws.keyWindow ?: ws.windows.firstObject;
+  BKSHIDEventSetSimpleInfo(e, 0, 0, NULL, kw ? [kw _contextId] : 0, false);
+  VLOG("crown %ld (scroll %.1f)", -whole, dy);
+  [UIApplication.sharedApplication _enqueueHIDEvent:e];
+  CFRelease(e);
+}
+
 // ---------------------------------------------------------------- trackpad scroll / mouse wheel -> a finger
 // iPhone UIKit has no pointer: on the device, scrolling is a finger dragging the content, so a scroll becomes a
 // dedicated virtual finger (SRHID_SCROLL_FINGER) put down at the cursor that follows the accumulated deltas. Content
@@ -261,6 +286,7 @@ static uint64_t SRHIDMachTimeFromUptime(double seconds) {   // NSEvent.timestamp
 }
 
 static void SRHIDWheelMain(float x, float y, float dx, float dy) {
+  if (SRIsWatch()) { SRHIDCrownMain(dy); return; }
   SRFinger *f = &gFingers[SRHID_SCROLL_FINGER];
   if (f->down && gScrollPhased) return;   // a trackpad gesture owns the finger
   if (!f->down) {
@@ -285,6 +311,7 @@ static void SRHIDWheelMain(float x, float y, float dx, float dy) {
 
 static void SRHIDTrackpadScrollMain(float x, float y, float dx, float dy, int phase, int momentumPhase, double timestamp) {
   if (!phase && !momentumPhase) { SRHIDWheelMain(x, y, dx, dy); return; }
+  if (SRIsWatch()) { SRHIDCrownMain(dy); return; }   // the gesture and its momentum turn the Crown
   if (momentumPhase) return;   // the finger is already up: UIKit's own deceleration takes it from here
   SRFinger *f = &gFingers[SRHID_SCROLL_FINGER];
   uint64_t ts = SRHIDMachTimeFromUptime(timestamp);

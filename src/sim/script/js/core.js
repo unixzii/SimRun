@@ -74,6 +74,15 @@ internal.tapAt = async (x, y, hold = 50) => {
   native.ui.touch(0, 3, x, y);
 };
 
+// The Digital Crown turned as a scroll of `delta` points would turn it (> 0: down), over `duration` ms; watchOS only.
+internal.crown = async (delta, duration = 300) => {
+  const steps = Math.max(1, Math.round(duration / 16));
+  for (let i = 0; i < steps; i++) {
+    if (!native.ui.crown(-delta / steps)) throw new Error('app.crown: only a watchOS app has a Digital Crown');
+    await sleep(duration / steps);
+  }
+};
+
 // A drag from (x0, y0) to (x1, y1) over `duration` ms.
 internal.swipe = async (x0, y0, x1, y1, duration = 300) => {
   const steps = Math.max(2, Math.round(duration / 16));

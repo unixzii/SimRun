@@ -25,6 +25,8 @@ Write-ups of each part:
   sensors, turning them on, CoreMotion's samples, device motion fused in the app, the screen as the phone
 - [keychain.md](keychain.md) — the fake keychain: SecItem semantics, the plaintext store, access groups, the Keychain
   window
+- [watchos.md](watchos.md) — watchOS apps: their runtime and device, SimRun's libraries marked for the watchOS
+  Simulator, WatchKit's launch without Carousel or LaunchServices, the Digital Crown
 - [webkit.md](webkit.md) — WKWebView: BrowserEngineKit process launches, the extension entry point, the Launch
   Services wait
 - [mps.md](mps.md) — MPSGraph on the simulator's GPU: the device descriptor's missing architecture, private heaps

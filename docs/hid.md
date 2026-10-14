@@ -168,6 +168,9 @@ void SRHIDAfterKeys(dispatch_block_t block);                     // block on mai
   `HID_SCRIPT` command list, run at the first scene activation, did this before `simrun eval`; the checks below were
   made with it.)
 
+On watchOS, scrolling (`SRHIDScroll`, `SRHIDTrackpadScroll`) turns the Digital Crown instead: scroll IOHIDEvents to
+the key window, not the virtual finger ([watchos.md](watchos.md#the-digital-crown)).
+
 ## 4a. Trackpad gestures → touches
 
 ### What the real systems do (investigated in IDA, Xcode 27.1 / iOS 27.1)

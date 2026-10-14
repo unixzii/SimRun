@@ -27,6 +27,7 @@
 #import <objc/runtime.h>
 #import <objc/message.h>
 #include <mach/mach.h>
+#include <dlfcn.h>
 #include <notify.h>
 #import "app.h"
 #include "scenes.h"
@@ -213,12 +214,29 @@ static void SRLoadSafeArea(void) {
   });
 }
 
+// watchOS: Carousel's own metrics for the display (safe area, system minimum margin, artwork subtype), which it sets on
+// every app scene; nil off watchOS
+typedef void (*SRConfigureWatchSceneSettings)(id settings);
+static SRConfigureWatchSceneSettings SRWatchSceneMetrics(void) {
+  static SRConfigureWatchSceneSettings f; static dispatch_once_t once;
+  dispatch_once(&once, ^{
+    if (SRIsWatch()) f = (SRConfigureWatchSceneSettings)dlsym(RTLD_DEFAULT, "CSLUIKitSceneMetricsConfigureSceneSettingsForCurrentDisplay");
+    if (SRIsWatch() && !f) LOG("no CSLUIKitSceneMetricsConfigureSceneSettingsForCurrentDisplay: the iPhone's safe area");
+  });
+  return f;
+}
+
 static void SRApplySettings(id<SRMutableSceneSettings> s, CGFloat w, CGFloat h, BOOL foreground, UIInterfaceOrientation orient) {
   [s setFrame:CGRectMake(0, 0, w, h)];
   [s setLevel:1];
   [s setInterfaceOrientation:orient];
   [s setForeground:foreground];
-  if ([(id)s respondsToSelector:@selector(setDeactivationReasons:)]) {
+  if ([(id)s respondsToSelector:@selector(setDeactivationReasons:)] && SRWatchSceneMetrics()) {
+    [s setDeactivationReasons:0];
+    [s setCanShowAlerts:YES];
+    SRWatchSceneMetrics()(s);
+    [s setPersistenceIdentifier:gSceneID];
+  } else if ([(id)s respondsToSelector:@selector(setDeactivationReasons:)]) {
     [s setDeactivationReasons:0];
     [s setDeviceOrientation:orient];
     [s setUserInterfaceStyle:UIUserInterfaceStyleLight];
@@ -234,12 +252,22 @@ static void SRApplySettings(id<SRMutableSceneSettings> s, CGFloat w, CGFloat h, 
   }
 }
 
+// The scene's specification and transition contexts: UIKit's, as SpringBoard uses them; on watchOS, Carousel's
+// (CarouselUIServices' spec, whose settings are PepperUICore's PUICApplicationSceneSettings, which watch apps' UIKit
+// expects: UIKit's settings lack -keepsContextsInBackground).
+static Class SRSceneSpecificationClass(void) {
+  Class c = SRIsWatch() ? NSClassFromString(@"CUISWKApplicationSceneSpecification") : nil;
+  return c ?: NSClassFromString(@"UIApplicationSceneSpecification");
+}
+static id SRNewTransitionContext(void) {
+  Class c = SRIsWatch() ? NSClassFromString(@"PUICApplicationSceneTransitionContext") : nil;
+  return [c ?: NSClassFromString(@"UIApplicationSceneTransitionContext") new];
+}
+
 static void SRCreateScene(void) {
-  Class SpecC = NSClassFromString(@"UIApplicationSceneSpecification");
   Class ParamsC = NSClassFromString(@"FBSMutableSceneParameters");
   Class IdentityC = NSClassFromString(@"FBSSceneIdentity");
-  Class TCC = NSClassFromString(@"UIApplicationSceneTransitionContext");
-  id spec = [SpecC specification];
+  id spec = [SRSceneSpecificationClass() specification];
   id params = [ParamsC parametersForSpecification:spec];
   // UIScreen.mainScreen is backed by the render server's FBSDisplayConfiguration; the scene must use the same display
   // identity.
@@ -248,7 +276,7 @@ static void SRCreateScene(void) {
   [params updateSettingsWithBlock:^(id s) { SRApplySettings(s, gW, gH, YES, UIInterfaceOrientationPortrait); }];
   gCurrentSettings = [[params settings] copy];
   id identity = gIdentity = [IdentityC identityForIdentifier:gSceneID workspaceIdentifier:@"com.apple.frontboard.systemappservices"];
-  id tc = [TCC new];
+  id tc = SRNewTransitionContext();
   LOG("createScene %s %gx%g@%g display=%s", gSceneID.UTF8String, gW, gH, gScale, dc ? "main" : "nil");
   [gScenesClient createSceneWithIdentity:identity parameters:params transitionContext:tc completion:^(id err) {
     LOG("createScene completion err=%s", [[err description] UTF8String]);
@@ -266,7 +294,7 @@ void SRScenesUpdate(CGFloat w, CGFloat h, BOOL foreground, long orient) {
     gCurrentSettings = newSettings;
     LOG("updateScene %gx%g fg=%d orient=%ld", w, h, foreground, (long)orient);
     [gScenesClient sceneID:gIdentity updateWithSettingsDiff:diff
-         transitionContext:[NSClassFromString(@"UIApplicationSceneTransitionContext") new]
+         transitionContext:SRNewTransitionContext()
                 completion:^(id err) { if (err) LOG("updateScene err=%s", [[err description] UTF8String]); }];
   });
 }
@@ -464,4 +492,7 @@ void SRScenesStart(void) {
   if ((e = getenv("SCENES_H"))) gH = atof(e);
   if ((e = getenv("SCENES_SCALE"))) gScale = atof(e);
   gSceneID = [NSString stringWithFormat:@"sceneID:%@-default", NSBundle.mainBundle.bundleIdentifier ?: @"app"];
+  // watchOS: Carousel's scene identifier is the bundle identifier, and SPApplicationDelegate gives the scene its
+  // SPApplicationSceneDelegate (and with it the app's window) only when the session's persistent identifier is that
+  if (SRIsWatch() && NSBundle.mainBundle.bundleIdentifier) gSceneID = NSBundle.mainBundle.bundleIdentifier;
 }

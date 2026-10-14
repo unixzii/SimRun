@@ -17,6 +17,7 @@ const app = Object.freeze({
   tap: async (x, y) => { await internal.tapAt(x, y); await waitForIdle(); },
   longPress: async (x, y, { duration = 800 } = {}) => { await internal.tapAt(x, y, duration); await waitForIdle(); },
   swipe: async (x0, y0, x1, y1, { duration = 300 } = {}) => { await internal.swipe(x0, y0, x1, y1, duration); await waitForIdle(); },
+  crown: async (delta, { duration = 300 } = {}) => { await internal.crown(delta, duration); await waitForIdle(); },
   type: async text => { await internal.type('type', text); await waitForIdle(); },
   press: async key => { internal.press(key); await waitForIdle(); },
 
