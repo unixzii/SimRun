@@ -27,6 +27,8 @@ Write-ups of each part:
   window
 - [watchos.md](watchos.md) — watchOS apps: their runtime and device, SimRun's libraries marked for the watchOS
   Simulator, WatchKit's launch without Carousel or LaunchServices, the Digital Crown
+- [pairing.md](pairing.md) — the paired iPhone and Apple Watch: two devices, joining their IDS relays and pairing
+  through NanoRegistry as CoreSimulator does, WatchConnectivity without LaunchServices, an iPhone app's Watch app
 - [webkit.md](webkit.md) — WKWebView: BrowserEngineKit process launches, the extension entry point, the Launch
   Services wait
 - [mps.md](mps.md) — MPSGraph on the simulator's GPU: the device descriptor's missing architecture, private heaps

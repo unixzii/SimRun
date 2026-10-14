@@ -44,10 +44,13 @@ mach_ports_lookup()[n], wait SIMNS_HOST_WAIT ms for SIMNS_MSG_READY). Control me
 ## On-demand sim daemons
 simns reads $SIMULATOR_ROOT/System/Library/{LaunchDaemons,LaunchAgents}/*.plist. For allow-listed labels
 (env SIMNS_DAEMONS, comma-separated; default com.apple.notifyd,com.apple.trustd,com.apple.securityd,com.apple.cfprefsd.xpc.daemon,
-com.apple.cfprefsd.xpc.agent,com.apple.containermanagerd,com.apple.nsurlsessiond,com.apple.geod,com.apple.audio.systemsoundserver-simd; "none" disables) the first lookup of any of the daemon's
+com.apple.cfprefsd.xpc.agent,com.apple.containermanagerd,com.apple.nsurlsessiond,com.apple.geod,com.apple.audio.systemsoundserver-simd,
+com.apple.ids_simd,com.apple.nanoregistryd,com.apple.wcd,com.apple.FileCoordination (the last four for the paired watch,
+[pairing.md](pairing.md)); "none" disables) the first lookup of any of the daemon's
 MachServices pre-creates its ports (lookups succeed immediately, messages queue), then spawns the daemon
 (ProgramArguments rebased into the runtime root, plist EnvironmentVariables, XPC_SERVICE_NAME=label, simns as
-bootstrap). Check-in hands it the queued receive rights. All are SIGTERMed when the app exits or simns is terminated.
+bootstrap; SIMNS_DAEMON_INSERT "label=lib[:lib],…" gives a daemon DYLD_INSERT_LIBRARIES). The daemon list is read before
+simns says hello: SimRun can look a daemon's service up (SIMNS_MSG_LOOKUP, launching it) as soon as simns is ready. Check-in hands it the queued receive rights. All are SIGTERMed when the app exits or simns is terminated.
 Dead daemons come back as with launchd: before handing a daemon its service port, simns requests a port-destroyed
 notification, so when the daemon dies the receive right (and any queued messages) returns to simns instead of being
 destroyed. Clients' send rights stay valid; the port waits in a port set that a thread watches, and the first

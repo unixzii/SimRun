@@ -74,6 +74,16 @@ extern SRPlatform const SRPlatformWatchOS;   // "watchOS"
 // SIMRUN_DATA, else ~/Library/Developer/SimRun/data. Holds what is managed centrally: the keychain, device-wide
 // preferences, app group containers, daemon state.
 + (NSString *)dataDirectory;
+// The simulated device of a platform: SimRun is one iPhone (all iOS runtimes) and one Apple Watch (all watchOS
+// runtimes), paired. Its data directory is the daemons' HOME and apps' SIMULATOR_SHARED_RESOURCES_DIRECTORY (device-wide
+// preferences, keychain, app groups, pairing state): the iPhone's is dataDirectory, the watch's
+// <dataDirectory>/Devices/AppleWatch. Apps' own containers are in dataDirectory for both. Its SIMULATOR_UDID: the
+// iPhone's all zeros, the watch's another fixed one.
++ (NSString *)deviceDataDirectoryForPlatform:(SRPlatform)platform;
++ (NSString *)deviceUDIDForPlatform:(SRPlatform)platform;
+// The watch apps SimRun knows and their iPhone apps, which both devices' wcd take as installed (pairing.h):
+// <dataDirectory>/Devices/WatchApps.plist.
++ (NSString *)watchAppsPath;
 // Each app's own data container — its HOME, like an iOS sandbox container: <data>/Containers/Data/Application/<id>,
 // <id> being the app's bundle identifier (the executable's name for a bare binary). An app can also run in other
 // profiles, each its own container of that app (<data>/Containers/Data/Profiles/<id>/<profile>), so it can run several

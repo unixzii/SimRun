@@ -1,8 +1,9 @@
 # watchOS apps
 
 SimRun runs apps built for the watchOS Simulator the way it runs iPhone apps: the app's own process, on a watchOS
-Simulator runtime, in a Mac window the size of the watch's screen, with no Simulator.app, no Carousel (the watch's
-SpringBoard) and no paired iPhone. A watch app is told apart by its executable: an arm64 slice whose
+Simulator runtime, in a Mac window the size of the watch's screen, with no Simulator.app and no Carousel (the watch's
+SpringBoard). The watch is paired with SimRun's iPhone, and WatchConnectivity works between an iPhone app and its watch
+app ([pairing.md](pairing.md)). A watch app is told apart by its executable: an arm64 slice whose
 `LC_BUILD_VERSION` platform is `WATCHOSSIMULATOR` (9). `simrun run`, the launcher and Launch With… take it like any
 other app.
 
@@ -76,8 +77,7 @@ locators.
   (`QuickboardViewService.app`) that SimRun doesn't host, so `app.type` finds no focused input.
 - The status bar's clock (`com.apple.UIKit.statusbarserver`); an iPhone app's status bar is empty too.
 - The side button, Always On (the backlight's dimmed states), complications, notifications.
-- A paired iPhone: no WatchConnectivity, no NanoRegistry pairing. A watch app embedded in an iPhone app (`Watch/`) isn't
-  run with it; add the watch app's own `.app` (from `Build/Products/*-watchsimulator`) to run it.
+- What [pairing.md](pairing.md#not-supported) lists for the paired iPhone and WatchConnectivity.
 - Builds for Apple Watch devices (platform `WATCHOS`): only Simulator builds.
 
 ## Testing

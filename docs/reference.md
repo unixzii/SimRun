@@ -7,7 +7,7 @@ over its socket; `run`, `profiles`, `runtimes` and `devices` start SimRun headle
 
 | Command | Effect |
 |---|---|
-| `simrun run [options] <Sim.app \| sim-binary> [args…]` | Run an app in SimRun; output goes to the terminal, Ctrl-C quits it, exits with the app's status. `-p`/`--profile <name>`: with that profile's data container ([architecture.md](architecture.md#data-containers)); `-r`/`--runtime <build, version, RuntimeRoot or platform>`: on that runtime of the app's platform (a platform, `iOS` or `watchOS`, is its default runtime); `-d`/`--device <name or identifier>`: as that device type; `--insert <dylib>`: inject another sim dylib; `--headless`: with no window, never bringing SimRun forward, with pasteboards of its own; its file pickers wait for `simrun pick` ([architecture.md](architecture.md#headless-apps)); `--pick <path>` (repeatable): its file pickers choose from these files and folders with no panel ([docpicker.md](docpicker.md#choosing-without-a-panel)); `--mute`: silence it (`AUDIO_MUTE=1`); `--mic <mac \| system \| file>`: what it records ([microphone.md](microphone.md)): the Mac's microphone (default), what the Mac plays, or an audio file from its start each time it starts recording (`AUDIO_INPUT=`); `--mic-loop`: the file over and over (`AUDIO_INPUT_LOOP=1`) |
+| `simrun run [options] <Sim.app \| sim-binary> [args…]` | Run an app in SimRun; output goes to the terminal, Ctrl-C quits it, exits with the app's status. `-p`/`--profile <name>`: with that profile's data container ([architecture.md](architecture.md#data-containers)); `-r`/`--runtime <build, version, RuntimeRoot or platform>`: on that runtime of the app's platform (a platform, `iOS` or `watchOS`, is its default runtime); `-d`/`--device <name or identifier>`: as that device type; `--insert <dylib>`: inject another sim dylib; `--no-watch-app`: don't also run the Watch app an iPhone app contains on the paired watch ([pairing.md](pairing.md#running-an-iphone-app-with-its-watch-app)); `--headless`: with no window, never bringing SimRun forward, with pasteboards of its own; its file pickers wait for `simrun pick` ([architecture.md](architecture.md#headless-apps)); `--pick <path>` (repeatable): its file pickers choose from these files and folders with no panel ([docpicker.md](docpicker.md#choosing-without-a-panel)); `--mute`: silence it (`AUDIO_MUTE=1`); `--mic <mac \| system \| file>`: what it records ([microphone.md](microphone.md)): the Mac's microphone (default), what the Mac plays, or an audio file from its start each time it starts recording (`AUDIO_INPUT=`); `--mic-loop`: the file over and over (`AUDIO_INPUT_LOOP=1`) |
 | `simrun list` | The running apps: pid, app (marked headless), profile, device, runtime |
 | `simrun quit <pid \| app> [-p <profile>]` | Quit a running app (by name, bundle ID or executable; `-p` picks among its profiles); returns once it has exited |
 | `simrun screenshot <pid \| app> [-p <profile>] [-o <file.png>]` | Save the app's screen as it last drew it, at its pixel size (default `./<app>.png`) |
@@ -36,6 +36,7 @@ them in Launch With….
 | `SIMRUN_DATA=dir` | Shared data directory (default `~/Library/Developer/SimRun/data`) |
 | `SIMNS_QUIET=1` | Hide simns's log (in SimRun's log, `simrun log`) of every service lookup (`OK` / `MISSING`) — leave it on to see what an app needs |
 | `SIMNS_DAEMONS=a,b` / `none` | Labels of real sim daemons simns may launch on demand |
+| `SIMNS_DAEMON_INSERT=label=lib,…` | Libraries a daemon gets as `DYLD_INSERT_LIBRARIES` (SimRun sets `com.apple.wcd=…/wcd.dylib`, [pairing.md](pairing.md#watchconnectivity)) |
 | `SIMAPP_EXTRA_INSERT=x.dylib` | Inject an extra sim dylib into apps launched from the launcher (`simrun run --insert` for one launch) |
 | `AUDIO_MUTE=1` | The app is silent: CoreAudio's per-process switch (`kAudioHardwarePropertyProcessIsAudible`) for everything it plays, its web views' helper processes too, and its system sounds aren't played (`simrun run --mute`, Launch Options ▸ Mute) |
 | `AUDIO_INPUT=mac \| system \| <file>` | What the app records ([microphone.md](microphone.md)): the Mac's default input device (default); what the Mac plays, every process but the app (a CoreAudio process tap); or the audio file, from its start each time the app starts recording, then silence (`simrun run --mic`, Launch Options ▸ Microphone). The app's microphone permission takes SimRun's permission on the Mac for the source (none for a file) ([microphone.md](microphone.md#permission)) |
@@ -88,8 +89,8 @@ select all) go to the app while one of its windows is key.
   relaunched when they finish: it gets their events the next time it starts and makes the session. Two profiles of
   one app running at once share its background sessions (nsurlsessiond knows apps by bundle ID).
 - App extensions and embedded frameworks are untested.
-- watchOS apps: no text input (Quickboard), no clock in the status bar, no side button, and no paired iPhone
-  (WatchConnectivity) ([watchos.md](watchos.md#not-supported)).
+- watchOS apps: no text input (Quickboard), no clock in the status bar, no side button ([watchos.md](watchos.md#not-supported)).
+  WatchConnectivity: one iPhone–watch pair, messages only to running apps ([pairing.md](pairing.md#not-supported)).
 - No secure paste (`UIPasteControl`) or pasteboard pattern detection ([pasteboard.md](pasteboard.md)).
 - No LaunchServices: UTType knows only the built-in core types.
 - Drag & drop only within an app ([dragdrop.md](dragdrop.md)).

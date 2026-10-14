@@ -28,6 +28,8 @@ static const char kUsage[] =
   "                               (default: SimRun's iOS runtime, or the newest watchOS one)\n"
   "        -d, --device <name>    as this device type: a name or identifier (default: the runtime's)\n"
   "        --insert <dylib>       inject this sim dylib too\n"
+  "        --no-watch-app         don't also run the Watch app an iPhone app contains (its Watch/ folder) on the\n"
+  "                               paired Apple Watch\n"
   "        --headless             with no window, never bringing SimRun forward (SIMRUN_HEADLESS=1: always), for\n"
   "                               running apps in the background and side by side; drive them with eval,\n"
   "                               screenshot and inspect. They get a pasteboard of their own, and simrun pick\n"
@@ -234,8 +236,9 @@ static int Run(NSArray<NSString *> *args) {
   NSString *err = ParseOptions(args, @{ @"-p": @"profile", @"--profile": @"profile", @"-r": @"runtime", @"--runtime": @"runtime",
                                         @"-d": @"device", @"--device": @"device", @"--insert": @"insert",
                                         @"--headless": @"headless", @"--mute": @"mute", @"--pick": @"pick",
-                                        @"--mic": @"mic", @"--mic-loop": @"micLoop" },
-                               [NSSet setWithObjects:@"--headless", @"--mute", @"--mic-loop", nil], [NSSet setWithObject:@"--pick"], YES, o, rest);
+                                        @"--mic": @"mic", @"--mic-loop": @"micLoop", @"--no-watch-app": @"noWatchApp" },
+                               [NSSet setWithObjects:@"--headless", @"--mute", @"--mic-loop", @"--no-watch-app", nil], [NSSet setWithObject:@"--pick"],
+                               YES, o, rest);
   if (err) { Fail(@"%@", err); return Usage(); }
   if (!rest.count) return Usage();
   rest[0] = AbsolutePath(rest[0]);   // SimRun has its own working directory

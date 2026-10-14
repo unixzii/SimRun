@@ -24,6 +24,7 @@
 #include "session/session.h"
 #include "session/mirrorwindow.h"
 #include "session/environment.h"
+#include "session/pairing.h"
 #include "launcher/library.h"
 #include "launcher/devicebuild.h"
 #include "launcher/launcher.h"
@@ -62,6 +63,7 @@ static void LOG(NSString *fmt, ...) {
 @property SRDeviceType *device;                    // the device type it runs as
 @property NSString *profile;                       // the app's profile (data container) it runs in; nil = its default one
 @property BOOL headless;                           // no window (simrun run --headless)
+@property BOOL withWatchApp;                       // also run the Watch app it contains on the paired watch (not --no-watch-app)
 @property NSArray<NSString *> *pickPresets;        // what its file pickers choose, with no panel (simrun run --pick)
 @property int sock; @property int fd0, fd1, fd2;   // client connection (-1 if none) and the app's stdio (-1 = inherit)
 @property int captureFD;                           // read end of the app's output pipe (launcher launches), or -1
@@ -97,6 +99,7 @@ static BOOL SameProfile(NSString *a, NSString *b) { return a == b || [a isEqualT
   NSMutableArray<NSString *> *_openAtLaunch;
   NSTimer *_idleTimer;
   SRLauncher *_launcher;
+  SRPairing *_pairing;   // SimRun's iPhone and Apple Watch
   NSMenuItem *_quitServerItem, *_quitAppItem;   // ⌘Q quits the app whose window is key, else SimRun
   SRPasteboardHost *_pasteboard; mach_port_t _pasteboardPort;
   SRDocumentPickerHost *_docPicker; mach_port_t _docPickerPort;
@@ -436,6 +439,7 @@ static BOOL ProcessGone(pid_t pid) {
   SRRequest *r = [SRRequest new];
   r.argv = [@[ app.executablePath ] arrayByAddingObjectsFromArray:o.launchArguments];
   r.cwd = app.path; r.title = app.name; r.appPath = app.path; r.bundleID = app.bundleIdentifier; r.runtimeRoot = root; r.profile = profile;
+  r.withWatchApp = YES;
   if (app.deviceBuild) r.deviceBuild = app.path;
   r.device = device ?: [SREnvironment defaultDeviceTypeForRuntime:[SRRuntime runtimeAtRoot:root]];
   r.env = [self environmentFrom:[SREnvironment processEnvironment] for:r extraLibrary:NSProcessInfo.processInfo.environment[@"SIMAPP_EXTRA_INSERT"]
@@ -480,6 +484,10 @@ static BOOL ProcessGone(pid_t pid) {
   NSString *simns = [SREnvironment simnsPathForPlatform:[SRRuntime runtimeAtRoot:root].platform ?: SRPlatformIOS];
   NSMutableDictionary *vars = [[SREnvironment simulatorVariablesForRoot:root] mutableCopy];
   vars[@"SIMNS_HOST_SLOT"] = @"0";
+  // wcd, the WatchConnectivity daemon, gets SimRun's answers to what it asks LaunchServices and Carousel (pairing.h)
+  SRPlatform platform = [SRRuntime runtimeAtRoot:root].platform ?: SRPlatformIOS;
+  vars[@"SIMNS_DAEMON_INSERT"] = [@"com.apple.wcd=" stringByAppendingString:
+                                  [[SREnvironment libraryDirectoryForPlatform:platform] stringByAppendingPathComponent:@"wcd.dylib"]];
   NSMutableArray *env = [NSMutableArray array];
   for (NSString *kv in [SREnvironment environment:[SREnvironment processEnvironment] withOverrides:vars])
     if (![kv hasPrefix:@"DYLD_INSERT_LIBRARIES="]) [env addObject:kv];
@@ -553,7 +561,22 @@ static BOOL ProcessGone(pid_t pid) {
     LOG(@"ready (%@)", [SRRuntime runtimeAtRoot:ns.root].name ?: ns.root);
     for (SRRequest *r in [_pending copy])
       if ([r.runtimeRoot.stringByStandardizingPath isEqualToString:ns.root]) { [_pending removeObject:r]; [self launch:r]; }
+    [self pairDevices];
   }
+}
+
+// SimRun's iPhone (the simns of its own iOS runtime) and its Apple Watch (the first watchOS runtime's simns, which the
+// first watch app starts) are paired once both are up (pairing.h).
+- (void)pairDevices {
+  SRSimns *phone = _simns[SREnvironment.runtimeRoot.stringByStandardizingPath], *watch = nil;
+  for (SRSimns *ns in _simns.allValues)
+    if (ns.control && [[SRRuntime runtimeAtRoot:ns.root].platform isEqualToString:SRPlatformWatchOS]) { watch = ns; break; }
+  if (!phone.control || !watch || _pairing.pairedWatchRoot) return;
+  if (!_pairing) _pairing = [SRPairing new];
+  SRPairDevice *p = [SRPairDevice new], *w = [SRPairDevice new];
+  p.root = phone.root; p.control = phone.control; p.nsPort = [self newNamespaceIn:phone];
+  w.root = watch.root; w.control = watch.control; w.nsPort = [self newNamespaceIn:watch];
+  [_pairing pairPhone:p watch:w done:nil];
 }
 
 // The Mac's CoreAudio server (coreaudiod), which sim CoreAudio talks to directly, as in Simulator.app. When coreaudiod
@@ -671,7 +694,7 @@ static BOOL ProcessGone(pid_t pid) {
 }
 
 - (NSArray<NSString *> *)appEnvironmentFrom:(NSArray<NSString *> *)env executable:(NSString *)exe profile:(NSString *)profile {
-  NSString *data = [SREnvironment dataDirectory];
+  NSString *data = [SREnvironment deviceDataDirectoryForPlatform:[SRAppInfo platformOfExecutable:exe]];
   NSString *home = [SREnvironment createContainerForIdentifier:[SREnvironment containerIdentifierForExecutable:exe] profile:profile];
   env = [SREnvironment environment:env withOverrides:@{
     @"HOME": home, @"CFFIXED_USER_HOME": home, @"TMPDIR": [home stringByAppendingString:@"/tmp/"],
@@ -765,10 +788,35 @@ static NSSize ScreenSize(NSDictionary<NSString *, NSString *> *env) {
     [self scheduleIdleCheck];
     return;
   }
+  SRNoteWatchApps(r.appPath);   // for WatchConnectivity: the watch apps SimRun knows
+  if (r.withWatchApp) [self launchWatchAppsOf:r];
   LOG(@"launched %@ pid %d%@%@", r.argv.firstObject.lastPathComponent, s.pid, r.profile ? [@" in profile " stringByAppendingString:r.profile] : @"",
       r.headless ? @", headless" : @"");
   [self reply:r dict:@{ @"pid": @(s.pid) }];
   [_launcher reloadState];
+}
+
+// An iPhone app's Watch apps (its Watch/ folder, as Xcode embeds them), run on the paired Apple Watch as installing the
+// app puts them there: each one that isn't running yet, with no window if the app has none, its output in its log.
+- (void)launchWatchAppsOf:(SRRequest *)r {
+  if (!r.appPath || ![[SRRuntime runtimeAtRoot:r.runtimeRoot].platform isEqualToString:SRPlatformIOS]) return;
+  NSString *dir = [r.appPath stringByAppendingPathComponent:@"Watch"];
+  for (NSString *name in [NSFileManager.defaultManager contentsOfDirectoryAtPath:dir error:nil]) {
+    NSString *path = [dir stringByAppendingPathComponent:name];
+    if (![name.pathExtension isEqualToString:@"app"] || [SRAppInfo problemWithAppAtPath:path]) continue;
+    SRAppInfo *app = [SRAppInfo infoWithPath:path];
+    if (![app.platform isEqualToString:SRPlatformWatchOS] || [self requestForApp:app profile:nil]) continue;
+    SRRuntime *rt = [SREnvironment defaultRuntimeForPlatform:SRPlatformWatchOS];
+    if (!rt) { LOG(@"%@ has a Watch app, but no watchOS runtime is installed", r.title); return; }
+    SRRequest *w = [SRRequest new];
+    w.argv = @[ app.executablePath ]; w.cwd = app.path; w.title = app.name; w.appPath = app.path; w.bundleID = app.bundleIdentifier;
+    w.runtimeRoot = rt.root; w.device = [SREnvironment defaultDeviceTypeForRuntime:rt]; w.headless = r.headless;
+    w.env = [self environmentFrom:[SREnvironment processEnvironment] for:w extraLibrary:nil overrides:nil];
+    int p[2]; pipe(p);
+    w.fd0 = open("/dev/null", O_RDONLY); w.fd1 = p[1]; w.fd2 = dup(p[1]); w.captureFD = p[0];
+    LOG(@"running %@'s Watch app %@", r.title, app.name);
+    [self prepare:w];
+  }
 }
 
 - (void)finish:(SRRequest *)r status:(int)status {
@@ -1030,6 +1078,7 @@ static void SendReply(int c, NSDictionary *reply, dispatch_block_t then) {
   if (err) return err;
   r.profile = [SREnvironment normalizedProfile:Str(d, @"profile")];
   r.headless = [d[@"headless"] isEqual:@YES];
+  r.withWatchApp = ![d[@"noWatchApp"] isEqual:@YES];
   if ([d[@"pick"] isKindOfClass:NSArray.class]) {
     NSMutableArray *presets = [NSMutableArray array];
     for (NSString *p in d[@"pick"]) {

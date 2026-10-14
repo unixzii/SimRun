@@ -326,6 +326,16 @@ static NSArray<NSString *> *ScannedDeviceTypePaths(NSString *version) {
   return NSProcessInfo.processInfo.environment[@"SIMRUN_DATA"] ?: [RealHome() stringByAppendingPathComponent:@"Library/Developer/SimRun/data"];
 }
 
++ (NSString *)deviceDataDirectoryForPlatform:(SRPlatform)platform {
+  NSString *d = [self dataDirectory];
+  return [platform isEqualToString:SRPlatformWatchOS] ? [d stringByAppendingPathComponent:@"Devices/AppleWatch"] : d;
+}
++ (NSString *)deviceUDIDForPlatform:(SRPlatform)platform {
+  return [platform isEqualToString:SRPlatformWatchOS] ? @"00000000-0000-0000-0000-00000000A7C4" : @"00000000-0000-0000-0000-000000000000";
+}
+
++ (NSString *)watchAppsPath { return [[self dataDirectory] stringByAppendingPathComponent:@"Devices/WatchApps.plist"]; }
+
 + (NSString *)containerIdentifierForExecutable:(NSString *)executable {
   NSString *dir = executable.stringByDeletingLastPathComponent;
   NSString *ident = nil;
@@ -383,8 +393,9 @@ static NSArray<NSString *> *ScannedDeviceTypePaths(NSString *version) {
 + (NSDictionary<NSString *, NSString *> *)simulatorVariablesForRoot:(NSString *)R deviceType:(SRDeviceType *)device {
   NSDictionary *env = NSProcessInfo.processInfo.environment;
   if (!R) return @{};
-  if (!device) device = [self defaultDeviceTypeForRuntime:[SRRuntime runtimeAtRoot:R]];
-  NSString *D = [self dataDirectory];
+  SRRuntime *runtime = [SRRuntime runtimeAtRoot:R];
+  if (!device) device = [self defaultDeviceTypeForRuntime:runtime];
+  NSString *D = [self deviceDataDirectoryForPlatform:runtime.platform ?: SRPlatformIOS];
   for (NSString *sub in @[ @"tmp", @"Library/Preferences", @"Documents" ])
     [NSFileManager.defaultManager createDirectoryAtPath:[D stringByAppendingPathComponent:sub] withIntermediateDirectories:YES attributes:nil error:nil];
   NSMutableDictionary *vars = [@{
@@ -396,9 +407,12 @@ static NSArray<NSString *> *ScannedDeviceTypePaths(NSString *version) {
     // no device type: SimFramebuffer's default display, and no capabilities (MobileGestalt's defaults)
     @"SIMULATOR_MAINSCREEN_WIDTH": @"1206", @"SIMULATOR_MAINSCREEN_HEIGHT": @"2622",
     @"SIMULATOR_MAINSCREEN_SCALE": @"3.000000", @"SIMULATOR_MAINSCREEN_PITCH": @"460.000000",
-    @"SIMULATOR_UDID": @"00000000-0000-0000-0000-000000000000", @"SIMULATOR_LEGACY_ASSET_SUFFIX": @"iphone",
+    @"SIMULATOR_UDID": [self deviceUDIDForPlatform:runtime.platform ?: SRPlatformIOS], @"SIMULATOR_LEGACY_ASSET_SUFFIX": @"iphone",
     @"SIMULATOR_BOOT_TIME": [NSString stringWithFormat:@"%ld", (long)time(NULL)],
     @"XPC_FLAGS": @"0x0", @"LS_ENABLE_BUNDLE_LOCALIZATION_CACHING": @"1",
+    // for wcd.dylib (in the WatchConnectivity daemon): apps' containers and the watch apps SimRun knows
+    @"SIMRUN_APP_CONTAINERS": [[self dataDirectory] stringByAppendingPathComponent:@"Containers/Data/Application"],
+    @"SIMRUN_WATCH_APPS": [self watchAppsPath],
   } mutableCopy];
   [vars addEntriesFromDictionary:device.variables];
   for (NSArray *o in @[ @[ @"SIMRUN_W", @"SIMULATOR_MAINSCREEN_WIDTH" ], @[ @"SIMRUN_H", @"SIMULATOR_MAINSCREEN_HEIGHT" ],

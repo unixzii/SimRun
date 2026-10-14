@@ -32,13 +32,14 @@ HDRS    := $(wildcard include/*.h)
 
 APP   := $(BUILD)/SimRun.app
 CORE  := $(APP) $(BIN)/simrun
-SIMLIBS := $(LIB)/xpcservices.dylib $(LIB)/app.dylib $(LIB)/SimFramebuffer
+SIMLIBS := $(LIB)/xpcservices.dylib $(LIB)/app.dylib $(LIB)/SimFramebuffer $(LIB)/simpair $(LIB)/wcd.dylib
 WATCHLIB := $(LIB)/watchos
-WATCHLIBS := $(WATCHLIB)/simns $(WATCHLIB)/xpcservices.dylib $(WATCHLIB)/app.dylib $(WATCHLIB)/SimFramebuffer
+WATCHLIBS := $(WATCHLIB)/simns $(WATCHLIB)/xpcservices.dylib $(WATCHLIB)/app.dylib $(WATCHLIB)/SimFramebuffer $(WATCHLIB)/simpair \
+             $(WATCHLIB)/wcd.dylib
 PARTS := $(BIN)/simrund $(BIN)/simrun $(BIN)/simns $(SIMLIBS) $(WATCHLIBS)
 TOOLS := $(BIN)/hostinput
 TEST_APPS  := $(APPS)/Hello.app $(APPS)/SUI.app $(APPS)/HIDTest.app $(APPS)/Glass.app $(APPS)/DragTest.app $(APPS)/WebTest.app $(APPS)/BGDownload.app $(APPS)/PickerTest.app $(APPS)/Showcase.app $(APPS)/AudioPlayer.app \
-              $(APPS)/WatchTest.app
+              $(APPS)/WatchTest.app $(APPS)/WCPhone.app
 TEST_PROGS := $(TBIN)/nettest $(TBIN)/nwtest $(TBIN)/pbtest $(TBIN)/kctest $(TBIN)/loctest $(TBIN)/mpstest $(TBIN)/audiotest $(TBIN)/motiontest
 
 .PHONY: all core tools test-apps test-programs tests install clean $(APP)
@@ -170,6 +171,17 @@ $(LIB)/app.dylib: $(APP_SRC) $(APP_HDRS) src/sim/tcc/tcc.tbd $(BUILD)/gen/script
 	  -Wl,-undefined,dynamic_lookup -Wl,-w -o $@
 	@$(SIGN) $@ 2>/dev/null
 
+# simpair: pairs the iPhone and the Apple Watch (docs/pairing.md); its entitlement goes in __TEXT,__entitlements,
+# where a sim process's entitlements are read from
+$(LIB)/simpair: src/sim/pair/pair.m src/sim/pair/Entitlements.plist | $(LIB)
+	$(SIMCC) $< -framework Foundation -Wl,-sectcreate,__TEXT,__entitlements,src/sim/pair/Entitlements.plist -o $@
+	@$(SIGN) $@ 2>/dev/null
+
+# wcd.dylib: in wcd, the WatchConnectivity daemon, what it would ask LaunchServices, AppConduit and Carousel
+$(LIB)/wcd.dylib: src/sim/wcd/wcd.m | $(LIB)
+	$(SIMCC) -dynamiclib $< -framework Foundation -o $@
+	@$(SIGN) $@ 2>/dev/null
+
 # watchOS: the same simns and libraries, marked for the watchOS Simulator (LC_BUILD_VERSION), which is all that tells
 # them apart. dyld_sim skips an inserted library of another platform without a word, and the watchOS SDK can't build
 # them (it has no IOSurface, and marks mach_msg, posix_spawn and UIKit unavailable); what they call exists in the
@@ -232,6 +244,17 @@ $(APPS)/BGDownload.app: tests/apps/bgdownload/main.m tests/apps/bgdownload/Info.
 $(APPS)/WatchTest.app: tests/apps/watchtest/WatchTest.swift tests/apps/watchtest/Info.plist | $(APPS)
 	@mkdir -p $@ && cp tests/apps/watchtest/Info.plist $@/
 	xcrun -sdk watchsimulator swiftc -target arm64-apple-watchos10.0-simulator -parse-as-library $< -o $@/WatchTest
+	@$(SIGN) $@ 2>/dev/null
+
+# WCPhone and WCWatch: WatchConnectivity between SimRun's iPhone and Apple Watch. WCWatch is WCPhone's watch app, in its
+# Watch/ folder as Xcode puts it there (and in build/apps, to run it).
+$(APPS)/WCWatch.app: tests/apps/wcwatch/WCWatch.swift tests/apps/wcphone/Session.swift tests/apps/wcwatch/Info.plist | $(APPS)
+	@mkdir -p $@ && cp tests/apps/wcwatch/Info.plist $@/
+	xcrun -sdk watchsimulator swiftc -target arm64-apple-watchos10.0-simulator -parse-as-library tests/apps/wcwatch/WCWatch.swift tests/apps/wcphone/Session.swift -o $@/WCWatch
+	@$(SIGN) $@ 2>/dev/null
+$(APPS)/WCPhone.app: tests/apps/wcphone/WCPhone.swift tests/apps/wcphone/Session.swift tests/apps/wcphone/Info.plist $(APPS)/WCWatch.app | $(APPS)
+	@rm -rf $@ && mkdir -p $@/Watch && cp tests/apps/wcphone/Info.plist $@/ && cp -R $(APPS)/WCWatch.app $@/Watch/
+	$(SIMSWIFT) -parse-as-library tests/apps/wcphone/WCPhone.swift tests/apps/wcphone/Session.swift -o $@/WCPhone
 	@$(SIGN) $@ 2>/dev/null
 
 $(APPS)/AudioPlayer.app: tests/apps/audioplayer/AudioPlayer.swift tests/apps/audioplayer/Info.plist | $(APPS)

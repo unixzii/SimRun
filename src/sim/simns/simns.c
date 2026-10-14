@@ -132,12 +132,25 @@ static char *gRoot;
 static int allowed(const char *label) {
   const char *list = getenv("SIMNS_DAEMONS");
   if (!list) list = "com.apple.notifyd,com.apple.trustd,com.apple.securityd,com.apple.cfprefsd.xpc.daemon,com.apple.cfprefsd.xpc.agent,"
-                    "com.apple.containermanagerd,com.apple.nsurlsessiond,com.apple.geod,com.apple.audio.systemsoundserver-simd";
+                    "com.apple.containermanagerd,com.apple.nsurlsessiond,com.apple.geod,com.apple.audio.systemsoundserver-simd,"
+                    "com.apple.ids_simd,com.apple.nanoregistryd,com.apple.wcd,com.apple.FileCoordination";
   if (!strcmp(list, "none")) return 0;
   size_t n = strlen(label);
   for (const char *p = list; (p = strstr(p, label)); p += n)
     if ((p == list || p[-1] == ',') && (p[n] == 0 || p[n] == ',')) return 1;
   return 0;
+}
+// SIMNS_DAEMON_INSERT ("label=lib[:lib],label=lib"): the libraries a daemon gets as its DYLD_INSERT_LIBRARIES, or NULL
+static char *daemon_insert(const char *label) {
+  const char *list = getenv("SIMNS_DAEMON_INSERT");
+  size_t n = strlen(label);
+  for (const char *p = list; p && *p; p = strchr(p, ',') ? strchr(p, ',') + 1 : NULL)
+    if (!strncmp(p, label, n) && p[n] == '=') {
+      const char *v = p + n + 1, *end = strchr(v, ',');
+      char *out; asprintf(&out, "DYLD_INSERT_LIBRARIES=%.*s", (int)(end ? end - v : strlen(v)), v);
+      return out;
+    }
+  return NULL;
 }
 static char *cfstr(CFTypeRef v) {
   if (!v || CFGetTypeID(v) != CFStringGetTypeID()) return NULL;
@@ -236,17 +249,19 @@ static void ensure_daemon(const char *name) {
     pthread_mutex_unlock(&gLock);
     int nb = 0; while (gChildEnv[nb]) nb++;
     int ne = 0; while (d->env[ne]) ne++;
-    char **env = calloc(nb + ne + 2, sizeof(char *)); int k = 0;
+    char **env = calloc(nb + ne + 3, sizeof(char *)); int k = 0;
     for (int i = 0; i < nb; i++) env[k++] = gChildEnv[i];
     for (int i = 0; i < ne; i++) env[k++] = d->env[i];
     char svc[300]; snprintf(svc, sizeof svc, "XPC_SERVICE_NAME=%s", d->label); env[k++] = svc;
+    char *insert = daemon_insert(d->label);
+    if (insert) env[k++] = insert;
     posix_spawnattr_t attr; posix_spawnattr_init(&attr);
     posix_spawnattr_setspecialport_np(&attr, gNS, TASK_BOOTSTRAP_PORT);
     posix_spawnattr_setflags(&attr, POSIX_SPAWN_CLOEXEC_DEFAULT);   // stdio only (not our log)
     posix_spawn_file_actions_t fa; posix_spawn_file_actions_init(&fa);
     for (int i = 0; i < 3; i++) posix_spawn_file_actions_addinherit_np(&fa, i);
     int r = posix_spawn(&d->pid, d->argv[0], &fa, &attr, d->argv, env);
-    posix_spawn_file_actions_destroy(&fa); posix_spawnattr_destroy(&attr); free(env);
+    posix_spawn_file_actions_destroy(&fa); posix_spawnattr_destroy(&attr); free(env); free(insert);
     if (r) { L("spawn daemon %s failed: %s", d->label, strerror(r)); d->pid = 0; }
     else L("launched %s (pid %d) for %s", d->label, d->pid, name);
   }
@@ -418,6 +433,20 @@ static void handle_ctl(mach_msg_header_t *h) {
       reg(&gGlobal, m->name, m->port.name, m->flags);
       break;
     }
+    case SIMNS_MSG_LOOKUP: {
+      simns_register_msg_t *m = (simns_register_msg_t *)h;
+      m->name[SIMNS_NAME_MAX - 1] = 0;
+      ensure_daemon(m->name);
+      mach_port_t p = lookup(&gGlobal, m->name, NULL);
+      simns_port_msg_t r = {0};
+      r.h.msgh_bits = MACH_MSGH_BITS(MACH_MSG_TYPE_MOVE_SEND_ONCE, 0) | (p ? MACH_MSGH_BITS_COMPLEX : 0);
+      r.h.msgh_size = sizeof r; r.h.msgh_remote_port = h->msgh_remote_port; r.h.msgh_id = SIMNS_MSG_LOOKUP_REPLY;
+      r.b.msgh_descriptor_count = p ? 1 : 0;
+      r.port.name = p; r.port.disposition = MACH_MSG_TYPE_COPY_SEND; r.port.type = MACH_MSG_PORT_DESCRIPTOR;
+      kern_return_t kr = mach_msg(&r.h, MACH_SEND_MSG | MACH_SEND_TIMEOUT, sizeof r, 0, 0, 1000, 0);
+      L("ctl lookup %s -> %s (reply kr=%x)", m->name, p ? "OK" : "MISSING", kr);
+      break;
+    }
     case SIMNS_MSG_READY: L("host helper ready"); gReady = 1; break;
     case SIMNS_MSG_DUMP:
       pthread_mutex_lock(&gLock);
@@ -496,6 +525,19 @@ int main(int argc, char **argv) {
   pthread_t th; pthread_create(&th, NULL, serve, NULL);
   pthread_t idle; pthread_create(&idle, NULL, idle_watch, NULL);
 
+  // the daemons' environment: ours, in the namespace. Loaded before saying hello: SimRun may look a daemon's service up
+  // (SIMNS_MSG_LOOKUP) as soon as it is ready
+  int envc = 0; while (environ[envc]) envc++;
+  gChildEnv = calloc(envc + 3, sizeof(char *)); int k = 0;
+  for (int i = 0; i < envc; i++) {
+    if (!strncmp(environ[i], "SIMNS_", 6) || !strncmp(environ[i], "DYLD_INSERT_LIBRARIES=", 22) || !strncmp(environ[i], "XPC_SIMULATOR_LAUNCHD_NAME=", 27) || !strncmp(environ[i], "XPC_FLAGS=", 10)) continue;
+    gChildEnv[k++] = environ[i];
+  }
+  gChildEnv[k++] = "XPC_SIMULATOR_LAUNCHD_NAME=dev.simrun.simns";
+  gChildEnv[k++] = "XPC_FLAGS=0x0";  // sim posix_spawn would add XPC_FLAGS=0x2 (null-bootstrap mode) otherwise
+  gRoot = getenv("SIMULATOR_ROOT") ? getenv("SIMULATOR_ROOT") : "";
+  load_daemons();
+
   const char *slot = getenv("SIMNS_HOST_SLOT");
   if (!slot) { fprintf(stderr, "simns: no SIMNS_HOST_SLOT (run by SimRun)\n"); return 2; }
   {
@@ -512,18 +554,6 @@ int main(int argc, char **argv) {
       if (!gReady) L("host helper did not send ready; continuing");
     } else L("SIMNS_HOST_SLOT=%s: no port in that slot", slot);
   }
-
-  // the daemons' environment: ours, in the namespace
-  int envc = 0; while (environ[envc]) envc++;
-  gChildEnv = calloc(envc + 3, sizeof(char *)); int k = 0;
-  for (int i = 0; i < envc; i++) {
-    if (!strncmp(environ[i], "SIMNS_", 6) || !strncmp(environ[i], "DYLD_INSERT_LIBRARIES=", 22) || !strncmp(environ[i], "XPC_SIMULATOR_LAUNCHD_NAME=", 27) || !strncmp(environ[i], "XPC_FLAGS=", 10)) continue;
-    gChildEnv[k++] = environ[i];
-  }
-  gChildEnv[k++] = "XPC_SIMULATOR_LAUNCHD_NAME=dev.simrun.simns";
-  gChildEnv[k++] = "XPC_FLAGS=0x0";  // sim posix_spawn would add XPC_FLAGS=0x2 (null-bootstrap mode) otherwise
-  gRoot = getenv("SIMULATOR_ROOT") ? getenv("SIMULATOR_ROOT") : "";
-  load_daemons();
 
   signal(SIGTERM, on_term); signal(SIGINT, on_term); signal(SIGHUP, on_term);
   L("serving (shared)");

@@ -149,6 +149,14 @@ A watchOS app runs on a watchOS runtime: its own (Launch With…, `simrun run --
 copies ([watchos.md](watchos.md#simruns-libraries-for-watchos)); the runtime is otherwise like any other. An app isn't
 started on a runtime of another platform.
 
+## The paired watch
+
+SimRun is one iPhone (its own iOS runtime's `simns`) and one Apple Watch (a watchOS runtime's `simns`), each with its own
+`SIMULATOR_UDID` and device data directory (the watch's is `<data>/Devices/AppleWatch`). When both are up, SimRun joins
+their `ids_simd` relays and runs `simpair` in each to pair them through NanoRegistry, as CoreSimulator pairs a device
+pair; `wcd.dylib`, inserted into `wcd`, answers what WatchConnectivity would ask LaunchServices and Carousel. An iPhone
+app with a Watch app in it runs it on the watch too ([pairing.md](pairing.md)).
+
 ## Devices
 
 What device an app runs as comes from a CoreSimulator device type (a `.simdevicetype`, installed with Xcode). Its
@@ -192,11 +200,11 @@ and `simrun screenshot` take `--profile` to pick one of an app's instances.
 | Path | Contents |
 |---|---|
 | `include/` | Shared headers: viewer wire protocol, simns control protocol, gpuhost, simfb, scenes, hid and textinput APIs, keychain store |
-| `src/host/` | macOS side: `simrund/` (SimRun.app: `simrund.m` the server and menus; `session/` a running app's window session, environment, runtimes and device types; `launcher/` the launcher + library, Launch With… sheet + per-app launch options; `services/` host pasteboard, file panels for document pickers, privacy permissions, motion sensors, Keychain window, Install Command Line Tool; `inspector/` the layer debugger), `simrun/` (the `simrun` command line), `gpuhost/` (IOSurface + Metal host services) |
+| `src/host/` | macOS side: `simrund/` (SimRun.app: `simrund.m` the server and menus; `session/` a running app's window session, environment, runtimes and device types, the paired iPhone and watch; `launcher/` the launcher + library, Launch With… sheet + per-app launch options; `services/` host pasteboard, file panels for document pickers, privacy permissions, motion sensors, Keychain window, Install Command Line Tool; `inspector/` the layer debugger), `simrun/` (the `simrun` command line), `gpuhost/` (IOSurface + Metal host services) |
 | `resources/` | SimRun.app's Info.plist and app icon (`AppIcon.icon`, an Icon Composer document) |
-| `src/sim/` | Simulator side: `simns/` (launchd_sim stand-in), `xpcservices/` (xpcservices.dylib), `app/` (app.dylib's start and its module list) and its modules `locale/`, `container/`, `watch/`, `render/`, `scenes/`, `hid/`, `textinput/`, `pboard/`, `drag/`, `docpicker/`, `keychain/`, `webkit/`, `mps/`, `script/`, `tcc/`, `audio/`, `motion/`; `common/` (what the libraries share: the process's role, SimRun's services, spawning helpers), `simfb/` (SimFramebuffer); built into `lib/`, and again marked for the watchOS Simulator into `lib/watchos/` |
+| `src/sim/` | Simulator side: `simns/` (launchd_sim stand-in), `xpcservices/` (xpcservices.dylib), `app/` (app.dylib's start and its module list), `pair/` (simpair: pairs the iPhone and the watch), `wcd/` (wcd.dylib, in the WatchConnectivity daemon) and app.dylib's modules `locale/`, `container/`, `watch/`, `render/`, `scenes/`, `hid/`, `textinput/`, `pboard/`, `drag/`, `docpicker/`, `keychain/`, `webkit/`, `mps/`, `script/`, `tcc/`, `audio/`, `motion/`; `common/` (what the libraries share: the process's role, SimRun's services, spawning helpers), `simfb/` (SimFramebuffer); built into `lib/`, and again marked for the watchOS Simulator into `lib/watchos/` |
 | `tools/` | `hostinput.swift` (synthesize Mac clicks/typing into the viewer), `crash.py` (crash-report backtrace) |
-| `tests/` | Test apps (`hello` UIKit, `swiftui`, `hidtest`, `dragtest`, `webtest` WKWebView, `bgdownload` background URLSession, `pickertest` document pickers, `glass` Liquid Glass, `showcase` a SwiftUI tour of everything that works, `audioplayer` a music player for trying sound, `watchtest` a watchOS app) and programs (`net/nettest`, `net/nwtest`, `pboard/pbtest`, `keychain/kctest`, `locale/loctest`, `mps/mpstest`, `audio/audiotest` playing and recording, `motion/motiontest` CoreMotion's streams), and scripts for `simrun eval` (`scripts/`) |
+| `tests/` | Test apps (`hello` UIKit, `swiftui`, `hidtest`, `dragtest`, `webtest` WKWebView, `bgdownload` background URLSession, `pickertest` document pickers, `glass` Liquid Glass, `showcase` a SwiftUI tour of everything that works, `audioplayer` a music player for trying sound, `watchtest` a watchOS app, `wcphone` and `wcwatch` WatchConnectivity between them) and programs (`net/nettest`, `net/nwtest`, `pboard/pbtest`, `keychain/kctest`, `locale/loctest`, `mps/mpstest`, `audio/audiotest` playing and recording, `motion/motiontest` CoreMotion's streams), and scripts for `simrun eval` (`scripts/`) |
 | `skills/` | The agent skill (`simrun/`: SKILL.md and an API reference) that SimRun.app carries in `Contents/Resources/skills/` and `simrun skill` prints or installs |
 | `docs/` | These write-ups |
 
