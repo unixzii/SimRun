@@ -16,7 +16,7 @@
 //    -[FBSWorkspaceScenesClient sceneID:updateWithSettingsDiff:transitionContext:completion:] (SRScenesUpdate()).
 //
 // Also (each independent, see SCENES.md):
-//  * BKSDisplayServicesStart stub + GSSetMainScreenInfo (no backboardd).
+//  * BKSDisplayServicesStart stub + GSSetMainScreenInfo (no backboardd), and the backlight's notify state set to on.
 //  * BackBoard HID BSService endpoint ("com.apple.backboard.hid-services.xpc") -> in-process anonymous XPC sink.
 //  * No com.apple.runningboard: RBS assertion acquisition fails at once instead of a sleep-and-retry (~100 ms of launch).
 //  * No LaunchServices: -[UTType conformsToType:nil] (unresolvable type) is NO instead of an assertion (drag & drop).
@@ -27,6 +27,7 @@
 #import <objc/runtime.h>
 #import <objc/message.h>
 #include <mach/mach.h>
+#include <notify.h>
 #import "app.h"
 #include "scenes.h"
 
@@ -334,9 +335,25 @@ static id my_FBSWorkspaceInitialize(id options) {
 // ---------------------------------------------------------------- BackBoard display services stub
 extern Boolean BKSDisplayServicesStart(void);
 extern void GSSetMainScreenInfo(double pixelW, double pixelH, float scale, float orientation);
+// backboardd publishes the backlight in this notify state (100 in a booted Simulator). Read as 0, the backlight is
+// off and UIKit stops animating Liquid Glass (a slider's thumb no longer lifts into glass). With no notifyd every read
+// failed and UIKit kept its default; now that simns runs notifyd, the state needs an owner. The registration is kept
+// for the app's life, as backboardd keeps its own: notifyd drops a name's state when its last registration goes.
+static void SRSetBacklightOn(void) {
+  static const char *name = "com.apple.backboardd.backlight.changed";
+  int token;
+  uint32_t r = notify_register_check(name, &token);
+  if (r == NOTIFY_STATUS_OK) {
+    uint64_t state = 0;
+    notify_get_state(token, &state);
+    if (state != 100 && (r = notify_set_state(token, 100)) == NOTIFY_STATUS_OK) notify_post(name);
+  }
+  if (r != NOTIFY_STATUS_OK) LOG("backlight state not set (notify status %u)", r);
+}
 static Boolean my_BKSDisplayServicesStart(void) {
   if (!SRModuleOn(SRModuleScenes)) return BKSDisplayServicesStart();
   GSSetMainScreenInfo(gW * gScale, gH * gScale, (float)gScale, 0.0f);
+  SRSetBacklightOn();
   LOG("BKSDisplayServicesStart stubbed (main screen %gx%g px @%g)", gW * gScale, gH * gScale, gScale);
   return 1;
 }
