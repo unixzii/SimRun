@@ -335,10 +335,11 @@ static id my_FBSWorkspaceInitialize(id options) {
 // ---------------------------------------------------------------- BackBoard display services stub
 extern Boolean BKSDisplayServicesStart(void);
 extern void GSSetMainScreenInfo(double pixelW, double pixelH, float scale, float orientation);
-// backboardd publishes the backlight in this notify state (100 in a booted Simulator). Read as 0, the backlight is
-// off and UIKit stops animating Liquid Glass (a slider's thumb no longer lifts into glass). With no notifyd every read
-// failed and UIKit kept its default; now that simns runs notifyd, the state needs an owner. The registration is kept
-// for the app's life, as backboardd keeps its own: notifyd drops a name's state when its last registration goes.
+// backboardd publishes the backlight in this notify state (100 in a booted Simulator). At 0, the backlight is off,
+// and on iOS 26.5 almost no animation is drawn: UIKit and SwiftUI still run them, but their frames aren't rendered, so
+// views jump to their end state. With no notifyd every read failed and the default applied; now that simns runs
+// notifyd, the state needs an owner. The registration is kept for the app's life, as backboardd keeps its own:
+// notifyd drops a name's state when its last registration goes.
 static void SRSetBacklightOn(void) {
   static const char *name = "com.apple.backboardd.backlight.changed";
   int token;
