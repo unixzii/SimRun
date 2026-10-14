@@ -3,7 +3,7 @@
 // Sim libxpc only checks that XPC_SIMULATOR_LAUNCHD_NAME is set and then uses the bootstrap special port.
 //   request: msgh_id 0x40000000|routine (wants reply) / 0x10000000|routine, body = serialized xpc dictionary
 //   routines: 204 register {name,port}  206 check_in {name}->{port:recv}  207 look_up {name}->{port}  712 attrs {pid} (none)
-//             804 endpoint lookup {name}->{port}   805 listener check-in {name}->{port:recv}
+//             403/406 event publisher (notifyd)   804 endpoint lookup {name}->{port}   805 listener check-in {name}->{port:recv}
 // Control port (simns_proto.h): SimRun registers names (host-side sim2host services) and makes per-app namespaces.
 // Env: SIMNS_HOST_SLOT (mach_ports_lookup slot of SimRun's port; simns sends SIMNS_MSG_HELLO with the control port
 //      there and waits for SIMNS_MSG_READY), SIMNS_LOG, SIMNS_QUIET.
@@ -131,8 +131,8 @@ static char *gRoot;
 
 static int allowed(const char *label) {
   const char *list = getenv("SIMNS_DAEMONS");
-  if (!list) list = "com.apple.trustd,com.apple.securityd,com.apple.cfprefsd.xpc.daemon,com.apple.cfprefsd.xpc.agent,com.apple.containermanagerd,"
-                    "com.apple.nsurlsessiond,com.apple.audio.systemsoundserver-simd";  // notifyd needs XPC event-publisher routines (crashes)
+  if (!list) list = "com.apple.notifyd,com.apple.trustd,com.apple.securityd,com.apple.cfprefsd.xpc.daemon,com.apple.cfprefsd.xpc.agent,"
+                    "com.apple.containermanagerd,com.apple.nsurlsessiond,com.apple.geod,com.apple.audio.systemsoundserver-simd";
   if (!strcmp(list, "none")) return 0;
   size_t n = strlen(label);
   for (const char *p = list; (p = strstr(p, label)); p += n)
@@ -207,10 +207,12 @@ static daemon_t *daemon_for(const char *name) {
 }
 static int is_daemon_service(const char *name) { return daemon_for(name) != NULL; }
 static pthread_mutex_t gDaemonLock = PTHREAD_MUTEX_INITIALIZER;   // lookups (serve) and idle_watch both launch
+static volatile int gStopping;
 // If `name` belongs to an allow-listed daemon that isn't running, declare its ports and spawn it.
 static void ensure_daemon(const char *name) {
+  if (gStopping) return;
   pthread_mutex_lock(&gDaemonLock);
-  for (daemon_t *d = daemon_for(name); d; d = NULL) {
+  for (daemon_t *d = daemon_for(name); d && !gStopping; d = NULL) {
     if (d->gone && d->pid > 0)   // its ports came back: it is exiting, if not gone yet
       for (int t = 0; t < 50 && waitpid(d->pid, NULL, WNOHANG) == 0; t++) usleep(10000);
     if (d->gone) { d->pid = 0; d->gone = 0; }
@@ -259,7 +261,7 @@ static void port_returned(mach_port_destroyed_notification_t *m) {
   pthread_mutex_lock(&gLock);
   for (entry_t *e = gGlobal.entries; e; e = e->next) if (e->send == p) { e->recv = p; name = e->name; break; }
   pthread_mutex_unlock(&gLock);
-  daemon_t *d = name ? daemon_for(name) : NULL;
+  daemon_t *d = name && !gStopping ? daemon_for(name) : NULL;
   if (!d) { mach_port_mod_refs(mach_task_self(), p, MACH_PORT_RIGHT_RECEIVE, -1); return; }
   pthread_mutex_lock(&gDaemonLock); d->gone = 1; pthread_mutex_unlock(&gDaemonLock);
   mach_port_move_member(mach_task_self(), p, gIdle);
@@ -291,6 +293,7 @@ static void *idle_watch(void *arg) {
 }
 // Daemons may ignore or defer SIGTERM (like launchd's ExitTimeOut): give them a moment, then SIGKILL.
 static void stop_daemons(void) {
+  gStopping = 1;
   int alive = 0;
   for (daemon_t *d = gDaemons; d; d = d->next) if (d->pid > 0 && kill(d->pid, SIGTERM) == 0) alive++;
   for (int t = 0; alive && t < 20; t++) {
@@ -326,6 +329,21 @@ static void on_term(int sig) { stop_daemons(); _exit(128 + sig); }
 static void handle_pipe(mach_msg_header_t *h, pid_t pid) {
   uint32_t routine = h->msgh_id & 0xffffff;
   int wants_reply = (h->msgh_id & 0x40000000) != 0;
+  // routine 406 (xpc_event_publisher arm poll) is one-way with a send-once reply port that launchd holds while the
+  // publisher lives; detaching it before libxpc decodes the message keeps xpc_release from sending MACH_NOTIFY_SEND_ONCE
+  if (routine == 406 && MACH_MSGH_BITS_REMOTE(h->msgh_bits) == MACH_MSG_TYPE_PORT_SEND_ONCE) {
+    static mach_port_t polls[16];
+    mach_port_t so = h->msgh_remote_port;
+    h->msgh_remote_port = MACH_PORT_NULL;
+    h->msgh_bits = MACH_MSGH_BITS_SET(0, MACH_MSGH_BITS_LOCAL(h->msgh_bits), MACH_MSGH_BITS_VOUCHER(h->msgh_bits), MACH_MSGH_BITS_OTHER(h->msgh_bits));
+    for (int i = 0; i < 16; i++) {
+      mach_port_type_t t = 0;
+      if (polls[i] && (mach_port_type(mach_task_self(), polls[i], &t) != KERN_SUCCESS || (t & MACH_PORT_TYPE_DEAD_NAME))) {
+        mach_port_deallocate(mach_task_self(), polls[i]); polls[i] = MACH_PORT_NULL;
+      }
+      if (!polls[i] && so) { polls[i] = so; so = MACH_PORT_NULL; }
+    }
+  }
   // libxpc's decoder only accepts bare type ids (and reads the audit trailer that follows the body)
   h->msgh_id &= 0xff000000u;
   mach_msg_header_t *copy = NULL;
@@ -365,6 +383,16 @@ static void handle_pipe(mach_msg_header_t *h, pid_t pid) {
       if (reply) xpc_dictionary_set_mach_recv(reply, "port", r);
       break;
     }
+    case 403:   // xpc_event_publisher_activate (notifyd): fetch subscriptions {stream} -> {events:[], initial-load-completed:true}
+      if (reply) {
+        xpc_object_t ev = xpc_array_create(NULL, 0);
+        xpc_dictionary_set_value(reply, "events", ev); xpc_release(ev);
+        xpc_dictionary_set_bool(reply, "initial-load-completed", true);
+        xpc_dictionary_set_int64(reply, "error", 0);
+      }
+      break;
+    case 406:   // xpc_event_publisher_activate: arm poll (send-once reply port held above)
+      break;
     case 712:   // a process's launchd attributes {pid} -> {attrs}: bundle-id, extension... (xpc_connection_copy_bundle_id,
                 // xpc_connection_is_extension; nsurlsessiond asks for every client). 113 = none, which libxpc takes quietly
       if (reply) xpc_dictionary_set_int64(reply, "error", 113);

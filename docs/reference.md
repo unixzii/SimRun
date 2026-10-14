@@ -76,7 +76,6 @@ select all) go to the app while one of its windows is key.
 - Rotation: scenes can be rotated ([scenes.md](scenes.md)), but the viewer has no way to rotate and doesn't map
   input into rotated space; `deviceOrientation` isn't wired. CoreMotion's accelerometer, gyro and device motion are
   the MacBook's ([motion.md](motion.md)); no magnetometer, and nothing in UIKit (orientation, shake) follows them.
-- notifyd is not provided.
 - Sound plays through the Mac's default output ([architecture.md](architecture.md)); there is no volume of the app's
   own (only muting it, `AUDIO_MUTE`). Recording works ([microphone.md](microphone.md)), but needs a Mac input device
   even with a file or the Mac's sound as the source; the app's own permission is always allowed once SimRun's is

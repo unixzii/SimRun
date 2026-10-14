@@ -11,7 +11,7 @@
 // What this process is to SimRun, from SIMRUN_ROLE (set by SRSpawnHelper):
 typedef enum {
   SRRoleApp,          // the app SimRun runs (or anything the app spawns by itself)
-  SRRoleXPCService,   // a bundled XPC service spawned for the app (MTLCompilerService)
+  SRRoleXPCService,   // a bundled XPC service spawned for the app (MTLCompilerService, SnapshotService)
   SRRoleExtension,    // a WebKit extension spawned for the app (WebContent, Networking, GPU)
 } SRRole;
 SR_HIDDEN SRRole SRProcessRole(void);

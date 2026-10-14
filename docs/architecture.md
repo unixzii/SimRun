@@ -20,8 +20,8 @@ simrun (CLI) ───unix socket──▶ build/bin/simrund   macOS AppKit serv
                                          │     └─ trustd, cfprefsd…   real sim daemons launched on demand, shared by all apps
                                          └─ each app (bootstrap port = its namespace), with DYLD_INSERT_LIBRARIES =
                                               xpcservices.dylib  the frameworks' bundled XPC services (Metal's shader
-                                                             compiler, MTLCompilerService) spawned for the app as
-                                                             launchd_sim would; all of SimRun such a service gets
+                                                             compiler, MTLCompilerService; MapKit's SnapshotService) spawned
+                                                             for the app as launchd_sim would; all of SimRun such a service gets
                                               app.dylib      one module per folder of src/sim, started in this order by
                                                              app/app.m, each in the processes it belongs in (the app;
                                                              for container, tcc, audio also WebKit's extensions):
@@ -131,7 +131,7 @@ under `/Library/Developer/CoreSimulator/Volumes` (disk images), under `/private/
 simctl can't be run. SimRun has a runtime of its own: `SIMRUN_RUNTIME_ROOT`, else the one chosen in **SimRun ▸ iOS Runtime** (a build
 version, `SRRuntimeBuild` in its user defaults), else the newest installed iOS runtime. It is read once at start, so a
 new choice takes effect when SimRun is reopened; the menu says so while the two differ. Its `simns --serve`, and with
-it the shared daemons (cfprefsd, containermanagerd, trustd, securityd, nsurlsessiond, systemsoundserver-simd), runs from that runtime.
+it the shared daemons (notifyd, cfprefsd, containermanagerd, trustd, securityd, nsurlsessiond, geod, systemsoundserver-simd), runs from that runtime.
 
 An app can run on another installed runtime (Launch With… ▸ Info, or `simrun run --runtime`). SimRun then starts a second `simns --serve` from that runtime the first time it is needed, publishes the
 same host services (IOSurface, Metal, pasteboard, file panels) in it, and gives the app a namespace there, so an app never talks to

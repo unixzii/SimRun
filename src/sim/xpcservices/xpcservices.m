@@ -7,6 +7,9 @@
 //    the listener port back (SRHelperCheckIn). The service is _MultipleInstances (launchd_sim gives every connection its
 //    own process), so it isn't written for concurrent connections: all of an app's connections share our one process,
 //    and their messages are serialized.
+//  * com.apple.MapKit.SnapshotService (MKMapSnapshotter): MapKit.framework/XPCServices/com.apple.MapKit.SnapshotService.xpc,
+//    spawned in the app's simns namespace so VectorKit and GeoServices inside it reach geod, metal.simulator and
+//    IOSurface.Remote.
 // Env: XPCSERVICES_VERBOSE=1, XPCSERVICES_DISABLE=1 (no compiler service: Metal compiles nothing, CA aborts).
 #import <Foundation/Foundation.h>
 #include <mach/mach.h>
@@ -33,52 +36,68 @@ static NSArray<NSString *> *service_environment(const char *path) {
   return env;
 }
 
-static mach_port_t gCompilerPort;   // listener of the running compiler; NULL until spawned and after it exits
-static pid_t gCompilerPid;
-static dispatch_queue_t compiler_queue(void) {
+typedef struct {
+  const char *name;
+  const char *bundlePath;
+  BOOL inNamespace;
+  mach_port_t port;   // listener of the running service; NULL until spawned and after it exits
+  pid_t pid;
+} SRService;
+
+static SRService gServices[] = {
+  { "com.apple.MTLCompilerService",
+    "/System/Library/Frameworks/Metal.framework/XPCServices/MTLCompilerService.xpc/MTLCompilerService", NO },
+  { "com.apple.MapKit.SnapshotService",
+    "/System/Library/Frameworks/MapKit.framework/XPCServices/com.apple.MapKit.SnapshotService.xpc/com.apple.MapKit.SnapshotService", YES },
+};
+
+static dispatch_queue_t service_queue(void) {
   static dispatch_queue_t q; static dispatch_once_t once;
-  dispatch_once(&once, ^{ q = dispatch_queue_create("dev.simrun.xpcservices.compiler", DISPATCH_QUEUE_SERIAL); });
+  dispatch_once(&once, ^{ q = dispatch_queue_create("dev.simrun.xpcservices", DISPATCH_QUEUE_SERIAL); });
   return q;
 }
 static xpc_connection_t my_xpc_connection_create(const char *name, dispatch_queue_t q) {
-  if (name && !strcmp(name, "com.apple.MTLCompilerService") && !getenv("XPCSERVICES_DISABLE")) {
+  SRService *svc = NULL;
+  if (name && !getenv("XPCSERVICES_DISABLE"))
+    for (size_t i = 0; i < sizeof gServices / sizeof *gServices; i++)
+      if (!strcmp(name, gServices[i].name)) { svc = &gServices[i]; break; }
+  if (svc) {
     __block mach_port_t port = MACH_PORT_NULL;
-    dispatch_sync(compiler_queue(), ^{
+    dispatch_sync(service_queue(), ^{
       mach_port_type_t t;
-      if (gCompilerPort && (mach_port_type(mach_task_self(), gCompilerPort, &t) || (t & MACH_PORT_TYPE_DEAD_NAME))) {
-        mach_port_deallocate(mach_task_self(), gCompilerPort);   // died; its exit source hasn't run yet
-        gCompilerPort = MACH_PORT_NULL;
+      if (svc->port && (mach_port_type(mach_task_self(), svc->port, &t) || (t & MACH_PORT_TYPE_DEAD_NAME))) {
+        mach_port_deallocate(mach_task_self(), svc->port);   // died; its exit source hasn't run yet
+        svc->port = MACH_PORT_NULL;
       }
-      if (!gCompilerPort) {
+      if (!svc->port) {
         // Like launchd_sim, launch it again after it has died (crashed, or jetsam): Metal reconnects on its next
         // request. Handing out the dead listener instead fails every later connection ("Connection init failed at
         // send right creation with error 9") and CA aborts on the next shader it needs.
-        char path[1024]; snprintf(path, sizeof path, "%s/System/Library/Frameworks/Metal.framework/XPCServices/MTLCompilerService.xpc/MTLCompilerService",
-                                  getenv("DYLD_ROOT_PATH") ?: "");
+        char path[1024]; snprintf(path, sizeof path, "%s%s", getenv("DYLD_ROOT_PATH") ?: "", svc->bundlePath);
         // the service gets only this dylib, none of the app's
         SRHelper h = { .path = path, .role = SRRoleXPCService, .insert = "xpcservices.dylib", .environment = service_environment(path),
-                       .inNamespace = NO, .timeoutSeconds = 20, .tag = "xpcservices" };
+                       .inNamespace = svc->inNamespace, .timeoutSeconds = 20, .tag = "xpcservices" };
         mach_port_t p = MACH_PORT_NULL;
         pid_t pid = SRSpawnHelper(&h, &p);
         if (pid < 0) return;
         LOG("spawned %s pid %d -> listener %#x\n", path, pid, p);
-        gCompilerPort = p; gCompilerPid = pid;
-        dispatch_source_t ds = dispatch_source_create(DISPATCH_SOURCE_TYPE_PROC, pid, DISPATCH_PROC_EXIT, compiler_queue());
+        svc->port = p; svc->pid = pid;
+        dispatch_source_t ds = dispatch_source_create(DISPATCH_SOURCE_TYPE_PROC, pid, DISPATCH_PROC_EXIT, service_queue());
         dispatch_source_set_event_handler(ds, ^{
           int st = 0; waitpid(pid, &st, WNOHANG);
-          LOG("compiler pid %d exited (status %#x); relaunching on the next connection\n", pid, st);
-          if (gCompilerPid == pid && gCompilerPort) { mach_port_deallocate(mach_task_self(), gCompilerPort); gCompilerPort = MACH_PORT_NULL; }
+          LOG("%s pid %d exited (status %#x); relaunching on the next connection\n", svc->name, pid, st);
+          if (svc->pid == pid && svc->port) { mach_port_deallocate(mach_task_self(), svc->port); svc->port = MACH_PORT_NULL; }
           dispatch_source_cancel(ds);
         });
         dispatch_resume(ds);
       }
-      port = gCompilerPort;
+      port = svc->port;
       mach_port_mod_refs(mach_task_self(), port, MACH_PORT_RIGHT_SEND, 1);
     });
     if (port) {
       xpc_connection_t c = sr_xpc_create_from_endpoint(xpc_endpoint_create_mach_port_4sim(port));
       if (q) xpc_connection_set_target_queue(c, q);
-      LOG("xpc_connection_create(%s) -> compiler listener %#x\n", name, port);
+      LOG("xpc_connection_create(%s) -> listener %#x\n", name, port);
       return c;
     }
   }
