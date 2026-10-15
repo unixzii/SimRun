@@ -7,6 +7,7 @@
 #import <QuartzCore/QuartzCore.h>
 #import "app.h"
 #include "scenes.h"
+#import "layerhost.h"
 
 @interface CAWindowServer : NSObject + (instancetype)serverWithOptions:(NSDictionary *)o; @property (readonly) NSArray *displays; @end
 @interface CAContext : NSObject + (instancetype)remoteContextWithOptions:(NSDictionary *)o; @property (strong) CALayer *layer; @property (readonly) uint32_t contextId; @end
@@ -25,6 +26,12 @@ static void LOGF(NSString *fmt, ...) { va_list ap; va_start(ap, fmt); NSString *
 static void host_layers(NSArray<NSNumber *> *ids) {
   if ([ids isEqual:gHosted]) return;
   gHosted = [ids mutableCopy];
+  if (SRLayerHostOn()) {   // the contexts are on WindowServer: SimRun's window hosts them (layerhost.h)
+    uint32_t c[SR_LAYERHOST_MAX_IDS]; size_t n = 0;
+    for (NSNumber *i in ids) if (n < SR_LAYERHOST_MAX_IDS) c[n++] = i.unsignedIntValue;
+    SRLayerHostShow(c, n, CGSizeMake(gPixels.width / gScale, gPixels.height / gScale));
+    return;
+  }
   if (!gHostCtx) {
     gHostCtx = [CAContext remoteContextWithOptions:@{ kCAContextDisplayable: @YES }];
     gHostRoot = [CALayer layer];

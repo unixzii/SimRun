@@ -27,6 +27,9 @@ WITHOUT launchd_sim / backboardd_sim / SpringBoard, reimplementing the needed se
    remote context id from WindowServer, and a host CALayerHost with that id is created fine — but nothing the sim process commits
    is rendered (blank; a native macOS child renders fine in the same harness). Likely layer-tree encoding mismatch between builds.
    Shelved; => run a sim-QuartzCore render server ourselves. (The earlier "MIG_SERVER_DIED" was a bogus port: see 8.)
+   CONFIRMED later (layerhost.md): it is the encoding. Type IDs, atoms and layer flags differ even between iOS 27.1 and
+   macOS 27.2 (same QuartzCore train), and the macOS client's bytes swapped into the sim client's commit do render.
+   app.dylib's layerhost module (SIMRUN_LAYERHOST=1) translates commits and renumbers render-server requests; apps render.
 5. Sim backboardd gets displays via SimFramebuffer: env SIMULATOR_FRAMEBUFFER_FRAMEWORK=/Library/Developer/PrivateFrameworks/CoreSimulator.framework/Resources/Platforms/iphoneos/Library/PrivateFrameworks/SimFramebuffer.framework/SimFramebuffer
    (a sim-platform C API: SFBConnection*/SFBDisplay*/SFBSwapchain*; QuartzCore imports these). Also SIMULATOR_HID_SYSTEM_MANAGER (SimulatorHID.framework) for input.
 6. Mac Catalyst retagging (Approach A) works but is NOT the goal here.

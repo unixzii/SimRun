@@ -104,6 +104,7 @@ static BOOL SameProfile(NSString *a, NSString *b) { return a == b || [a isEqualT
   SRMotionHost *_motion; mach_port_t _motionPort;
   BOOL _gpuStarted; mach_port_t _iosurfacePort, _metalPort;
   mach_port_t _audioPort; dispatch_source_t _audioDeath;
+  mach_port_t _windowServerPort;   // WindowServer's render server, for the layerhost experiment (layerhost.md)
   BOOL _launched;
 }
 
@@ -537,6 +538,10 @@ static BOOL ProcessGone(pid_t pid) {
     if (_motionPort) [self registerName:SRMO_SERVICE port:_motionPort in:ns]; else LOG(@"host motion service failed to start");
     if (!_audioPort) [self lookUpHostAudio];
     if (_audioPort) [self registerName:"com.apple.audio.audiohald" port:_audioPort in:ns];
+    // The layerhost experiment: apps run with SIMRUN_LAYERHOST=1 put their CAContexts on WindowServer (layerhost.md).
+    if (!_windowServerPort && bootstrap_look_up(bootstrap_port, "com.apple.CARenderServer", &_windowServerPort) != KERN_SUCCESS)
+      _windowServerPort = MACH_PORT_NULL;
+    if (_windowServerPort) [self registerName:"dev.simrun.windowserver" port:_windowServerPort in:ns];
     mach_msg_header_t ready = { .msgh_bits = MACH_MSGH_BITS(MACH_MSG_TYPE_COPY_SEND, 0), .msgh_size = sizeof ready,
                                 .msgh_remote_port = ns.control, .msgh_id = SIMNS_MSG_READY };
     mach_msg(&ready, MACH_SEND_MSG, sizeof ready, 0, 0, 0, 0);

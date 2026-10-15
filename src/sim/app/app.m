@@ -15,6 +15,7 @@ typedef struct {
 static const SRModule kModules[SRModuleCount] = {
   [SRModuleLocale]     = { APP, "LOCALE_DISABLE", SRLocaleStart },
   [SRModuleContainer]  = { APP | EXTENSION, NULL, SRContainerStart },
+  [SRModuleLayerHost]  = { APP, NULL, SRLayerHostStart },   // only with SIMRUN_LAYERHOST
   [SRModuleRender]     = { APP, NULL, SRRenderStart },
   [SRModuleScenes]     = { APP, NULL, SRScenesStart },
   [SRModuleHID]        = { APP, NULL, SRHIDStart },

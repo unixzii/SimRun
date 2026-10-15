@@ -213,9 +213,31 @@ static NSString *SRPlainString(id s) { return [s isKindOfClass:NSAttributedStrin
 - (void)selectAll:(id)s { [self editKey:0x00 modifiers:NSEventModifierFlagCommand]; }                           // A
 @end
 
+// ---------------------------------------------------------------- the layerhost experiment's contexts
+// An app run with SIMRUN_LAYERHOST=1 has its scene's CAContexts on WindowServer (layerhost.md): one CALayerHost each,
+// bottom to top, the app's points scaled to the view, over the display's frames.
+@interface SRContextHostsLayer : CALayer
+@property (nonatomic) CGSize pointSize;
+@end
+@implementation SRContextHostsLayer
+- (void)layoutSublayers {
+  CGFloat s = self.pointSize.width > 0 ? self.bounds.size.width / self.pointSize.width : 1;
+  for (CALayer *h in self.sublayers) {
+    h.anchorPoint = CGPointZero; h.position = CGPointZero;
+    h.bounds = (CGRect){ CGPointZero, self.pointSize };
+    h.transform = CATransform3DMakeScale(s, s, 1);
+  }
+}
+- (id<CAAction>)actionForKey:(NSString *)key { return (id)NSNull.null; }
+@end
+
+@interface CALayerHost : CALayer
+@property uint32_t contextId;
+@end
+
 // ---------------------------------------------------------------- session
 @implementation SRSession {
-  SRMirrorWindow *_window; SRView *_view; CALayer *_surfaceLayer;
+  SRMirrorWindow *_window; SRView *_view; CALayer *_surfaceLayer; SRContextHostsLayer *_hostsLayer;
   mach_port_t _port, _scriptPort; dispatch_source_t _portSource, _procSource;
   IOSurfaceRef _surface; NSMutableDictionary<NSNumber *, id> *_surfaces; NSSize _contentSize; CGFloat _contentScale;
   BOOL _exited, _sawFrame;
@@ -615,8 +637,32 @@ static NSString *SRPlainString(id s) { return [s isKindOfClass:NSAttributedStrin
   _inspectSource = nil; _inspectPort = MACH_PORT_NULL; _mirror = nil;
 }
 
+- (void)showContexts:(const uint32_t *)ids count:(uint32_t)count size:(CGSize)size {
+  NSMutableString *list = [NSMutableString string];
+  for (uint32_t i = 0; i < count; i++) [list appendFormat:@" %u", ids[i]];
+  fprintf(stderr, "[simrund] %s (pid %d) layerhost contexts%s (%gx%g)\n", _title.UTF8String, _pid, list.UTF8String, size.width, size.height);
+  if (!_hostsLayer) {
+    _hostsLayer = [SRContextHostsLayer layer];
+    _hostsLayer.frame = _view.bounds; _hostsLayer.autoresizingMask = kCALayerWidthSizable | kCALayerHeightSizable;
+    [_view.layer insertSublayer:_hostsLayer above:_surfaceLayer];
+  }
+  [CATransaction begin]; [CATransaction setDisableActions:YES];
+  _hostsLayer.pointSize = size.width > 0 ? size : _view.pointSize;
+  NSMutableArray *hosts = [NSMutableArray array];
+  for (uint32_t i = 0; i < count; i++) {
+    CALayerHost *h = [CALayerHost layer];
+    h.contextId = ids[i];
+    [hosts addObject:h];
+  }
+  _hostsLayer.sublayers = hosts;
+  [_hostsLayer setNeedsLayout];
+  [CATransaction commit];
+  // the in-process display may never present a frame now; the window needn't wait for one
+  if (count) dispatch_async(dispatch_get_main_queue(), ^{ [self becomeReady]; });
+}
+
 - (void)drain {
-  union { mach_msg_header_t h; sr_port_msg_t p; sr_frame_msg_t f; sr_text_state_msg_t t; char buf[1024]; } m;
+  union { mach_msg_header_t h; sr_port_msg_t p; sr_frame_msg_t f; sr_text_state_msg_t t; sr_layerhost_msg_t l; char buf[1024]; } m;
   while (mach_msg(&m.h, MACH_RCV_MSG | MACH_RCV_TIMEOUT, 0, sizeof m, _port, 0, 0) == KERN_SUCCESS) {
     switch (m.h.msgh_id) {
       case SR_MSG_HELLO:
@@ -626,6 +672,9 @@ static NSString *SRPlainString(id s) { return [s isKindOfClass:NSAttributedStrin
       case SR_MSG_TEXT_STATE:
         if (m.h.msgh_size >= sizeof(sr_text_state_msg_t))
           [_view textInputFocused:m.t.focused != 0 caret:NSMakeRect(m.t.x, m.t.y, m.t.width, m.t.height)];
+        break;
+      case SR_MSG_LAYERHOST:
+        if (m.h.msgh_size >= sizeof(sr_layerhost_msg_t)) [self showContexts:m.l.ids count:MIN(m.l.count, SR_LAYERHOST_MAX) size:CGSizeMake(m.l.width, m.l.height)];
         break;
       case SR_MSG_SCRIPT_HELLO:
         if (_scriptPort) mach_port_deallocate(mach_task_self(), _scriptPort);

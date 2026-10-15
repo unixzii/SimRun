@@ -29,6 +29,8 @@ simrun (CLI) ───unix socket──▶ build/bin/simrund   macOS AppKit serv
                                                              time, first weekday...) into the device's global preferences
                                                 container    the app's HOME as its sandbox container
                                                              (sandbox_container_path_for_pid)
+                                                layerhost    experiment, only with SIMRUN_LAYERHOST=1: the app's CAContexts
+                                                             on the Mac's WindowServer, commits translated (layerhost.md)
                                                 render       starts the in-process CA render server (CAWindowServer) and
                                                              hosts the scene's layers on the display (SpringBoard's job)
                                                 scenes       in-process FrontBoard host (creates/updates the UIWindowScene)
@@ -185,8 +187,8 @@ and `simrun screenshot` take `--profile` to pick one of an app's instances.
 | `include/` | Shared headers: viewer wire protocol, simns control protocol, gpuhost, simfb, scenes, hid and textinput APIs, keychain store |
 | `src/host/` | macOS side: `simrund/` (SimRun.app: `simrund.m` the server and menus; `session/` a running app's window session, environment, runtimes and device types; `launcher/` the launcher + library, Launch With… sheet + per-app launch options; `services/` host pasteboard, file panels for document pickers, privacy permissions, motion sensors, Keychain window, Install Command Line Tool; `inspector/` the layer debugger), `simrun/` (the `simrun` command line), `gpuhost/` (IOSurface + Metal host services) |
 | `resources/` | SimRun.app's Info.plist and app icon (`AppIcon.icon`, an Icon Composer document) |
-| `src/sim/` | Simulator side: `simns/` (launchd_sim stand-in), `xpcservices/` (xpcservices.dylib), `app/` (app.dylib's start and its module list) and its modules `locale/`, `container/`, `render/`, `scenes/`, `hid/`, `textinput/`, `pboard/`, `drag/`, `docpicker/`, `keychain/`, `webkit/`, `mps/`, `script/`, `tcc/`, `audio/`, `motion/`; `common/` (what the libraries share: the process's role, SimRun's services, spawning helpers), `simfb/` (SimFramebuffer) |
-| `tools/` | `hostinput.swift` (synthesize Mac clicks/typing into the viewer), `crash.py` (crash-report backtrace) |
+| `src/sim/` | Simulator side: `simns/` (launchd_sim stand-in), `xpcservices/` (xpcservices.dylib), `app/` (app.dylib's start and its module list) and its modules `locale/`, `container/`, `layerhost/`, `render/`, `scenes/`, `hid/`, `textinput/`, `pboard/`, `drag/`, `docpicker/`, `keychain/`, `webkit/`, `mps/`, `script/`, `tcc/`, `audio/`, `motion/`; `common/` (what the libraries share: the process's role, SimRun's services, spawning helpers), `simfb/` (SimFramebuffer) |
+| `tools/` | `hostinput.swift` (synthesize Mac clicks/typing into the viewer), `crash.py` (crash-report backtrace), `layerhost/` (layerhost.md: the atom-name generator, `xltest`, `layerhost-viewer` and the reverse-engineering scripts) |
 | `tests/` | Test apps (`hello` UIKit, `swiftui`, `hidtest`, `dragtest`, `webtest` WKWebView, `bgdownload` background URLSession, `pickertest` document pickers, `glass` Liquid Glass, `showcase` a SwiftUI tour of everything that works, `audioplayer` a music player for trying sound) and programs (`net/nettest`, `net/nwtest`, `pboard/pbtest`, `keychain/kctest`, `locale/loctest`, `mps/mpstest`, `audio/audiotest` playing and recording, `motion/motiontest` CoreMotion's streams), and scripts for `simrun eval` (`scripts/`) |
 | `skills/` | The agent skill (`simrun/`: SKILL.md and an API reference) that SimRun.app carries in `Contents/Resources/skills/` and `simrun skill` prints or installs |
 | `docs/` | These write-ups |

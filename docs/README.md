@@ -32,5 +32,7 @@ Write-ups of each part:
   scripts
 - [inspect.md](inspect.md) — the layer tree, live: Core Animation's commit hook, change batches, the Mac copy drawn by
   real CALayers, and the 3D view (App ▸ Show Layers, `simrun inspect`)
+- [layerhost.md](layerhost.md) — experiment (`SIMRUN_LAYERHOST=1`): the app's layers rendered by the Mac's WindowServer,
+  through a translator between the two QuartzCores' commit formats and request ids
 - [research-log.md](research-log.md) — chronological findings from the investigation (paths in it refer to the
   original prototype layout)

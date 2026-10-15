@@ -33,7 +33,7 @@ APP   := $(BUILD)/SimRun.app
 CORE  := $(APP) $(BIN)/simrun
 SIMLIBS := $(LIB)/xpcservices.dylib $(LIB)/app.dylib $(LIB)/SimFramebuffer
 PARTS := $(BIN)/simrund $(BIN)/simrun $(BIN)/simns $(SIMLIBS)
-TOOLS := $(BIN)/hostinput
+TOOLS := $(BIN)/hostinput $(BIN)/xltest $(BIN)/layerhost-viewer
 TEST_APPS  := $(APPS)/Hello.app $(APPS)/SUI.app $(APPS)/HIDTest.app $(APPS)/Glass.app $(APPS)/DragTest.app $(APPS)/WebTest.app $(APPS)/BGDownload.app $(APPS)/PickerTest.app $(APPS)/Showcase.app $(APPS)/AudioPlayer.app
 TEST_PROGS := $(TBIN)/nettest $(TBIN)/nwtest $(TBIN)/pbtest $(TBIN)/kctest $(TBIN)/loctest $(TBIN)/mpstest $(TBIN)/audiotest $(TBIN)/motiontest
 
@@ -128,6 +128,14 @@ $(BIN)/simrun: src/host/simrun/simrun.m $(HDRS) | $(BIN)
 $(BIN)/hostinput: tools/hostinput.swift | $(BIN)
 	$(MACSWIFT) $< -o $@
 
+# The layerhost experiment's tools (docs/layerhost.md): xltest replays recorded commits through the translator,
+# layerhost-viewer shows WindowServer contexts. tools/layerhost/re/ holds the reverse-engineering scripts.
+$(BIN)/xltest: tools/layerhost/xltest.c src/sim/layerhost/xlate.c src/sim/layerhost/xlate.h $(BUILD)/gen/atoms_mac.h | $(BIN)
+	$(MACCC) -Wall -Isrc/sim/layerhost -I$(BUILD)/gen tools/layerhost/xltest.c src/sim/layerhost/xlate.c -o $@
+
+$(BIN)/layerhost-viewer: tools/layerhost/viewer.m | $(BIN)
+	$(MACCC) -Wall $< -framework Cocoa -framework QuartzCore -o $@
+
 # ---------------------------------------------------------------- sim side
 # common/: what the sim libraries share (common.h), compiled into each one that uses it
 COMMON := src/sim/common/common.m
@@ -151,15 +159,21 @@ $(LIB)/SimFramebuffer: src/sim/simfb/simfb.m $(HDRS) | $(LIB)
 # are embedded as C arrays (xxd -i: core.js -> core_js[]). TCC.framework is linked through a stub (tcc/tcc.tbd; not in
 # the SDK); the other private frameworks' symbols (FrontBoardServices, GraphicsServices, BackBoardServices...) are
 # looked up at load.
-APP_MODULES := locale container render scenes hid textinput pboard drag docpicker keychain webkit mps script tcc audio motion
+APP_MODULES := locale container layerhost render scenes hid textinput pboard drag docpicker keychain webkit mps script tcc audio motion
 APP_SRC := src/sim/app/app.m $(foreach m,$(APP_MODULES),$(wildcard src/sim/$(m)/*.m))
 SCRIPT_JS := $(wildcard src/sim/script/js/*.js)
 $(BUILD)/gen/script_js.h: $(SCRIPT_JS)
 	@mkdir -p $(@D)
 	@(cd src/sim/script/js && for f in *.js; do xxd -i $$f; done) > $@.tmp && mv $@.tmp $@
+# layerhost/'s commit translator is C, and needs macOS QuartzCore's atom names (atomgen, run on the Mac).
+APP_SRC += src/sim/layerhost/xlate.c
+$(BUILD)/gen/atoms_mac.h: tools/layerhost/atomgen.m
+	@mkdir -p $(@D)
+	$(MACCC) $< -framework Foundation -framework QuartzCore -o $(BUILD)/gen/atomgen
+	$(BUILD)/gen/atomgen > $@.tmp && mv $@.tmp $@
 APP_HDRS := $(foreach m,app $(APP_MODULES),$(wildcard src/sim/$(m)/*.h))
-$(LIB)/app.dylib: $(APP_SRC) $(APP_HDRS) src/sim/tcc/tcc.tbd $(BUILD)/gen/script_js.h $(COMMON_DEPS) $(HDRS) | $(LIB)
-	$(SIMLIB) -Isrc/sim/app -Isrc/sim/tcc -I$(BUILD)/gen -dynamiclib $(APP_SRC) $(COMMON) src/sim/tcc/tcc.tbd -framework Foundation \
+$(LIB)/app.dylib: $(APP_SRC) $(APP_HDRS) src/sim/tcc/tcc.tbd $(BUILD)/gen/script_js.h $(BUILD)/gen/atoms_mac.h $(COMMON_DEPS) $(HDRS) | $(LIB)
+	$(SIMLIB) -Isrc/sim/app -Isrc/sim/tcc -Isrc/sim/layerhost -I$(BUILD)/gen -dynamiclib $(APP_SRC) $(COMMON) src/sim/tcc/tcc.tbd -framework Foundation \
 	  -framework UIKit -framework QuartzCore -framework CoreGraphics -framework IOKit -framework UniformTypeIdentifiers \
 	  -framework Security -framework Metal -framework AudioToolbox -framework CoreAudio \
 	  -Wl,-undefined,dynamic_lookup -Wl,-w -o $@

@@ -13,7 +13,7 @@
 #define SR_PORT_SLOT_HOST 0
 enum { SR_MSG_HELLO = 0x5352000, SR_MSG_SURFACE, SR_MSG_FRAME, SR_MSG_INPUT, SR_MSG_FRAME_ACK,
        SR_MSG_SCRIPT_HELLO, SR_MSG_SCRIPT_EVAL, SR_MSG_SCRIPT_OUTPUT, SR_MSG_INSPECT_START, SR_MSG_INSPECT_BATCH,
-       SR_MSG_INSPECT_EDIT, SR_MSG_TEXT, SR_MSG_TEXT_STATE };
+       SR_MSG_INSPECT_EDIT, SR_MSG_TEXT, SR_MSG_TEXT_STATE, SR_MSG_LAYERHOST };
 typedef struct { mach_msg_header_t h; mach_msg_body_t b; mach_msg_port_descriptor_t port; uint32_t w, h_px; float scale; } sr_port_msg_t;
 // surface_id/checksum/present_time are optional (a shorter message has only seq); checksum is sr_surface_checksum()
 // at present time when the sim side runs with SIMFB_CHECK=1, else 0.
@@ -64,6 +64,13 @@ typedef struct { mach_msg_header_t h; uint32_t kind, sel_location, sel_length; c
 // has keyboard focus, and where its marked text or caret is, in scene points (width and height 0: not known). While
 // one has focus, the window sends its keys through the Mac's input methods.
 typedef struct { mach_msg_header_t h; uint32_t focused; float x, y, width, height; } sr_text_state_msg_t;
+
+// The layerhost experiment (SIMRUN_LAYERHOST=1, layerhost.md): the app's scene contexts live on the Mac's WindowServer
+// instead of the in-process render server. The app sends SR_MSG_LAYERHOST to the host port whenever the scene's
+// layers change: their WindowServer CAContext ids, bottom to top, in points of the screen (pointSize); the host shows
+// them with CALayerHosts in place of the display's frames.
+#define SR_LAYERHOST_MAX 16
+typedef struct { mach_msg_header_t h; uint32_t count; float width, height; uint32_t ids[SR_LAYERHOST_MAX]; } sr_layerhost_msg_t;
 
 // Scripts (the script module, scripting.md). The app sends SR_MSG_SCRIPT_HELLO (an sr_port_msg_t; w, h_px, scale unused)
 // with its script port when it starts. The host runs a script with SR_MSG_SCRIPT_EVAL to that port: the source as
