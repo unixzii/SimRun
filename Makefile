@@ -28,6 +28,9 @@ SIMSWIFT:= xcrun -sdk iphonesimulator swiftc -target arm64-apple-ios17.0-simulat
 MACCC   := xcrun -sdk macosx clang -arch arm64 -fobjc-arc -Wno-deprecated-declarations -Iinclude
 MACSWIFT:= env -u DYLD_ROOT_PATH xcrun -sdk macosx swiftc -O
 SIGN    := codesign -s - -f
+# Persist this Mac's certificate choice outside build/.
+-include .simrun.local.mk
+HOST_SIGNING_IDENTITY ?= -
 HDRS    := $(wildcard include/*.h)
 
 APP   := $(BUILD)/SimRun.app
@@ -122,7 +125,10 @@ $(APP): $(SKILL_FILES) $(PARTS) resources/Info.plist $(ICON)/Assets.car
 	@cp $(SIMLIBS) $(BUILD)/.SimRun.app.new/Contents/Resources/lib/
 	@cp $(WATCHLIBS) $(BUILD)/.SimRun.app.new/Contents/Resources/lib/watchos/
 	@rsync -a --exclude .DS_Store skills $(BUILD)/.SimRun.app.new/Contents/Resources/
-	@$(SIGN) --deep $(BUILD)/.SimRun.app.new 2>/dev/null
+	@$(SIGN) --deep $(BUILD)/.SimRun.app.new
+ifneq ($(HOST_SIGNING_IDENTITY),-)
+	@codesign --force --sign "$(HOST_SIGNING_IDENTITY)" --timestamp=none $(BUILD)/.SimRun.app.new
+endif
 	@if [ -d $@ ]; then mv $@ $(BUILD)/.SimRun.app.old; fi
 	@mv $(BUILD)/.SimRun.app.new $@ && rm -rf $(BUILD)/.SimRun.app.old
 	@echo "built $@"

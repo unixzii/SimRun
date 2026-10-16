@@ -1,5 +1,7 @@
 # build output
 /build/
+# Per-Mac signing certificate; contains no private key.
+/.simrun.local.mk
 # local artifacts
 *.png
 !docs/images/*.png

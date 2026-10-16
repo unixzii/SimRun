@@ -72,6 +72,11 @@ make
 This builds `build/SimRun.app`. You can rebuild while SimRun is open; quit and reopen SimRun to pick up the new
 version. Until you do, apps in the old SimRun can't open the Mac's file panels (document pickers).
 
+To retain macOS privacy permissions across local rebuilds, choose a certificate from
+`security find-identity -v -p codesigning` and set `HOST_SIGNING_IDENTITY := CERTIFICATE_SHA1`
+in the git-ignored `.simrun.local.mk`. Switching from ad-hoc signing requires a one-time
+permission grant; keep the certificate, bundle identifier and app path stable.
+
 To also build the sample apps into `build/apps/`, including Showcase, a tour of what SimRun can do:
 
 ```bash
