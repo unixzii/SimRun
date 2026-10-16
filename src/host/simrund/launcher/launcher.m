@@ -73,6 +73,11 @@ static NSImage *Symbol(NSString *name, NSString *description) {
   ]];
   return self;
 }
+// white on the selection's highlight, as the Profiles table's dot (an image view, which follows it by itself)
+- (void)setBackgroundStyle:(NSBackgroundStyle)style {
+  [super setBackgroundStyle:style];
+  self.runningDot.layer.backgroundColor = (style == NSBackgroundStyleEmphasized ? NSColor.whiteColor : NSColor.systemGreenColor).CGColor;
+}
 - (void)setLaunching:(BOOL)launching running:(BOOL)running {
   self.status.hidden = !launching && !running;
   self.runningDot.hidden = launching || !running;
