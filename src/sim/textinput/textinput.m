@@ -28,7 +28,7 @@ static int gVerbose;
 
 static id SRKeyboard(void) { return [NSClassFromString(@"UIKeyboardImpl") activeInstance]; }
 // What the keyboard types into: its input delegate, or else the key window's first responder.
-static id<UIKeyInput> SRTextFocused(void) {
+id SRTextFocusedInput(void) {
   id kb = SRKeyboard();
   id d = [kb respondsToSelector:@selector(inputDelegate)] ? [kb inputDelegate] : nil;
   if ([d conformsToProtocol:@protocol(UIKeyInput)]) return d;
@@ -40,7 +40,7 @@ static id<UIKeyInput> SRTextFocused(void) {
   return nil;
 }
 
-bool SRTextHasFocus(void) { return SRTextFocused() != nil; }
+bool SRTextHasFocus(void) { return SRTextFocusedInput() != nil; }
 
 // The edit `change` makes to `t`, with the keyboard told before and after.
 static void SRTextEdit(id<UIKeyInput> t, void (^change)(void)) {
@@ -59,14 +59,42 @@ static BOOL SRTextShouldInsert(id<UIKeyInput> t, NSString *text) {
 }
 
 bool SRTextInsert(NSString *text) {
-  id<UIKeyInput> t = SRTextFocused();
+  id<UIKeyInput> t = SRTextFocusedInput();
   if (!t) { VLOG("\"%s\" dropped: no text input has focus", text.UTF8String); return false; }
   if (SRTextShouldInsert(t, text)) SRTextEdit(t, ^{ [t insertText:text]; });
   return true;
 }
 
+NSDictionary *SRTextInsertBound(NSString *text, id expectedInput) {
+  id<UIKeyInput> expected = [expectedInput conformsToProtocol:@protocol(UIKeyInput)] ? expectedInput : nil;
+  __block NSUInteger inserted = 0;
+  __block NSString *code = expected ? @"OK" : @"BOUND_TYPE_INVALID_TOKEN";
+  if (expected && SRTextFocusedInput() != expected) code = @"BOUND_TYPE_FOCUS_CHANGED";
+  if ([code isEqualToString:@"OK"]) {
+    [text enumerateSubstringsInRange:NSMakeRange(0, text.length) options:NSStringEnumerationByComposedCharacterSequences
+                        usingBlock:^(NSString *character, NSRange range, NSRange enclosing, BOOL *stop) {
+      if (SRTextFocusedInput() != expected) { code = @"BOUND_TYPE_FOCUS_CHANGED"; *stop = YES; return; }
+      BOOL accepted = SRTextShouldInsert(expected, character);
+      // shouldChange/delegate callbacks can synchronously move keyboard focus.
+      if (SRTextFocusedInput() != expected) { code = @"BOUND_TYPE_FOCUS_CHANGED"; *stop = YES; return; }
+      if (!accepted) { code = @"BOUND_TYPE_REJECTED"; *stop = YES; return; }
+      SRTextEdit(expected, ^{
+        // textWillChange is also an application callback. Do not rediscover the
+        // input here: only the originally captured object may receive text.
+        if (SRTextFocusedInput() != expected) { code = @"BOUND_TYPE_FOCUS_CHANGED"; return; }
+        [expected insertText:character]; inserted++;
+      });
+      if (SRTextFocusedInput() != expected) code = @"BOUND_TYPE_FOCUS_CHANGED";
+      if (![code isEqualToString:@"OK"]) *stop = YES;
+    }];
+  }
+  BOOL ok = [code isEqualToString:@"OK"], partial = !ok && inserted>0;
+  return @{ @"ok": @(ok), @"code": code, @"inserted_count": @(inserted),
+            @"partial": @(partial), @"count_unit": @"composed_character_insert_calls" };
+}
+
 bool SRTextReplaceAll(NSString *text) {
-  id<UIKeyInput> t = SRTextFocused();
+  id<UIKeyInput> t = SRTextFocusedInput();
   if (!t) { VLOG("\"%s\" dropped: no text input has focus", text.UTF8String); return false; }
   if (![t conformsToProtocol:@protocol(UITextInput)]) {   // no way to select: clear it a character at a time
     for (int n = 0; t.hasText && n < 100000; n++) SRTextEdit(t, ^{ [t deleteBackward]; });
@@ -82,7 +110,7 @@ bool SRTextReplaceAll(NSString *text) {
 }
 
 bool SRTextSetMarked(NSString *text, NSRange selected) {
-  id<UIKeyInput> t = SRTextFocused();
+  id<UIKeyInput> t = SRTextFocusedInput();
   if (![t conformsToProtocol:@protocol(UITextInput)]) { VLOG("marked \"%s\" dropped: no text input has focus", text.UTF8String); return false; }
   id<UITextInput> ti = (id<UITextInput>)t;
   if (!text.length && !ti.markedTextRange) return true;
@@ -99,7 +127,7 @@ bool SRTextSetMarked(NSString *text, NSRange selected) {
 }
 
 bool SRTextUnmark(void) {
-  id<UIKeyInput> t = SRTextFocused();
+  id<UIKeyInput> t = SRTextFocusedInput();
   if (![t conformsToProtocol:@protocol(UITextInput)]) return false;
   id<UITextInput> ti = (id<UITextInput>)t;
   if (ti.markedTextRange) SRTextEdit(t, ^{ [ti unmarkText]; });
@@ -132,7 +160,7 @@ static void SRTextReportState(void) {
   static CGRect lastRect;
   mach_port_t host = SRSessionPort();
   if (!host || !UIApplication.sharedApplication) return;
-  id<UIKeyInput> t = SRTextFocused();
+  id<UIKeyInput> t = SRTextFocusedInput();
   bool focused = t != nil;
   CGRect r = focused ? SRTextCaretRect(t) : CGRectNull;
   if (CGRectIsNull(r)) r = CGRectZero;

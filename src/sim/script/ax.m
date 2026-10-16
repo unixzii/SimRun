@@ -7,13 +7,14 @@
 // collect() walks the windows the way an AX client does: an element (isAccessibilityElement) is a leaf; containers
 // give their children through accessibilityElements / accessibilityElementAtIndex:, else their subviews; a modal view
 // (accessibilityViewIsModal) hides its siblings. Each element becomes a record:
-//   { ref, role, name, value, id, traits, selected, disabled, focused, frame, visible, visibleFrame, tapPoint, groups }
+//   { ref, role, name, value, id, traits, selected, disabled, focused, frame, visible, visibleFrame, tapPoint, groups, keyboardFocusRef, focusSource }
 // ref ("e12") names the element object for as long as it lives, so refs stay the same across snapshots; groups are
 // the semantic containers it is in (navigation bar, tab bar, toolbar, list, table, landmark, labelled group). Frames
 // are in screen points, which are the scene points touches take.
 #import <UIKit/UIKit.h>
 #include <dlfcn.h>
 #include "script.h"
+#include "textinput.h"
 
 // Traits UIKit doesn't name publicly.
 static const UIAccessibilityTraits kSRTraitTextEntry = 1ull << 18, kSRTraitIsEditing = 1ull << 21;
@@ -59,6 +60,10 @@ static NSString *SRRefFor(id e) {
     [gElementOf setObject:e forKey:ref];
   }
   return ref;
+}
+
+id SRAXObjectForRef(NSString *ref) {
+  return [ref isKindOfClass:NSString.class] && ref.length ? [gElementOf objectForKey:ref] : nil;
 }
 
 // ---------------------------------------------------------------- walking
@@ -212,6 +217,39 @@ static void SRDumpTree(id e, int depth, BOOL all, NSMutableString *out) {
   for (id k in SRChildren(e, NULL)) SRDumpTree(k, depth + (all ? 1 : 0), all, out);
 }
 
+// Keyboard focus and AX ownership are different objects in custom controls. AX
+// stops at an accessible wrapper, while its descendant UITextInput owns keyboard
+// focus. Use the exact same resolver as textinput, never labels/frames. The input
+// token is separate from its owner so switching two inputs inside one wrapper is
+// observable even when the wrapper's ref and all visible metadata stay unchanged.
+static void SRApplyKeyboardFocus(NSMutableArray *records) {
+  id input = SRTextFocusedInput();
+  UIView *inputView = [input isKindOfClass:UIView.class] ? input : nil;
+  if (!inputView && [input conformsToProtocol:@protocol(UITextInput)]) inputView = [(id<UITextInput>)input textInputView];
+  NSString *ownerRef = nil, *source = nil;
+  for (NSDictionary *record in records) {
+    if ([gElementOf objectForKey:record[@"ref"]] == input && input) {
+      ownerRef = record[@"ref"]; source = @"keyboard-direct"; break;
+    }
+  }
+  if (!ownerRef && inputView.window.windowScene == SRActiveScene()) {
+    for (UIView *view = inputView; view && !ownerRef; view = view.superview) {
+      for (NSDictionary *record in records) if ([gElementOf objectForKey:record[@"ref"]] == view) {
+        ownerRef = record[@"ref"]; source = view == inputView ? @"keyboard-view" : @"keyboard-ancestor"; break;
+      }
+    }
+  }
+  NSString *inputRef = ownerRef ? SRRefFor(input) : @"";
+  for (NSUInteger i=0;i<records.count;i++) {
+    NSMutableDictionary *record = [records[i] mutableCopy];
+    BOOL focused = ownerRef && [record[@"ref"] isEqualToString:ownerRef];
+    record[@"focused"] = @(focused);
+    record[@"keyboardFocusRef"] = focused ? inputRef : @"";
+    record[@"focusSource"] = focused ? source : !input ? @"keyboard-none" : ownerRef ? @"keyboard-other" : @"keyboard-unmapped";
+    records[i] = record;
+  }
+}
+
 // ---------------------------------------------------------------- scrolling an element into view
 static UIScrollView *SRScrollViewAround(id e) {
   id o = e;
@@ -256,6 +294,7 @@ void SRInstallAXBindings(JSValue *native) {
     CGRect screen = SRActiveScene().coordinateSpace.bounds;
     NSMutableArray *out = [NSMutableArray array];
     for (UIWindow *w in SRWindows()) SRCollect(w, @[], screen, out);
+    SRApplyKeyboardFocus(out);
     return out;
   };
   ax[@"tree"] = ^NSString *(BOOL all) {

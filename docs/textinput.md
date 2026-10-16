@@ -84,14 +84,21 @@ The window's view (`SRView`, host `session/session.m`) is an `NSTextInputClient`
   sees each one. `\n` and `\t` are sent as the Enter and Tab keys, so Return does what it does in the field, such as
   submitting it or inserting a newline.
 - Both fail with "no text input has keyboard focus" when there is none.
+- `app.typeBound(text, { keyboardFocusRef })` uses the keyboard token from the focused AX record. It inserts
+  literal composed-character sequences into that captured input object, checking focus around delegate callbacks.
+  It returns `{ ok, code, inserted_count, partial, count_unit }`; a failure can leave a prefix in the original
+  field and must not be automatically replayed. `inserted_count` counts insertion calls, not confirmed field
+  contents. Use `app.typeBoundAvailable()` before any selecting/clearing edits; old payloads may lack this API.
 - Bindings: `native.ui.type`, `native.ui.fill` and `native.ui.afterKeys(fn)` (`SRHIDAfterKeys`; script/ui.m). The
   waiting is done by `internal.type` and `internal.fill` (script/js/keyboard.js).
 
 ## API (textinput.h)
 
 ```c
+id SRTextFocusedInput(void);              // exact UIKeyInput target used by the keyboard
 bool SRTextHasFocus(void);                 // a text input has keyboard focus
 bool SRTextInsert(NSString *text);         // commit text at the cursor, in place of the selection
+NSDictionary *SRTextInsertBound(NSString *text, id expectedInput);  // structured receipt; never follows new focus
 bool SRTextReplaceAll(NSString *text);     // the whole text replaced
 bool SRTextSetMarked(NSString *text, NSRange selected);   // marked text, composing ("" removes it)
 bool SRTextUnmark(void);                   // the marked text committed as it is

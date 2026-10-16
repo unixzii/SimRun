@@ -19,6 +19,12 @@ const app = Object.freeze({
   swipe: async (x0, y0, x1, y1, { duration = 300 } = {}) => { await internal.swipe(x0, y0, x1, y1, duration); await waitForIdle(); },
   crown: async (delta, { duration = 300 } = {}) => { await internal.crown(delta, duration); await waitForIdle(); },
   type: async text => { await internal.type('type', text); await waitForIdle(); },
+  typeBoundAvailable: () => typeof native.ui.typeBound === 'function',
+  typeBound: async (text, { keyboardFocusRef } = {}) => {
+    const receipt = await internal.typeBound(text, keyboardFocusRef);
+    await waitForIdle();
+    return receipt;
+  },
   press: async key => { internal.press(key); await waitForIdle(); },
 
   // waitForIdle({ quiet, timeout }): until no frame has been drawn for `quiet` ms (true), or `timeout` ms (false)

@@ -123,12 +123,26 @@ check once: `expect(n).toBe(3)`, `toEqual`, `toContain`, `toMatch`, `toBeTruthy`
 | `app.tap(x, y)`, `app.longPress(x, y, { duration })`, `app.swipe(x0, y0, x1, y1, { duration })` | touches at scene points |
 | `app.crown(delta, { duration })` | watchOS: the Digital Crown turned as a scroll of `delta` points would turn it (positive: down), through hid like the Mac's scroll wheel ([watchos.md](watchos.md#the-digital-crown)); throws in an iPhone app |
 | `app.type(text)` | text, into whatever text input has keyboard focus |
+| `app.typeBoundAvailable()` | whether this payload supports binding text to a captured keyboard input |
+| `await app.typeBound(text, { keyboardFocusRef })` | literal text into the captured input; returns a structured receipt, including partial-input failures |
 | `app.press(key)` | a key, into whatever has keyboard focus |
 | `app.waitForIdle({ quiet, timeout })` | until no frame has been drawn for `quiet` ms (100), at most `timeout` ms (2000) |
 | `app.screen()` | `{ width, height, scale }`, in points |
-| `await app.ax.elements({ all })` | the elements as records: `{ ref, role, name, value, id, traits, selected, disabled, focused, frame, visible, visibleFrame, tapPoint, groups }` |
+| `await app.ax.elements({ all })` | the elements as records: `{ ref, role, name, value, id, traits, selected, disabled, focused, frame, visible, visibleFrame, tapPoint, groups, keyboardFocusRef, focusSource }` |
 | `await app.ax.tree({ all })` | the raw accessibility tree with class names (`all`: with containers) |
 | `app.views()` | the view hierarchy |
+
+Keyboard focus uses the same input target as the text-input module. An accessible wrapper can own the focused
+record while its descendant text field owns `keyboardFocusRef`. The token identifies that input object for its
+lifetime within this process; two fields inside one wrapper have different tokens. A keyboard target without a
+collected AX owner is reported as `keyboard-unmapped`, with no focused record. Tokens do not survive a restart.
+
+`typeBound` checks the captured input before each composed-character insertion and around application callbacks.
+Inspect its receipt's `ok`, `code`, `inserted_count`, `partial` and `count_unit`; a successful insert call is not an
+assertion about the final field value. Failure can retain an already inserted prefix. Do not automatically replay
+the whole string. Check availability before selecting or clearing text, then recheck focus after those edits.
+This API inserts literal text; use `app.press` separately for Enter or Tab. These checks bind the input object,
+not the surrounding business entity or an atomic screenshot/AX frame.
 
 **Objective-C:** `objc.send(target, "selector:with:", …args)` sends a message; `target` is an object from an earlier
 call or a class name. Objects (NSString, NSNumber, NSArray, NSDictionary become JS values), classes, selectors (as

@@ -43,3 +43,12 @@ internal.fill = async (action, text) => {
   await keysHandled();
   if (!native.ui.fill(String(text))) throw noFocus(action);
 };
+
+// Bound typing is literal text, not Enter/Tab HID routing. Legacy type/fill keep
+// their existing behavior. Check native capability before doing anything.
+internal.typeBound = async (text, keyboardFocusRef) => {
+  if (typeof native.ui.typeBound !== 'function')
+    return { ok: false, code: 'BOUND_TYPE_UNAVAILABLE', inserted_count: 0, partial: false };
+  await keysHandled();
+  return native.ui.typeBound(String(text), String(keyboardFocusRef ?? ''));
+};

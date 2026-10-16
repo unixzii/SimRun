@@ -77,6 +77,11 @@ void SRInstallUIBindings(JSValue *native) {
                           usingBlock:^(NSString *ch, NSRange r, NSRange er, BOOL *stop) { *stop = !(focused = SRTextInsert(ch)); }];
     return focused;
   };
+  // typeBound(string, ref): exact captured keyboard object, checked per composed
+  // character and around delegate callbacks. A failure never follows new focus.
+  ui[@"typeBound"] = ^NSDictionary *(NSString *text, NSString *ref) {
+    return SRTextInsertBound(text, SRAXObjectForRef(ref));
+  };
   // fill(string): the focused text input's text replaced with it (textinput.h); false if none has focus
   ui[@"fill"] = ^BOOL(NSString *text) { return SRTextReplaceAll(text); };
   // frameCount(): frames presented so far, or -1 if SimRun's SimFramebuffer isn't there to ask

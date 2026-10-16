@@ -35,5 +35,6 @@ NSArray<UIWindow *> *SRWindows(void);
 
 // The native functions the JS modules (js/*.js) are given, each part adding its own to `native`.
 void SRInstallUIBindings(JSValue *native);     // ui.m: touches, keys, text, frame count, screen, view dump
+id SRAXObjectForRef(NSString *ref);           // weak-lifetime AX/input token lookup, nil if expired
 void SRInstallAXBindings(JSValue *native);     // ax.m: accessibility elements, refs, scrolling into view
 void SRInstallObjCBindings(JSValue *native);   // objcbridge.m: sending Objective-C messages, runtime lookups

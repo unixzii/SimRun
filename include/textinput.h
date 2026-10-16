@@ -3,12 +3,19 @@
 #pragma once
 #import <Foundation/Foundation.h>
 
+// The exact keyboard input target, shared with script accessibility focus. Main thread;
+// nil when the keyboard and active scene provide no UIKeyInput target.
+id SRTextFocusedInput(void);
 // Whether a text input has keyboard focus: something the keyboard would type into.
 bool SRTextHasFocus(void);
 // Commit `text` at the cursor, in place of the selection, as one edit: what the keyboard does for a typed character or
 // an input method's commit. The text input may refuse the edit, asked as the keyboard asks it (callShouldInsertText:,
 // which reaches a UITextField's delegate). Returns false if no text input has focus.
 bool SRTextInsert(NSString *text);
+// Literal composed-character input bound to one captured UIKeyInput object.
+// Rechecks the actual keyboard target before/after application callbacks. A
+// failure receipt reports committed composed-character calls; prefixes remain.
+NSDictionary *SRTextInsertBound(NSString *text, id expectedInput);
 // Replace all of the focused text input's text with `text`, as selecting all and typing over it would. Returns false
 // if no text input has focus.
 bool SRTextReplaceAll(NSString *text);
