@@ -534,10 +534,12 @@ static BOOL ProcessGone(pid_t pid) {
   NSString *simns = [SREnvironment simnsPathForPlatform:[SRRuntime runtimeAtRoot:root].platform ?: SRPlatformIOS];
   NSMutableDictionary *vars = [[SREnvironment simulatorVariablesForRoot:root] mutableCopy];
   vars[@"SIMNS_HOST_SLOT"] = @"0";
-  // wcd, the WatchConnectivity daemon, gets SimRun's answers to what it asks LaunchServices and Carousel (pairing.h)
+  // wcd, the WatchConnectivity daemon, gets SimRun's answers to what it asks LaunchServices and Carousel (pairing.h);
+  // containermanagerd doesn't delete apps' data containers, which it has no record of, as orphans (src/sim/mcm)
   SRPlatform platform = [SRRuntime runtimeAtRoot:root].platform ?: SRPlatformIOS;
-  vars[@"SIMNS_DAEMON_INSERT"] = [@"com.apple.wcd=" stringByAppendingString:
-                                  [[SREnvironment libraryDirectoryForPlatform:platform] stringByAppendingPathComponent:@"wcd.dylib"]];
+  NSString *lib = [SREnvironment libraryDirectoryForPlatform:platform];
+  vars[@"SIMNS_DAEMON_INSERT"] = [NSString stringWithFormat:@"com.apple.wcd=%@,com.apple.containermanagerd=%@",
+                                  [lib stringByAppendingPathComponent:@"wcd.dylib"], [lib stringByAppendingPathComponent:@"containermanagerd.dylib"]];
   NSMutableArray *env = [NSMutableArray array];
   for (NSString *kv in [SREnvironment environment:[SREnvironment processEnvironment] withOverrides:vars])
     if (![kv hasPrefix:@"DYLD_INSERT_LIBRARIES="]) [env addObject:kv];

@@ -32,10 +32,10 @@ HDRS    := $(wildcard include/*.h)
 
 APP   := $(BUILD)/SimRun.app
 CORE  := $(APP) $(BIN)/simrun
-SIMLIBS := $(LIB)/xpcservices.dylib $(LIB)/app.dylib $(LIB)/SimFramebuffer $(LIB)/simpair $(LIB)/wcd.dylib
+SIMLIBS := $(LIB)/xpcservices.dylib $(LIB)/app.dylib $(LIB)/SimFramebuffer $(LIB)/simpair $(LIB)/wcd.dylib $(LIB)/containermanagerd.dylib
 WATCHLIB := $(LIB)/watchos
 WATCHLIBS := $(WATCHLIB)/simns $(WATCHLIB)/xpcservices.dylib $(WATCHLIB)/app.dylib $(WATCHLIB)/SimFramebuffer $(WATCHLIB)/simpair \
-             $(WATCHLIB)/wcd.dylib
+             $(WATCHLIB)/wcd.dylib $(WATCHLIB)/containermanagerd.dylib
 PARTS := $(BIN)/simrund $(BIN)/simrun $(BIN)/simns $(SIMLIBS) $(WATCHLIBS)
 TOOLS := $(BIN)/hostinput
 TEST_APPS  := $(APPS)/Hello.app $(APPS)/SUI.app $(APPS)/HIDTest.app $(APPS)/Glass.app $(APPS)/DragTest.app $(APPS)/WebTest.app $(APPS)/BGDownload.app $(APPS)/PickerTest.app $(APPS)/Showcase.app $(APPS)/AudioPlayer.app \
@@ -211,6 +211,11 @@ $(LIB)/simpair: src/sim/pair/pair.m src/sim/pair/Entitlements.plist | $(LIB)
 
 # wcd.dylib: in wcd, the WatchConnectivity daemon, what it would ask LaunchServices, AppConduit and Carousel
 $(LIB)/wcd.dylib: src/sim/wcd/wcd.m | $(LIB)
+	$(SIMCC) -dynamiclib $< -framework Foundation -o $@
+	@$(SIGN) $@ 2>/dev/null
+
+# containermanagerd.dylib: in containermanagerd, which would delete apps' data containers as orphans when it starts
+$(LIB)/containermanagerd.dylib: src/sim/mcm/mcm.m | $(LIB)
 	$(SIMCC) -dynamiclib $< -framework Foundation -o $@
 	@$(SIGN) $@ 2>/dev/null
 

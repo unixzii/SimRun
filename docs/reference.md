@@ -37,7 +37,7 @@ them in Launch With….
 | `SIMRUN_DATA=dir` | Shared data directory (default `~/Library/Developer/SimRun/data`) |
 | `SIMNS_QUIET=1` | Hide simns's log (in SimRun's log, `simrun log`) of every service lookup (`OK` / `MISSING`) — leave it on to see what an app needs |
 | `SIMNS_DAEMONS=a,b` / `none` | Labels of real sim daemons simns may launch on demand |
-| `SIMNS_DAEMON_INSERT=label=lib,…` | Libraries a daemon gets as `DYLD_INSERT_LIBRARIES` (SimRun sets `com.apple.wcd=…/wcd.dylib`, [pairing.md](pairing.md#watchconnectivity)) |
+| `SIMNS_DAEMON_INSERT=label=lib,…` | Libraries a daemon gets as `DYLD_INSERT_LIBRARIES` (SimRun sets `com.apple.wcd=…/wcd.dylib`, [pairing.md](pairing.md#watchconnectivity), and `com.apple.containermanagerd=…/containermanagerd.dylib`, [simns.md](simns.md#on-demand-sim-daemons)) |
 | `SIMAPP_EXTRA_INSERT=x.dylib` | Inject an extra sim dylib into apps launched from the launcher (`simrun run --insert` for one launch) |
 | `AUDIO_MUTE=1` | The app is silent: CoreAudio's per-process switch (`kAudioHardwarePropertyProcessIsAudible`) for everything it plays, its web views' helper processes too, and its system sounds aren't played (`simrun run --mute`, Launch Options ▸ Mute) |
 | `AUDIO_INPUT=mac \| system \| <file>` | What the app records ([microphone.md](microphone.md)): the Mac's default input device (default); what the Mac plays, every process but the app (a CoreAudio process tap); or the audio file, from its start each time the app starts recording, then silence (`simrun run --mic`, Launch Options ▸ Microphone). The app's microphone permission takes SimRun's permission on the Mac for the source (none for a file) ([microphone.md](microphone.md#permission)) |

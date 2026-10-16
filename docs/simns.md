@@ -69,7 +69,14 @@ On iOS 18, geod's `PairedDeviceRegistry` startup path force-unwraps its `notify_
 notifyd. (`MKMapSnapshotter` also uses `MapKit.framework/XPCServices/com.apple.MapKit.SnapshotService.xpc`, which
 `xpcservices.dylib` spawns in the app's namespace.)
 containermanagerd serves app group containers (`containerURL(forSecurityApplicationGroupIdentifier:)`, and cfprefsd
-for group suites) under data/Containers/Shared/AppGroup/ to apps entitled to the group; ~0.4 s on first use.
+for group suites) under data/Containers/Shared/AppGroup/ to apps entitled to the group; ~0.4 s on first use. Apps'
+data containers are SimRun's own, in containermanagerd's folder for them (data/Containers/Data/Application/<bundle ID>),
+with no record or metadata of containermanagerd's, and containermanagerd deletes such a directory: when it starts
+(orphaned data, `-[MCMClientConnection _cleanupOrphanedDataForDirectories:containerClass:forUserIdentity:]`) and when
+it scans the folder (a container without metadata is corrupt, `-[MCMContainerClassCache
+_handleUnrecoverableCorruptContainerPath:]`). Every app's data was gone whenever containermanagerd started: an app
+group, an `NSFileCoordinator` (filecoordinationd) or WatchConnectivity's wcd starts it. So `containermanagerd.dylib`
+(src/sim/mcm), which SimRun inserts (SIMNS_DAEMON_INSERT), skips both; it logs each one to SimRun's log.
 nsurlsessiond does background URLSession transfers (`backgroundSessionConfigurationWithIdentifier:`); without it,
 creating a task fails with NSURLErrorDomain -1 ("remote session is unavailable"). It accepts a client only if it
 can tell its bundle ID: from iOS 27 the code signature's identifier (an Xcode build's ad-hoc signature has it),
