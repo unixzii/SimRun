@@ -439,7 +439,7 @@ static BOOL ProcessGone(pid_t pid) {
   SRRequest *r = [SRRequest new];
   r.argv = [@[ app.executablePath ] arrayByAddingObjectsFromArray:o.launchArguments];
   r.cwd = app.path; r.title = app.name; r.appPath = app.path; r.bundleID = app.bundleIdentifier; r.runtimeRoot = root; r.profile = profile;
-  r.withWatchApp = YES;
+  r.withWatchApp = o.runsWatchApp;   // Launch Options ▸ Run its Watch app
   if (app.deviceBuild) r.deviceBuild = app.path;
   r.device = device ?: [SREnvironment defaultDeviceTypeForRuntime:[SRRuntime runtimeAtRoot:root]];
   r.env = [self environmentFrom:[SREnvironment processEnvironment] for:r extraLibrary:NSProcessInfo.processInfo.environment[@"SIMAPP_EXTRA_INSERT"]

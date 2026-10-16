@@ -36,7 +36,10 @@ static NSArray<NSString *> *ShellWords(NSString *s) {
 @implementation SRLaunchOptions
 
 - (instancetype)init {
-  if ((self = [super init])) { _arguments = [NSMutableArray array]; _environment = [NSMutableArray array]; _switches = [NSMutableSet set]; }
+  if ((self = [super init])) {
+    _arguments = [NSMutableArray array]; _environment = [NSMutableArray array]; _switches = [NSMutableSet set];
+    _runsWatchApp = YES;
+  }
   return self;
 }
 
@@ -53,6 +56,7 @@ static NSArray<NSString *> *ShellWords(NSString *s) {
   if ([d[@"runtime"] isKindOfClass:NSString.class]) o.runtimeBuild = d[@"runtime"];
   if ([d[@"device"] isKindOfClass:NSString.class]) o.deviceType = d[@"device"];
   if ([d[@"microphone"] isKindOfClass:NSString.class]) o.microphone = d[@"microphone"];
+  if ([d[@"noWatchApp"] isEqual:@YES]) o.runsWatchApp = NO;
   for (NSString *key in @[ @"arguments", @"environment" ]) {
     NSArray *items = [d[key] isKindOfClass:NSArray.class] ? d[key] : @[];
     for (NSDictionary *it in items) {
@@ -96,6 +100,7 @@ static NSArray<NSString *> *ShellWords(NSString *s) {
   if (_runtimeBuild) d[@"runtime"] = _runtimeBuild;
   if (_deviceType) d[@"device"] = _deviceType;
   if (_microphone) d[@"microphone"] = _microphone;
+  if (!_runsWatchApp) d[@"noWatchApp"] = @YES;
   NSMutableArray *args = [NSMutableArray array], *env = [NSMutableArray array];
   for (SRLaunchItem *i in _arguments) if (i.value.length) [args addObject:@{ @"enabled": @(i.enabled), @"value": i.value }];
   for (SRLaunchItem *i in _environment)

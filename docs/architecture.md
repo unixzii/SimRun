@@ -73,7 +73,8 @@ privacy permissions, such as the microphone's, for SimRun, not for the terminal)
 exits with the app's status, and Ctrl-C (or closing the window) ends the app. Launching into a running server takes
 ~0.6 s to first frame.
 
-The launcher (`launcher.m`, `appdetail.m`) is a split view: the library of apps in the sidebar, the selected app's
+The launcher (`launcher.m`, `appdetail.m`) is a split view: the library of apps in the sidebar (in sections: iPhone apps,
+then watch apps that aren't in an iPhone app in the library; an iPhone app with a Watch app has a watch badge), the selected app's
 pane beside it (its details, then tabs: Profiles lists its data containers with what each runs as and its running
 instances, and makes and deletes profiles), and the commands for the selected profile (run, stop, launch options, log, more)
 in the toolbar. The sidebar's context menu has what concerns the app bundle (keychain items, Show in Finder, Remove);

@@ -66,6 +66,7 @@ static NSGridView *Form(NSArray<NSArray<NSView *> *> *rows, NSInteger columns) {
   NSWindow *_sheet, *_parent;
   SRTabBar *_tabBar; NSArray<NSView *> *_pages;
   NSPopUpButton *_runtime, *_device, *_locale, *_microphone;
+  NSButton *_watchApp;   // an iPhone app with a Watch app: run that too
   NSButton *_micLoop;
   NSMutableArray<NSButton *> *_switchBoxes;
   NSTableView *_argsTable, *_envTable;
@@ -185,15 +186,29 @@ static NSView *Page(NSView *content) {
   NSTextField *deviceNote = Note(@"The device types the runtime supports. The app gets that model's screen, safe areas and "
                                   "hardware features (Dynamic Island, home button, ...).");
   NSString *dir = _app.path.stringByDeletingLastPathComponent.stringByAbbreviatingWithTildeInPath;
-  NSGridView *g = Form(@[
+  NSMutableArray *rows = [NSMutableArray arrayWithArray:@[
     @[ Label(@"Runtime"), _runtime ], @[ NSGridCell.emptyContentView, note ],
     @[ Label(@"Device"), _device ], @[ NSGridCell.emptyContentView, deviceNote ],
+  ]];
+  // an iPhone app with a Watch app: whether that runs on the paired Apple Watch too (docs/pairing.md)
+  if (_app.watchApps.count) {
+    NSString *names = [[_app.watchApps valueForKey:@"name"] componentsJoinedByString:@", "];
+    _watchApp = [NSButton checkboxWithTitle:[NSString stringWithFormat:@"Run %@ too", names] target:self action:@selector(watchAppToggled:)];
+    [rows addObjectsFromArray:@[
+      @[ Label(@"Apple Watch"), _watchApp ],
+      @[ NSGridCell.emptyContentView, Note(@"Its Watch app runs on SimRun's Apple Watch, which is paired with its iPhone, as installing "
+                                           "the app puts it there: WatchConnectivity works between the two.") ],
+    ]];
+  }
+  NSUInteger info = rows.count;   // the app's own rows from here
+  [rows addObjectsFromArray:@[
     @[ Label(@"Executable"), Value(_app.path.lastPathComponent) ],
     @[ Label(@"Bundle Identifier"), Value(_app.bundleIdentifier.length ? _app.bundleIdentifier : @"—") ],
     @[ Label(@"Location"), Value(dir) ],
-  ], 2);
-  [g rowAtIndex:1].topPadding = [g rowAtIndex:3].topPadding = -4;
-  [g rowAtIndex:2].topPadding = [g rowAtIndex:4].topPadding = 12;
+  ]];
+  NSGridView *g = Form(rows, 2);
+  for (NSUInteger i = 1; i < info; i += 2) [g rowAtIndex:i].topPadding = -4;   // a note under its control
+  for (NSUInteger i = 2; i <= info; i += 2) [g rowAtIndex:i].topPadding = 12;
   [_runtime.widthAnchor constraintEqualToConstant:kFieldWidth].active = YES;
   [_device.widthAnchor constraintEqualToConstant:kFieldWidth].active = YES;
   return Page(g);
@@ -399,6 +414,7 @@ static NSView *Page(NSView *content) {
   }
   if (selected) [_runtime selectItem:selected]; else [_runtime selectItemAtIndex:0];
   [self refreshDevices];
+  _watchApp.state = _options.runsWatchApp ? NSControlStateValueOn : NSControlStateValueOff;
   [_locale selectItemAtIndex:[_options.switches containsObject:@"LOCALE_DISABLE"] ? 1 : 0];
   for (NSButton *b in _switchBoxes) b.state = [_options.switches containsObject:b.identifier] != (b.tag != 0) ? NSControlStateValueOn : NSControlStateValueOff;
   [self refreshMicrophone];
@@ -452,6 +468,7 @@ static NSView *Page(NSView *content) {
   [self refreshDevices];
 }
 - (void)deviceChanged:(NSPopUpButton *)p { _options.deviceType = p.selectedItem.representedObject; }
+- (void)watchAppToggled:(NSButton *)b { _options.runsWatchApp = b.state == NSControlStateValueOn; }
 - (void)localeChanged:(NSPopUpButton *)p {
   if (p.indexOfSelectedItem == 1) [_options.switches addObject:@"LOCALE_DISABLE"]; else [_options.switches removeObject:@"LOCALE_DISABLE"];
 }

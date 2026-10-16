@@ -142,7 +142,9 @@ with no apps running.
   Digital Crown. Text fields and the status bar clock aren't supported yet ([details](docs/watchos.md)).
 - **iPhone apps with a Watch app bring it along.** Running an iPhone app with a Watch app in it also runs that app on
   SimRun's Apple Watch, which is paired with its iPhone: WatchConnectivity messages, application context and user info
-  go between the two ([details](docs/pairing.md)).
+  go between the two ([details](docs/pairing.md)). The launcher lists iPhone apps and standalone Apple Watch apps
+  separately; an iPhone app with a Watch app has a watch badge. To run it without its Watch app, turn off **Run … too**
+  in its **Launch Options**, or pass `--no-watch-app` to `simrun run`.
 - **Run as a different iPhone or iPad**: hold ⌥ in the app's menu, choose **Launch With…** and pick a **Device**. You
   can choose any device type the app's runtime supports. The app gets that model's screen size, safe areas and
   features such as the Dynamic Island. From the terminal, set `SIMRUN_DEVICE`:

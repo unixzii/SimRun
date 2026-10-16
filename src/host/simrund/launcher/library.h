@@ -9,6 +9,9 @@
 @property (readonly) NSImage *icon;
 @property (readonly) BOOL deviceBuild;   // built for iPhone/iPad devices: SimRun runs a converted copy (devicebuild.h)
 @property (readonly) SRPlatform platform;   // the Simulator it is built for (or converted for)
+// An iPhone app's Watch apps that SimRun can run: the watchOS Simulator apps in its Watch/ folder, as Xcode embeds them.
+// SimRun runs them on the paired Apple Watch along with it (docs/pairing.md).
+@property (readonly) NSArray<SRAppInfo *> *watchApps;
 // nil if `path` is an arm64 iOS- or watchOS-Simulator app bundle, or a device build SimRun can convert; otherwise why
 // it can't be launched.
 + (NSString *)problemWithAppAtPath:(NSString *)path;

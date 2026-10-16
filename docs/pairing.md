@@ -85,7 +85,12 @@ method, passing a resource on to the resource method.
 Installing an iPhone app puts the Watch app it contains on the paired watch. So when SimRun runs an iPhone app with
 Watch apps in its `Watch/` folder (as Xcode embeds them), it also runs each one that isn't running yet on the watch,
 headless if the iPhone app is, its output in its log (`-[SRServer launchWatchAppsOf:]`). `simrun run --no-watch-app`
-runs the iPhone app alone. A device build's Watch app is a device build too, which SimRun doesn't run.
+runs the iPhone app alone, as does turning off Launch Options ▸ Info ▸ Apple Watch ▸ Run … too for the launcher's
+launches (saved per app and profile, `SRLaunchOptions.runsWatchApp`).
+
+In the launcher's sidebar such an iPhone app has a watch badge, and its pane names its Watch apps. The sidebar's Apple
+Watch section lists only watch apps that aren't in an iPhone app in the library: Xcode also builds an iPhone app's Watch
+app into its own `*-watchsimulator` folder, which Add Xcode Simulator Builds adds, and that one shows as the badge. A device build's Watch app is a device build too, which SimRun doesn't run.
 
 ## Not supported
 

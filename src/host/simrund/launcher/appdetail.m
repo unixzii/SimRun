@@ -75,7 +75,8 @@ static NSImage *Symbol(NSString *name, CGFloat size, NSFontWeight weight) {
 @implementation SRAppDetailController {
   __weak id<SRLauncherDelegate> _delegate;
   NSView *_appView, *_emptyView;
-  NSImageView *_icon; NSTextField *_name, *_bundleID, *_version, *_requires, *_status, *_location;
+  NSImageView *_icon; NSTextField *_name, *_bundleID, *_version, *_requires, *_status, *_location, *_watchApps;
+  NSGridRow *_watchAppsRow;   // shown for an iPhone app with a Watch app
   SRTabBar *_tabs; NSArray<NSView *> *_pages;
   SRProfileOutline *_profiles; NSArray<SRProfileRow *> *_rows; NSButton *_removeButton;
   NSMutableDictionary<NSString *, NSString *> *_runsOn;   // by profile ("default"), until the launch options change
@@ -112,7 +113,7 @@ static NSImage *Symbol(NSString *name, CGFloat size, NSFontWeight weight) {
   _bundleID = [NSTextField labelWithString:@""]; _bundleID.textColor = NSColor.secondaryLabelColor; _bundleID.selectable = YES;
   _bundleID.lineBreakMode = NSLineBreakByTruncatingTail;
   for (NSTextField *f in @[ _name, _bundleID ]) [f setContentCompressionResistancePriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
-  _version = InfoValue(); _requires = InfoValue(); _status = InfoValue();
+  _version = InfoValue(); _requires = InfoValue(); _status = InfoValue(); _watchApps = InfoValue();
   // the app's path, and a button showing it in Finder (as Xcode's arrow next to a file's path)
   _location = InfoValue(); _location.lineBreakMode = NSLineBreakByTruncatingMiddle;
   NSButton *reveal = [NSButton buttonWithImage:Symbol(@"arrow.forward.circle.fill", 12, NSFontWeightRegular) target:self action:@selector(revealApp:)];
@@ -121,9 +122,10 @@ static NSImage *Symbol(NSString *name, CGFloat size, NSFontWeight weight) {
   location.alignment = NSLayoutAttributeCenterY;
   [location setHuggingPriority:NSLayoutPriorityDefaultHigh forOrientation:NSLayoutConstraintOrientationHorizontal];
   NSGridView *info = [NSGridView gridViewWithViews:@[
-    @[ InfoLabel(@"Version"), _version ], @[ InfoLabel(@"Requires"), _requires ], @[ InfoLabel(@"Status"), _status ],
-    @[ InfoLabel(@"Location"), location ],
+    @[ InfoLabel(@"Version"), _version ], @[ InfoLabel(@"Requires"), _requires ], @[ InfoLabel(@"Apple Watch"), _watchApps ],
+    @[ InfoLabel(@"Status"), _status ], @[ InfoLabel(@"Location"), location ],
   ]];
+  _watchAppsRow = [info rowAtIndex:2];
   info.rowSpacing = 5; info.columnSpacing = 8; info.rowAlignment = NSGridRowAlignmentFirstBaseline;
   [info columnAtIndex:0].xPlacement = NSGridCellPlacementTrailing;
 
@@ -287,6 +289,9 @@ static NSImage *Symbol(NSString *name, CGFloat size, NSFontWeight weight) {
   NSString *min = [SRAppInfo minimumOSVersionOfExecutable:_app.executablePath];
   _requires.stringValue = min ? [NSString stringWithFormat:@"%@ %@ or later", _app.platform, min] : @"—";
   _location.stringValue = _app.path.stringByAbbreviatingWithTildeInPath; _location.toolTip = _app.path;
+  // its Watch apps, which run on the paired watch with it (unless its launch options say not to)
+  _watchAppsRow.hidden = _app.watchApps.count == 0;
+  _watchApps.stringValue = [[_app.watchApps valueForKey:@"name"] componentsJoinedByString:@", "];
   [_runsOn removeAllObjects];   // the launch options may have changed
   [self reloadState];
 }

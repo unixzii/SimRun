@@ -109,6 +109,17 @@ static uint32_t Arm64Platform(NSString *path, uint32_t *minos, BOOL *encrypted) 
   uint32_t platform = Arm64Platform(a->_executablePath, NULL, NULL);
   a->_deviceBuild = platform == PLATFORM_IOS;
   a->_platform = platform == PLATFORM_WATCHOSSIMULATOR ? SRPlatformWatchOS : SRPlatformIOS;
+  NSMutableArray *watchApps = [NSMutableArray array];
+  if ([a->_platform isEqualToString:SRPlatformIOS]) {
+    NSString *dir = [path stringByAppendingPathComponent:@"Watch"];
+    for (NSString *name in [[NSFileManager.defaultManager contentsOfDirectoryAtPath:dir error:nil] sortedArrayUsingSelector:@selector(compare:)]) {
+      NSString *w = [dir stringByAppendingPathComponent:name];
+      if (![name.pathExtension isEqualToString:@"app"] || [self problemWithAppAtPath:w]) continue;   // a device build's: not run
+      SRAppInfo *watch = [SRAppInfo infoWithPath:w];
+      if ([watch.platform isEqualToString:SRPlatformWatchOS]) [watchApps addObject:watch];
+    }
+  }
+  a->_watchApps = watchApps;
   a->_icon = [self iconForBundle:path];
   return a;
 }
