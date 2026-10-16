@@ -19,6 +19,7 @@ for lib in lib lib/watchos; do
     "${SIGN[@]}" --entitlements "$ROOT/resources/release-simns.entitlements" "$APP/Contents/Resources/$lib/simns"
 done
 "${SIGN[@]}" "$APP/Contents/Helpers/simrun"
+"${SIGN[@]}" "$APP/Contents/Frameworks/WebRTC.framework"
 "${SIGN[@]}" --entitlements "$ROOT/resources/release-host.entitlements" "$APP"
 
 # Verify every Mach-O, including code outside standard nested-code locations.

@@ -40,7 +40,8 @@ PARTS := $(BIN)/simrund $(BIN)/simrun $(BIN)/simns $(SIMLIBS) $(WATCHLIBS)
 TOOLS := $(BIN)/hostinput
 TEST_APPS  := $(APPS)/Hello.app $(APPS)/SUI.app $(APPS)/HIDTest.app $(APPS)/Glass.app $(APPS)/DragTest.app $(APPS)/WebTest.app $(APPS)/BGDownload.app $(APPS)/PickerTest.app $(APPS)/Showcase.app $(APPS)/AudioPlayer.app \
               $(APPS)/WatchTest.app $(APPS)/WCPhone.app
-TEST_PROGS := $(TBIN)/nettest $(TBIN)/nwtest $(TBIN)/pbtest $(TBIN)/kctest $(TBIN)/loctest $(TBIN)/mpstest $(TBIN)/audiotest $(TBIN)/motiontest
+TEST_PROGS := $(TBIN)/nettest $(TBIN)/nwtest $(TBIN)/pbtest $(TBIN)/kctest $(TBIN)/loctest $(TBIN)/mpstest $(TBIN)/audiotest $(TBIN)/motiontest \
+              $(TBIN)/remotetest
 
 .PHONY: all core tools test-apps test-programs tests install clean $(APP) $(APPS)/Showcase.app
 all: core tools test-programs
@@ -54,12 +55,39 @@ $(BIN) $(LIB) $(WATCHLIB) $(APPS) $(TBIN):
 	@mkdir -p $@
 
 # ---------------------------------------------------------------- host (macOS)
-# simrund.m, then session/ (a running app), launcher/, services/ (the Mac's side of faked system services) and
-# inspector/ (the layer debugger); imports across folders name the folder
+# Google's WebRTC, for remote control (remote.md): prebuilt for macOS by github.com/stasel/WebRTC (from the official
+# source, unmodified), downloaded into vendor/, checked against its checksum and thinned to arm64. SimRun links it, and
+# carries it in Contents/Frameworks.
+WEBRTC_VERSION := 154.0.0
+WEBRTC_ZIP     := WebRTC-M154.xcframework.zip
+WEBRTC_SHA256  := a2bcdda93578c82452ceb6e49d54a2746e1bcb4caf7c2fa601ffac8028b58c16
+WEBRTC         := vendor/WebRTC.framework
+WEBRTC_STAMP   := vendor/.webrtc-$(WEBRTC_VERSION)
+$(WEBRTC_STAMP):
+	@mkdir -p vendor/dl
+	@test -f vendor/dl/$(WEBRTC_ZIP) || curl -fL --retry 3 -o vendor/dl/$(WEBRTC_ZIP) \
+	  https://github.com/stasel/WebRTC/releases/download/$(WEBRTC_VERSION)/$(WEBRTC_ZIP)
+	@echo "$(WEBRTC_SHA256)  vendor/dl/$(WEBRTC_ZIP)" | shasum -a 256 -c - >/dev/null || \
+	  { echo "$(WEBRTC_ZIP): checksum mismatch"; rm -f vendor/dl/$(WEBRTC_ZIP); exit 1; }
+	@rm -rf vendor/dl/WebRTC.xcframework $(WEBRTC) vendor/.webrtc-*
+	@unzip -q vendor/dl/$(WEBRTC_ZIP) -d vendor/dl
+	@ditto --arch arm64 vendor/dl/WebRTC.xcframework/macos-x86_64_arm64/WebRTC.framework $(WEBRTC)
+	@rm -rf vendor/dl/WebRTC.xcframework && touch $@
+	@echo "fetched WebRTC $(WEBRTC_VERSION) into $(WEBRTC)"
+
+# simrund.m, then session/ (a running app), launcher/, services/ (the Mac's side of faked system services),
+# inspector/ (the layer debugger) and remote/ (remote control); imports across folders name the folder. It finds
+# WebRTC.framework in the app's Frameworks, or in vendor/ when run as build/bin/simrund.
 SIMRUND_SRC := $(wildcard src/host/simrund/*.m src/host/simrund/*/*.m) src/host/gpuhost/gpuhost.m
-$(BIN)/simrund: $(SIMRUND_SRC) $(wildcard src/host/simrund/*/*.h) $(HDRS) | $(BIN)
-	$(MACCC) -Isrc/host/simrund $(SIMRUND_SRC) -framework Cocoa -framework QuartzCore -framework IOSurface -framework Metal \
-	  -framework UniformTypeIdentifiers -framework ImageIO -framework AVFoundation -framework IOKit -o $@
+$(BIN)/simrund: $(SIMRUND_SRC) $(wildcard src/host/simrund/*/*.h) $(HDRS) $(WEBRTC_STAMP) | $(BIN)
+	$(MACCC) -Isrc/host/simrund -Fvendor $(SIMRUND_SRC) -framework Cocoa -framework QuartzCore -framework IOSurface -framework Metal \
+	  -framework UniformTypeIdentifiers -framework ImageIO -framework AVFoundation -framework IOKit -framework Security \
+	  -framework SystemConfiguration -framework Network -framework CoreVideo -framework WebRTC \
+	  -Wl,-rpath,@executable_path/../Frameworks -Wl,-rpath,@executable_path/../../vendor -o $@
+
+# a viewer without a browser (tests/remote): the same WebRTC, from vendor/
+$(TBIN)/remotetest: tests/remote/remotetest.m $(WEBRTC_STAMP) | $(TBIN)
+	$(MACCC) -Wall -Fvendor $< -framework Foundation -framework WebRTC -Wl,-rpath,$(abspath vendor) -o $@
 
 # App icon: the Icon Composer document compiled into Assets.car (Liquid Glass icon) and AppIcon.icns (fallback).
 # Xcode 27 reads "features" and a string specular (outside/inside/...). Xcode 26's actool crashes on
@@ -108,21 +136,25 @@ $(ICON)/Assets.car: $(ICON_INPUTS)
 	xcrun actool $(ICON_DOC) --compile $(ICON) --platform macosx --minimum-deployment-target 14.0 --app-icon AppIcon \
 	  --output-partial-info-plist $(ICON)/partial.plist >/dev/null
 
-# SimRun.app: the server/launcher executable, the simrun helper, simns, the sim-side libraries and the agent skill.
+# SimRun.app: the server/launcher executable, the simrun helper, simns, the sim-side libraries, the agent skill, the
+# remote-control page and WebRTC.framework.
 # Assembled in a staging bundle and swapped in with a rename, so a SimRun that is running from the old bundle keeps
 # its (unlinked) files instead of having them overwritten underneath it.
 SKILL_FILES := $(shell find skills -type f ! -name .DS_Store)
-$(APP): $(SKILL_FILES) $(PARTS) resources/Info.plist $(ICON)/Assets.car
+$(APP): $(SKILL_FILES) $(PARTS) resources/Info.plist resources/remote.html $(ICON)/Assets.car
 	@rm -rf $(BUILD)/.SimRun.app.new $(BUILD)/.SimRun.app.old
-	@mkdir -p $(BUILD)/.SimRun.app.new/Contents/MacOS $(BUILD)/.SimRun.app.new/Contents/Helpers $(BUILD)/.SimRun.app.new/Contents/Resources/lib/watchos
+	@mkdir -p $(BUILD)/.SimRun.app.new/Contents/MacOS $(BUILD)/.SimRun.app.new/Contents/Helpers $(BUILD)/.SimRun.app.new/Contents/Resources/lib/watchos \
+	  $(BUILD)/.SimRun.app.new/Contents/Frameworks
 	@cp resources/Info.plist $(BUILD)/.SimRun.app.new/Contents/Info.plist
-	@cp $(ICON)/Assets.car $(ICON)/AppIcon.icns $(BUILD)/.SimRun.app.new/Contents/Resources/
+	@cp $(ICON)/Assets.car $(ICON)/AppIcon.icns resources/remote.html $(BUILD)/.SimRun.app.new/Contents/Resources/
 	@cp $(BIN)/simrund $(BUILD)/.SimRun.app.new/Contents/MacOS/SimRun
 	@cp $(BIN)/simrun $(BUILD)/.SimRun.app.new/Contents/Helpers/
 	@cp $(BIN)/simns $(BUILD)/.SimRun.app.new/Contents/Resources/lib/
 	@cp $(SIMLIBS) $(BUILD)/.SimRun.app.new/Contents/Resources/lib/
 	@cp $(WATCHLIBS) $(BUILD)/.SimRun.app.new/Contents/Resources/lib/watchos/
 	@rsync -a --exclude .DS_Store skills $(BUILD)/.SimRun.app.new/Contents/Resources/
+	@ditto $(WEBRTC) $(BUILD)/.SimRun.app.new/Contents/Frameworks/WebRTC.framework
+	@cd $(BUILD)/.SimRun.app.new/Contents/Frameworks/WebRTC.framework && rm -rf Headers Modules Versions/A/Headers Versions/A/Modules
 	@$(SIGN) --deep $(BUILD)/.SimRun.app.new 2>/dev/null
 	@if [ -d $@ ]; then mv $@ $(BUILD)/.SimRun.app.old; fi
 	@mv $(BUILD)/.SimRun.app.new $@ && rm -rf $(BUILD)/.SimRun.app.old

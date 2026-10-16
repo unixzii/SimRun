@@ -1,7 +1,9 @@
 // session.h — one running sim app inside simrund: its window, framebuffer surfaces, input port and process.
 #pragma once
 #import <Cocoa/Cocoa.h>
+#import <IOSurface/IOSurfaceRef.h>
 #include <mach/mach.h>
+#include "protocol.h"
 
 @class SRSession, SRLayerMirror;
 typedef void (^SRSessionExitHandler)(SRSession *session, int waitStatus);
@@ -58,4 +60,22 @@ typedef void (^SRSessionExitHandler)(SRSession *session, int waitStatus);
 - (void)resyncLayers;
 // Changes a property of one of the app's layers (protocol.h SR_MSG_INSPECT_EDIT); the change comes back as a batch.
 - (BOOL)editLayer:(NSNumber *)nid key:(NSString *)key value:(id)value;
+
+// ---- for viewers other than the window (remote control, remote.md)
+// The app's screen as it last presented it: its size in points and its scale (zero before the first frame).
+@property (readonly) NSSize screenSize;
+@property (readonly) CGFloat screenScale;
+// Observers of the frames the app presents, called on the main thread with the display buffer and the size of the
+// content in it (its top-left `pixelSize`). The surface may be read until `done` is called, which the observer must
+// do exactly once, from any thread: the app reuses a buffer only once every reader of it is done (protocol.h, frame
+// ownership). One added after the first frame is called at once with the frame on screen.
+- (id)addFrameObserver:(void (^)(IOSurfaceRef surface, CGSize pixelSize, dispatch_block_t done))observer;
+- (void)removeFrameObserver:(id)token;
+// Observers of the app's focused text input (SR_MSG_TEXT_STATE): whether one has keyboard focus, and where its
+// marked text or caret is in points (empty: not known). Main thread; called at once with the current state.
+- (id)addTextStateObserver:(void (^)(BOOL focused, NSRect caret))observer;
+- (void)removeTextStateObserver:(id)token;
+// Input to the app, as the window sends it: an SR_MSG_INPUT (`m`'s header is filled in) and an SR_MSG_TEXT.
+- (void)sendInput:(sr_input_msg_t *)m;
+- (void)sendText:(uint32_t)kind text:(NSString *)text selection:(NSRange)selection;
 @end

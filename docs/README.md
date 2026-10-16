@@ -34,6 +34,8 @@ Write-ups of each part:
 - [mps.md](mps.md) — MPSGraph on the simulator's GPU: the device descriptor's missing architecture, private heaps
 - [scripting.md](scripting.md) — `simrun eval`: JavaScript in a running app, its accessibility tree, input from
   scripts
+- [remote.md](remote.md) — remote control: apps in a web browser over WebRTC (Google's prebuilt WebRTC,
+  H.264 levels, the access key, the data channel's input messages, the soft keyboard)
 - [inspect.md](inspect.md) — the layer tree, live: Core Animation's commit hook, change batches, the Mac copy drawn by
   real CALayers, and the 3D view (App ▸ Show Layers, `simrun inspect`)
 - [research-log.md](research-log.md) — chronological findings from the investigation (paths in it refer to the

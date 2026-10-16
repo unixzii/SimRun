@@ -37,6 +37,9 @@
 //   runtimes    -> { runtimes: [ { name, version, build, root, current: bool } ] }   current: what SimRun runs on
 //   devices     { runtime? } -> { runtime: string, devices: [ { identifier, name, width, height, scale, default: bool } ] }
 //   status      -> { pid, runtime, instances: int }
+//   remote      { enable?: bool, reset?: bool } -> { enabled, port, link?, localLink?, viewers? }   remote control
+//               (remote.md): turn it on or off (kept for later launches), or make a new link (reset: the access
+//               key changes, so links given out before stop working)
 //   stop        -> { ok: true }, then SimRun quits (ending every app)
 //   show        { open: [string] } (no reply) a second SimRun instance handing over: show the launcher, open these apps
 // Any request can be answered with { error: string } instead.

@@ -7,3 +7,5 @@
 out/
 .DS_Store
 *.dSYM/
+# downloaded dependencies (make fetches them)
+/vendor/

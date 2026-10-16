@@ -25,6 +25,8 @@ extern int posix_spawn_file_actions_addchdir_np(posix_spawn_file_actions_t *, co
 @property mach_port_t inputPort;
 @property NSSize pointSize;   // the app's screen in points; the view may be scaled (window resized)
 - (void)textInputFocused:(BOOL)focused caret:(NSRect)caret;
+- (void)post:(sr_input_msg_t *)m;
+- (void)sendText:(uint32_t)kind text:(NSString *)text selection:(NSRange)sel;
 @end
 @implementation SRView {
   BOOL _textFocused;            // a text input in the app has keyboard focus
@@ -225,12 +227,17 @@ static NSString *SRPlainString(id s) { return [s isKindOfClass:NSAttributedStrin
   uint32_t _shownSurfaceID, _shownChecksum; uint64_t _shownSince;   // SIMFB_CHECK diagnostics
   mach_port_t _inspectPort; dispatch_source_t _inspectSource;        // the layer tree stream, while watched
   SRLayerMirror *_mirror; NSMutableArray *_layerObservers;
+  NSMutableArray *_frameObservers, *_textObservers;                    // other viewers (remote control)
+  dispatch_group_t _readers;                                           // frame observers still reading a surface
+  BOOL _textFocused; NSRect _caret;
 }
 
 - (instancetype)initWithTitle:(NSString *)title screenSize:(NSSize)screenSize cornerRadius:(CGFloat)cornerRadius {
   if (!(self = [super init])) return nil;
   _title = [title copy];
   _surfaces = [NSMutableDictionary dictionary];
+  _frameObservers = [NSMutableArray array]; _textObservers = [NSMutableArray array];
+  _readers = dispatch_group_create();
   // iPhone Mirroring–style window: just the device screen until the pointer nears its top edge
   _view = [[SRView alloc] initWithFrame:(NSRect){ NSZeroPoint, screenSize }];
   _view.pointSize = screenSize;
@@ -323,6 +330,7 @@ static NSString *SRPlainString(id s) { return [s isKindOfClass:NSAttributedStrin
   [_layerObservers removeAllObjects];
   [self stopInspecting];
   for (void (^o)(SRLayerMirror *, NSDictionary *) in observers) o(mirror, nil);
+  [_frameObservers removeAllObjects]; [_textObservers removeAllObjects];
   _window.delegate = nil; [_window close];
   if (_logWindow) _logWindow.title = [NSString stringWithFormat:@"%@ — Log (exited)", _title];
   if (self.onExit) self.onExit(self, st);
@@ -421,15 +429,56 @@ static NSString *SRPlainString(id s) { return [s isKindOfClass:NSAttributedStrin
 
 // Frame ownership (protocol.h): once this frame has been on screen for two refresh intervals — WindowServer
 // composites a committed layer change at the next refresh — every older display buffer is off screen; tell the
-// sim side so it can reuse them.
+// sim side so it can reuse them. Frame observers may still be reading one of them: then it waits for them too.
 - (void)acknowledgeFrame:(uint32_t)seq replyPort:(mach_port_t)reply bits:(mach_msg_bits_t)bits {
   if (!reply || MACH_MSGH_BITS_REMOTE(bits) != MACH_MSG_TYPE_PORT_SEND_ONCE) return;
   NSInteger fps = _window.screen.maximumFramesPerSecond ?: 60;
+  dispatch_group_t readers = _readers;
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 / fps * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-    sr_frame_ack_msg_t a = { .h = { .msgh_bits = MACH_MSGH_BITS(MACH_MSG_TYPE_MOVE_SEND_ONCE, 0), .msgh_size = sizeof a,
-                                    .msgh_remote_port = reply, .msgh_id = SR_MSG_FRAME_ACK }, .on_screen_seq = seq };
-    if (mach_msg(&a.h, MACH_SEND_MSG | MACH_SEND_TIMEOUT, sizeof a, 0, 0, 0, 0) != KERN_SUCCESS) mach_port_deallocate(mach_task_self(), reply);
+    dispatch_group_notify(readers, dispatch_get_main_queue(), ^{
+      sr_frame_ack_msg_t a = { .h = { .msgh_bits = MACH_MSGH_BITS(MACH_MSG_TYPE_MOVE_SEND_ONCE, 0), .msgh_size = sizeof a,
+                                      .msgh_remote_port = reply, .msgh_id = SR_MSG_FRAME_ACK }, .on_screen_seq = seq };
+      if (mach_msg(&a.h, MACH_SEND_MSG | MACH_SEND_TIMEOUT, sizeof a, 0, 0, 0, 0) != KERN_SUCCESS) mach_port_deallocate(mach_task_self(), reply);
+    });
   });
+}
+
+// ---------------------------------------------------------------- other viewers (session.h; remote control)
+- (NSSize)screenSize { return _contentSize; }
+- (CGFloat)screenScale { return _contentScale; }
+- (void)notifyFrameObserver:(void (^)(IOSurfaceRef, CGSize, dispatch_block_t))observer {
+  IOSurfaceRef s = (IOSurfaceRef)CFRetain(_surface);
+  CGFloat sc = _contentScale ?: 1;   // the presented content can be smaller than the display buffer
+  CGSize px = CGSizeMake(MIN(IOSurfaceGetWidth(s), (size_t)lround(_contentSize.width * sc) ?: IOSurfaceGetWidth(s)),
+                         MIN(IOSurfaceGetHeight(s), (size_t)lround(_contentSize.height * sc) ?: IOSurfaceGetHeight(s)));
+  dispatch_group_t readers = _readers;
+  dispatch_group_enter(readers);
+  __block BOOL called = NO;
+  observer(s, px, ^{
+    if (called) return;
+    called = YES; CFRelease(s); dispatch_group_leave(readers);
+  });
+}
+- (id)addFrameObserver:(void (^)(IOSurfaceRef, CGSize, dispatch_block_t))observer {
+  id token = [observer copy];
+  [_frameObservers addObject:token];
+  if (_sawFrame && _surface && !_exited)   // the newest frame: its buffer stays as it is until a newer one is acknowledged
+    dispatch_async(dispatch_get_main_queue(), ^{
+      if ([self->_frameObservers indexOfObjectIdenticalTo:token] != NSNotFound && self->_surface) [self notifyFrameObserver:token];
+    });
+  return token;
+}
+- (void)removeFrameObserver:(id)token { if (token) [_frameObservers removeObjectIdenticalTo:token]; }
+- (id)addTextStateObserver:(void (^)(BOOL, NSRect))observer {
+  id token = [observer copy];
+  [_textObservers addObject:token];
+  observer(_textFocused, _caret);
+  return token;
+}
+- (void)removeTextStateObserver:(id)token { if (token) [_textObservers removeObjectIdenticalTo:token]; }
+- (void)sendInput:(sr_input_msg_t *)m { if (!_exited) [_view post:m]; }
+- (void)sendText:(uint32_t)kind text:(NSString *)text selection:(NSRange)selection {
+  if (!_exited) [_view sendText:kind text:text selection:selection];
 }
 
 // SIMFB_CHECK=1 (diagnostic): the sim side sends each frame's checksum at present time. Just before the window moves
@@ -624,8 +673,11 @@ static NSString *SRPlainString(id s) { return [s isKindOfClass:NSAttributedStrin
         _view.inputPort = m.p.port.name;
         break;
       case SR_MSG_TEXT_STATE:
-        if (m.h.msgh_size >= sizeof(sr_text_state_msg_t))
-          [_view textInputFocused:m.t.focused != 0 caret:NSMakeRect(m.t.x, m.t.y, m.t.width, m.t.height)];
+        if (m.h.msgh_size >= sizeof(sr_text_state_msg_t)) {
+          _textFocused = m.t.focused != 0; _caret = NSMakeRect(m.t.x, m.t.y, m.t.width, m.t.height);
+          [_view textInputFocused:_textFocused caret:_caret];
+          for (void (^o)(BOOL, NSRect) in [_textObservers copy]) o(_textFocused, _caret);
+        }
         break;
       case SR_MSG_SCRIPT_HELLO:
         if (_scriptPort) mach_port_deallocate(mach_task_self(), _scriptPort);
@@ -665,6 +717,7 @@ static NSString *SRPlainString(id s) { return [s isKindOfClass:NSAttributedStrin
           if (named) _surface = (__bridge IOSurfaceRef)named;
           // Re-setting the same IOSurface makes CA pick up the new pixels (actions are disabled on this layer).
           if (!_headless) { _surfaceLayer.contents = nil; _surfaceLayer.contents = (__bridge id)_surface; }
+          for (id o in [_frameObservers copy]) [self notifyFrameObserver:o];
           [self acknowledgeFrame:m.f.seq replyPort:m.h.msgh_remote_port bits:m.h.msgh_bits];
         }
         break;
