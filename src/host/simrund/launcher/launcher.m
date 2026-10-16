@@ -81,27 +81,16 @@ static NSImage *Symbol(NSString *name, NSString *description) {
 @end
 
 // ---------------------------------------------------------------- launcher
-// The sidebar: an outline view whose disclosure triangle (an iPhone app's, showing its Watch apps) is at the end of the
-// row rather than its start. Clicks and drawing both use frameOfOutlineCellAtRow:, so it works as the native one does,
-// arrow keys included; every app's row leaves room for it, so their ends line up.
+// The sidebar: an outline view whose disclosure triangle (an iPhone app's, showing its Watch apps) is centered in the
+// row. The native frame is the row's height, and the triangle is drawn at its top: a 44-point row has it by the name.
 @interface SRSidebarView : NSOutlineView
 @end
 @implementation SRSidebarView
-// The cells' area ends inside the selection's rounded highlight (a source list's rows are inset); the triangle ends
-// where it does, as the native one starts where it starts, and the cell ends before the triangle.
-static const CGFloat kDisclosureWidth = 13, kDisclosureGap = 4;   // the native triangle's width
-- (BOOL)isAppRow:(NSInteger)row { return [[self itemAtRow:row] isKindOfClass:SRAppInfo.class]; }
-- (CGFloat)cellsEndAtRow:(NSInteger)row { return NSMaxX([super frameOfCellAtColumn:0 row:row]); }
 - (NSRect)frameOfOutlineCellAtRow:(NSInteger)row {
   NSRect f = [super frameOfOutlineCellAtRow:row];
-  if (NSIsEmptyRect(f) || ![self isAppRow:row]) return f;
-  f.origin.x = [self cellsEndAtRow:row] - NSWidth(f);
-  return f;
-}
-- (NSRect)frameOfCellAtColumn:(NSInteger)column row:(NSInteger)row {
-  NSRect f = [super frameOfCellAtColumn:column row:row];
-  if ([self isAppRow:row]) f.size.width = MAX(0, NSMaxX(f) - kDisclosureWidth - kDisclosureGap - f.origin.x);
-  return f;
+  if (NSIsEmptyRect(f)) return f;
+  CGFloat h = MIN(NSHeight(f), NSWidth(f));   // the triangle is square
+  return NSMakeRect(NSMinX(f), NSMidY(f) - h / 2, NSWidth(f), h);
 }
 @end
 

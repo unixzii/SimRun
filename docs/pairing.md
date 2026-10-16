@@ -88,7 +88,7 @@ Info ▸ Apple Watch ▸ Run … too for the launcher's launches (off by default
 `SRLaunchOptions.runsWatchApp`). Then it also runs each one that isn't running yet on the watch, headless if the iPhone
 app is, its output in its log (`-[SRServer launchWatchAppsOf:]`).
 
-In the launcher's sidebar (an outline view) such an iPhone app expands, with the disclosure arrow at the end of its
+In the launcher's sidebar (an outline view) such an iPhone app expands, with the disclosure arrow at the start of its
 row or the arrow keys, and its pane names its Watch apps. Expanded, each Watch app is a row under it (indented, with a
 watch badge; which apps are expanded is remembered): select it to run only the Watch app, with its own profiles and launch options (watchOS runtime, watch
 model). From the terminal, run the app in the iPhone app's `Watch/` folder. The sidebar's Apple Watch
