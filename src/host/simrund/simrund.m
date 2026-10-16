@@ -63,7 +63,7 @@ static void LOG(NSString *fmt, ...) {
 @property SRDeviceType *device;                    // the device type it runs as
 @property NSString *profile;                       // the app's profile (data container) it runs in; nil = its default one
 @property BOOL headless;                           // no window (simrun run --headless)
-@property BOOL withWatchApp;                       // also run the Watch app it contains on the paired watch (not --no-watch-app)
+@property BOOL withWatchApp;                       // also run the Watch app it contains on the paired watch (--with-watch-app)
 @property NSArray<NSString *> *pickPresets;        // what its file pickers choose, with no panel (simrun run --pick)
 @property int sock; @property int fd0, fd1, fd2;   // client connection (-1 if none) and the app's stdio (-1 = inherit)
 @property int captureFD;                           // read end of the app's output pipe (launcher launches), or -1
@@ -439,7 +439,7 @@ static BOOL ProcessGone(pid_t pid) {
   SRRequest *r = [SRRequest new];
   r.argv = [@[ app.executablePath ] arrayByAddingObjectsFromArray:o.launchArguments];
   r.cwd = app.path; r.title = app.name; r.appPath = app.path; r.bundleID = app.bundleIdentifier; r.runtimeRoot = root; r.profile = profile;
-  r.withWatchApp = o.runsWatchApp;   // Launch Options ▸ Run its Watch app
+  r.withWatchApp = o.runsWatchApp;   // Launch Options ▸ Apple Watch ▸ Run … too
   if (app.deviceBuild) r.deviceBuild = app.path;
   r.device = device ?: [SREnvironment defaultDeviceTypeForRuntime:[SRRuntime runtimeAtRoot:root]];
   r.env = [self environmentFrom:[SREnvironment processEnvironment] for:r extraLibrary:NSProcessInfo.processInfo.environment[@"SIMAPP_EXTRA_INSERT"]
@@ -1078,7 +1078,7 @@ static void SendReply(int c, NSDictionary *reply, dispatch_block_t then) {
   if (err) return err;
   r.profile = [SREnvironment normalizedProfile:Str(d, @"profile")];
   r.headless = [d[@"headless"] isEqual:@YES];
-  r.withWatchApp = ![d[@"noWatchApp"] isEqual:@YES];
+  r.withWatchApp = [d[@"withWatchApp"] isEqual:@YES];
   if ([d[@"pick"] isKindOfClass:NSArray.class]) {
     NSMutableArray *presets = [NSMutableArray array];
     for (NSString *p in d[@"pick"]) {

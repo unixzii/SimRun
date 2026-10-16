@@ -7,8 +7,8 @@ NanoRegistry. WatchConnectivity (`WCSession`) works between an iPhone app and it
 with replies, the application context and user info, both ways.
 
 ```bash
-simrun run build/apps/WCPhone.app       # WCWatch, its Watch app, runs on the paired watch with it
-tests/scripts/watchconnectivity.sh      # WCPhone ⇄ WCWatch: message, context, user info, both ways
+simrun run --with-watch-app build/apps/WCPhone.app   # and WCWatch, its Watch app, on the paired watch
+tests/scripts/watchconnectivity.sh                   # WCPhone ⇄ WCWatch: message, context, user info, both ways
 ```
 
 ## Two devices
@@ -82,15 +82,18 @@ method, passing a resource on to the resource method.
 
 ## Running an iPhone app with its Watch app
 
-Installing an iPhone app puts the Watch app it contains on the paired watch. So when SimRun runs an iPhone app with
-Watch apps in its `Watch/` folder (as Xcode embeds them), it also runs each one that isn't running yet on the watch,
-headless if the iPhone app is, its output in its log (`-[SRServer launchWatchAppsOf:]`). `simrun run --no-watch-app`
-runs the iPhone app alone, as does turning off Launch Options ▸ Info ▸ Apple Watch ▸ Run … too for the launcher's
-launches (saved per app and profile, `SRLaunchOptions.runsWatchApp`).
+Installing an iPhone app puts the Watch app it contains on the paired watch. SimRun runs an iPhone app alone unless
+asked to run its Watch apps too (`Watch/`, as Xcode embeds them): `simrun run --with-watch-app`, or Launch Options ▸
+Info ▸ Apple Watch ▸ Run … too for the launcher's launches (off by default; saved per app and profile,
+`SRLaunchOptions.runsWatchApp`). Then it also runs each one that isn't running yet on the watch, headless if the iPhone
+app is, its output in its log (`-[SRServer launchWatchAppsOf:]`).
 
-In the launcher's sidebar such an iPhone app has a watch badge, and its pane names its Watch apps. The sidebar's Apple
-Watch section lists only watch apps that aren't in an iPhone app in the library: Xcode also builds an iPhone app's Watch
-app into its own `*-watchsimulator` folder, which Add Xcode Simulator Builds adds, and that one shows as the badge. A device build's Watch app is a device build too, which SimRun doesn't run.
+In the launcher's sidebar (an outline view) such an iPhone app expands, with the disclosure arrow at the end of its
+row or the arrow keys, and its pane names its Watch apps. Expanded, each Watch app is a row under it (indented, with a
+watch badge; which apps are expanded is remembered): select it to run only the Watch app, with its own profiles and launch options (watchOS runtime, watch
+model). From the terminal, run the app in the iPhone app's `Watch/` folder. The sidebar's Apple Watch
+section lists only watch apps that aren't in an iPhone app in the library: Xcode also builds an iPhone app's Watch app
+into its own `*-watchsimulator` folder, which Add Xcode Simulator Builds adds, and that one shows under the iPhone app. A device build's Watch app is a device build too, which SimRun doesn't run.
 
 ## Not supported
 

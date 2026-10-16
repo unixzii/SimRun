@@ -41,8 +41,8 @@ Add `-workspace MyApp.xcworkspace` or `-project MyApp.xcodeproj` when the direct
 A watchOS app works the same way: build it for `generic/platform=watchOS Simulator` (the app is in
 `Debug-watchsimulator`), and SimRun runs it on the newest watchOS runtime as an Apple Watch. Turn its Digital Crown
 with `app.crown(delta)`. Its text fields can't be typed into. An iPhone app with a Watch app in it (its `Watch/` folder)
-runs that app on SimRun's paired Apple Watch too, so WatchConnectivity works between them; `simrun run --no-watch-app`
-runs the iPhone app alone.
+can run that app on SimRun's paired Apple Watch too, so WatchConnectivity works between them: `simrun run
+--with-watch-app`.
 
 ## 2. Launch it
 

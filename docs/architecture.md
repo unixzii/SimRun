@@ -73,8 +73,8 @@ privacy permissions, such as the microphone's, for SimRun, not for the terminal)
 exits with the app's status, and Ctrl-C (or closing the window) ends the app. Launching into a running server takes
 ~0.6 s to first frame.
 
-The launcher (`launcher.m`, `appdetail.m`) is a split view: the library of apps in the sidebar (in sections: iPhone apps,
-then watch apps that aren't in an iPhone app in the library; an iPhone app with a Watch app has a watch badge), the selected app's
+The launcher (`launcher.m`, `appdetail.m`) is a split view: the library of apps in the sidebar (an outline view, in sections: iPhone apps,
+each expandable to a row for each Watch app it contains, then watch apps that aren't in an iPhone app in the library), the selected app's
 pane beside it (its details, then tabs: Profiles lists its data containers with what each runs as and its running
 instances, and makes and deletes profiles), and the commands for the selected profile (run, stop, launch options, log, more)
 in the toolbar. The sidebar's context menu has what concerns the app bundle (keychain items, Show in Finder, Remove);
@@ -156,7 +156,7 @@ SimRun is one iPhone (its own iOS runtime's `simns`) and one Apple Watch (a watc
 `SIMULATOR_UDID` and device data directory (the watch's is `<data>/Devices/AppleWatch`). When both are up, SimRun joins
 their `ids_simd` relays and runs `simpair` in each to pair them through NanoRegistry, as CoreSimulator pairs a device
 pair; `wcd.dylib`, inserted into `wcd`, answers what WatchConnectivity would ask LaunchServices and Carousel. An iPhone
-app with a Watch app in it runs it on the watch too ([pairing.md](pairing.md)).
+app with a Watch app in it can run that on the watch too (Launch Options, `--with-watch-app`; [pairing.md](pairing.md)).
 
 ## Devices
 

@@ -140,11 +140,11 @@ with no apps running.
 - **Apple Watch apps run too.** Add a watchOS Simulator build (`Debug-watchsimulator`) like any app. It runs on the
   newest watchOS runtime, in a window the size of the watch's screen. Scrolling with the mouse or trackpad turns the
   Digital Crown. Text fields and the status bar clock aren't supported yet ([details](docs/watchos.md)).
-- **iPhone apps with a Watch app bring it along.** Running an iPhone app with a Watch app in it also runs that app on
-  SimRun's Apple Watch, which is paired with its iPhone: WatchConnectivity messages, application context and user info
-  go between the two ([details](docs/pairing.md)). The launcher lists iPhone apps and standalone Apple Watch apps
-  separately; an iPhone app with a Watch app has a watch badge. To run it without its Watch app, turn off **Run … too**
-  in its **Launch Options**, or pass `--no-watch-app` to `simrun run`.
+- **iPhone apps can bring their Watch app.** An iPhone app with a Watch app in it can be expanded in the launcher's
+  sidebar (its disclosure arrow, or →), which lists iPhone apps and standalone Apple Watch apps separately. Turn on **Run … too** in its **Launch Options** (or
+  pass `--with-watch-app` to `simrun run`) and its Watch app runs on SimRun's Apple Watch with it, paired with its
+  iPhone: WatchConnectivity messages, application context and user info go between the two
+  ([details](docs/pairing.md)). To run only the Watch app, expand the iPhone app and select its Watch app.
 - **Run as a different iPhone or iPad**: hold ⌥ in the app's menu, choose **Launch With…** and pick a **Device**. You
   can choose any device type the app's runtime supports. The app gets that model's screen size, safe areas and
   features such as the Dynamic Island. From the terminal, set `SIMRUN_DEVICE`:

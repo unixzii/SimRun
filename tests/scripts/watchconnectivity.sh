@@ -1,6 +1,6 @@
 #!/bin/zsh
-# watchconnectivity.sh — WatchConnectivity between SimRun's iPhone and Apple Watch (docs/pairing.md): runs WCPhone, whose
-# Watch app WCWatch comes along on the paired watch, waits until each side sees the other, then sends a message (and
+# watchconnectivity.sh — WatchConnectivity between SimRun's iPhone and Apple Watch (docs/pairing.md): runs WCPhone with
+# its Watch app WCWatch on the paired watch (--with-watch-app), waits until each side sees the other, then sends a message (and
 # its reply), the application context and user info each way and checks they arrive. Exits 1 at the first step that
 # fails. Needs `make test-apps` and a watchOS runtime; uses the simrun next to this checkout's build unless SIMRUN is set.
 #
@@ -17,7 +17,7 @@ js() { $SIMRUN eval "$1" "$SHOW $2" 2>&1 | tail -1; }
 received() { js "$1" "await show('received'); return await app.getByTestId('received').text();"; }
 
 $SIMRUN quit WCPhone >/dev/null 2>&1; $SIMRUN quit WCWatch >/dev/null 2>&1
-$SIMRUN run --headless "$PWD/build/apps/WCPhone.app" >/dev/null 2>&1 &
+$SIMRUN run --headless --with-watch-app "$PWD/build/apps/WCPhone.app" >/dev/null 2>&1 &
 
 # both sides activated and reachable: paired, each app installed and running on its device (pairing takes ~10 s the
 # first time the watch comes up)
