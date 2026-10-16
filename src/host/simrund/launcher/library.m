@@ -9,10 +9,12 @@
 
 // IconServices (private): the icon pipeline SpringBoard itself renders home-screen icons with (macOS ships the same
 // framework). It reads the bundle's icon (asset catalog incl. Icon Composer layer stacks, or CFBundleIconFiles PNGs) and
-// applies the iOS recipe: continuous-corner mask, Liquid Glass edge lighting, dark appearance.
+// applies the platform's recipe: for iOS a continuous-corner mask, Liquid Glass edge lighting, dark appearance; for
+// watchOS a full-bleed circle (ISwatchOSAppRecipe, as Carousel's home screen draws it).
 @interface ISImageDescriptor : NSObject
 - (instancetype)initWithSize:(CGSize)size scale:(double)scale;
-@property unsigned long long platformStyle;   // 1 = iOS (full-bleed squircle); 0 = this platform (macOS, inset art)
+@property unsigned long long platformStyle;   // the recipe: 1 iOS (full-bleed squircle), 4 watchOS (full-bleed circle),
+                                              // 3 macOS; others this platform's (-[ISImageDescriptor platform])
 @property long long appearance;               // 0 light, 1 dark
 @end
 @interface ISBundleIcon : NSObject
@@ -120,13 +122,14 @@ static uint32_t Arm64Platform(NSString *path, uint32_t *minos, BOOL *encrypted) 
     }
   }
   a->_watchApps = watchApps;
-  a->_icon = [self iconForBundle:path];
+  a->_icon = [self iconForBundle:path watch:[a->_platform isEqualToString:SRPlatformWatchOS]];
   return a;
 }
 
-// The app icon as SpringBoard draws it, rendered by IconServices with the iOS recipe. An app without an icon gets iOS's
-// placeholder (GenericAppIcon_iOS), not macOS's generic app icon. The image renders lazily, per appearance and pixel size.
-+ (NSImage *)iconForBundle:(NSString *)path {
+// The app icon as SpringBoard (or a watch app's as Carousel) draws it, rendered by IconServices with the iOS (watchOS)
+// recipe. An app without an icon gets iOS's placeholder (GenericAppIcon_iOS), not macOS's generic app icon, in the
+// watch's circle for a watch app. The image renders lazily, per appearance (iOS) and pixel size.
++ (NSImage *)iconForBundle:(NSString *)path watch:(BOOL)watch {
   static dispatch_once_t once; dispatch_once(&once, ^{ dlopen("/System/Library/PrivateFrameworks/IconServices.framework/IconServices", RTLD_LAZY); });
   Class C = NSClassFromString(@"ISBundleIcon");
   if (!C || !NSClassFromString(@"ISImageDescriptor")) return [NSWorkspace.sharedWorkspace iconForContentType:UTTypeApplicationBundle];
@@ -142,7 +145,7 @@ static uint32_t Arm64Platform(NSString *path, uint32_t *minos, BOOL *encrypted) 
     id img = cache[key];
     if (!img) {
       ISImageDescriptor *d = [[NSClassFromString(@"ISImageDescriptor") alloc] initWithSize:r.size scale:scale];
-      d.platformStyle = 1; d.appearance = dark;
+      d.platformStyle = watch ? 4 : 1; d.appearance = dark && !watch;   // a watch has no dark icons
       [icon prepareImageForDescriptor:d];
       img = (__bridge id)[icon CGImageForDescriptor:d];
       if (!img) return NO;
