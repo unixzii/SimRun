@@ -42,7 +42,7 @@ TEST_APPS  := $(APPS)/Hello.app $(APPS)/SUI.app $(APPS)/HIDTest.app $(APPS)/Glas
               $(APPS)/WatchTest.app $(APPS)/WCPhone.app
 TEST_PROGS := $(TBIN)/nettest $(TBIN)/nwtest $(TBIN)/pbtest $(TBIN)/kctest $(TBIN)/loctest $(TBIN)/mpstest $(TBIN)/audiotest $(TBIN)/motiontest
 
-.PHONY: all core tools test-apps test-programs tests install clean $(APP)
+.PHONY: all core tools test-apps test-programs tests install clean $(APP) $(APPS)/Showcase.app
 all: core tools test-programs
 core: $(CORE)
 tools: $(TOOLS)
@@ -262,15 +262,9 @@ $(APPS)/AudioPlayer.app: tests/apps/audioplayer/AudioPlayer.swift tests/apps/aud
 	$(SIMSWIFT) -parse-as-library $< -o $@/AudioPlayer
 	@$(SIGN) $@ 2>/dev/null
 
-# Showcase: a SwiftUI tour of what works under SimRun, with its own Icon Composer icon compiled into Assets.car.
-SHOWCASE_SRC := $(wildcard tests/apps/showcase/*.swift)
-SHOWCASE_ICON := tests/apps/showcase/AppIcon.icon/icon.json $(wildcard tests/apps/showcase/AppIcon.icon/Assets/*)
-$(APPS)/Showcase.app: $(SHOWCASE_SRC) $(SHOWCASE_ICON) tests/apps/showcase/Info.plist | $(APPS)
-	@mkdir -p $@ && cp tests/apps/showcase/Info.plist $@/
-	xcrun actool tests/apps/showcase/AppIcon.icon --compile $@ --platform iphonesimulator --minimum-deployment-target 26.0 \
-	  --app-icon AppIcon --output-partial-info-plist $(BUILD)/showcase-icon.plist >/dev/null
-	xcrun -sdk iphonesimulator swiftc -target arm64-apple-ios26.0-simulator -parse-as-library -O $(SHOWCASE_SRC) -o $@/Showcase
-	@$(SIGN) $@ 2>/dev/null
+# Showcase: a SwiftUI tour of what works under SimRun, with its Watch app; built by its own Makefile.
+$(APPS)/Showcase.app: | $(APPS)
+	@$(MAKE) --no-print-directory -C tests/apps/showcase BUILD=$(abspath $(BUILD))
 
 $(TBIN)/nettest: tests/net/nettest.m | $(TBIN)
 	$(SIMCC) $< -framework Foundation -o $@

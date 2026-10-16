@@ -72,7 +72,7 @@ make
 This builds `build/SimRun.app`. You can rebuild while SimRun is open; quit and reopen SimRun to pick up the new
 version. Until you do, apps in the old SimRun can't open the Mac's file panels (document pickers).
 
-To also build the sample apps into `build/apps/`, including Showcase, a tour of what SimRun can do:
+To also build the sample apps into `build/apps/`, including Showcase, a tour of what SimRun can do, and its Watch app:
 
 ```bash
 make test-apps

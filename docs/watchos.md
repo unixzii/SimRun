@@ -84,3 +84,11 @@ locators.
 
 `tests/apps/watchtest` (`WatchTest.app`, `make test-apps`): a SwiftUI list (counter, toggle, navigation) and a page
 whose value the Crown turns.
+
+`tests/apps/showcase` (`Showcase.app`, its own Makefile, run by `make test-apps`): Showcase's Watch app, in
+`Showcase.app/Watch/`, has the Crown, touch, WatchConnectivity with Showcase on the iPhone (whose Apple Watch page
+sets the watch's theme), its container, the Mac's language & region, and the watch it runs as:
+
+```bash
+simrun run --with-watch-app build/apps/Showcase.app
+```

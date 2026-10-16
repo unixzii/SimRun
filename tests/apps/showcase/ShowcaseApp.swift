@@ -1,18 +1,22 @@
 // Showcase: a tour of what an unmodified Simulator app can do under SimRun — touch and trackpad gestures, the hardware
 // keyboard, its own data container, the Mac pasteboard, the keychain, drag & drop, WKWebView, networking, the Mac's
-// language & region, and Liquid Glass. Each demo is a page reached from the home screen's grid.
-// SHOWCASE_PAGE=<feature> (touch, keyboard, container, pasteboard, keychain, dragDrop, web, network, locale, glass)
-// opens that page at launch.
+// language & region, Liquid Glass, and the paired Apple Watch (Showcase's Watch app, Watch/). Each demo is a page
+// reached from the home screen's grid.
+// SHOWCASE_PAGE=<feature> (touch, keyboard, container, pasteboard, keychain, dragDrop, web, network, locale, glass,
+// watch) opens that page at launch.
 import SwiftUI
 import Metal
 
 @main struct ShowcaseApp: App {
-  init() { LaunchRecord.recordLaunch() }
+  init() {
+    LaunchRecord.recordLaunch()
+    WatchLink.shared.activate()
+  }
   var body: some Scene { WindowGroup { HomeView() } }
 }
 
 enum Feature: String, CaseIterable, Identifiable, Hashable {
-  case touch, keyboard, container, pasteboard, keychain, dragDrop, web, network, locale, glass
+  case touch, keyboard, container, pasteboard, keychain, dragDrop, web, network, locale, glass, watch
   var id: Self { self }
 
   var title: String {
@@ -27,6 +31,7 @@ enum Feature: String, CaseIterable, Identifiable, Hashable {
     case .network: "Network"
     case .locale: "Language & Region"
     case .glass: "Liquid Glass"
+    case .watch: "Apple Watch"
     }
   }
   var subtitle: String {
@@ -41,6 +46,7 @@ enum Feature: String, CaseIterable, Identifiable, Hashable {
     case .network: "URLSession over HTTPS, with real TLS."
     case .locale: "The Mac's language, region and clock."
     case .glass: "Glass that refracts and morphs."
+    case .watch: "A paired watch, and WatchConnectivity both ways."
     }
   }
   var symbol: String {
@@ -55,6 +61,7 @@ enum Feature: String, CaseIterable, Identifiable, Hashable {
     case .network: "network"
     case .locale: "globe"
     case .glass: "drop.fill"
+    case .watch: "applewatch"
     }
   }
   var colors: [Color] {
@@ -69,6 +76,7 @@ enum Feature: String, CaseIterable, Identifiable, Hashable {
     case .network: [Color(red: 0.20, green: 0.80, blue: 0.85), Color(red: 0.05, green: 0.55, blue: 0.70)]
     case .locale: [Color(red: 0.35, green: 0.60, blue: 1.00), Color(red: 0.45, green: 0.35, blue: 0.95)]
     case .glass: [Color(red: 0.55, green: 0.85, blue: 1.00), Color(red: 0.95, green: 0.55, blue: 0.85)]
+    case .watch: [Color(red: 0.45, green: 0.45, blue: 0.50), Color(red: 0.12, green: 0.12, blue: 0.16)]
     }
   }
   var tint: Color { colors[1] }
@@ -86,6 +94,7 @@ enum Feature: String, CaseIterable, Identifiable, Hashable {
     case .network: NetworkDemo()
     case .locale: LocaleDemo()
     case .glass: GlassDemo()
+    case .watch: WatchDemo()
     }
   }
 }
