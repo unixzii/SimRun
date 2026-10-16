@@ -37,6 +37,11 @@ WATCHLIB := $(LIB)/watchos
 WATCHLIBS := $(WATCHLIB)/simns $(WATCHLIB)/xpcservices.dylib $(WATCHLIB)/app.dylib $(WATCHLIB)/SimFramebuffer
 PARTS := $(BIN)/simrund $(BIN)/simrun $(BIN)/simns $(SIMLIBS) $(WATCHLIBS)
 TOOLS := $(BIN)/hostinput
+# Optional desktop camera/location settings; no extra macOS application.
+ifeq ($(SIMRUN_DEVICES),1)
+.PHONY: device-module
+PARTS += device-module
+endif
 TEST_APPS  := $(APPS)/Hello.app $(APPS)/SUI.app $(APPS)/HIDTest.app $(APPS)/Glass.app $(APPS)/DragTest.app $(APPS)/WebTest.app $(APPS)/BGDownload.app $(APPS)/PickerTest.app $(APPS)/Showcase.app $(APPS)/AudioPlayer.app \
               $(APPS)/WatchTest.app
 TEST_PROGS := $(TBIN)/nettest $(TBIN)/nwtest $(TBIN)/pbtest $(TBIN)/kctest $(TBIN)/loctest $(TBIN)/mpstest $(TBIN)/audiotest $(TBIN)/motiontest
@@ -48,6 +53,11 @@ tools: $(TOOLS)
 test-apps: $(TEST_APPS)
 test-programs: $(TEST_PROGS)
 tests: test-apps test-programs
+
+ifeq ($(SIMRUN_DEVICES),1)
+device-module:
+	bash extras/devices/build.sh
+endif
 
 $(BIN) $(LIB) $(WATCHLIB) $(APPS) $(TBIN):
 	@mkdir -p $@
@@ -122,6 +132,12 @@ $(APP): $(SKILL_FILES) $(PARTS) resources/Info.plist $(ICON)/Assets.car
 	@cp $(SIMLIBS) $(BUILD)/.SimRun.app.new/Contents/Resources/lib/
 	@cp $(WATCHLIBS) $(BUILD)/.SimRun.app.new/Contents/Resources/lib/watchos/
 	@rsync -a --exclude .DS_Store skills $(BUILD)/.SimRun.app.new/Contents/Resources/
+ifeq ($(SIMRUN_DEVICES),1)
+	@mkdir -p $(BUILD)/.SimRun.app.new/Contents/Resources/devices
+	@cp $(BUILD)/devices/SimRunDevicesHost.dylib $(BUILD)/devices/SimRunLocation.dylib $(BUILD)/devices/SimRunDevices.dylib $(BUILD)/.SimRun.app.new/Contents/Resources/devices/
+	@cp extras/devices/third-party/CAMouflage-LICENSE extras/devices/third-party/NOTICE.md $(BUILD)/.SimRun.app.new/Contents/Resources/devices/
+	@cp extras/devices/examples/*.json $(BUILD)/.SimRun.app.new/Contents/Resources/devices/
+endif
 	@$(SIGN) --deep $(BUILD)/.SimRun.app.new 2>/dev/null
 	@if [ -d $@ ]; then mv $@ $(BUILD)/.SimRun.app.old; fi
 	@mv $(BUILD)/.SimRun.app.new $@ && rm -rf $(BUILD)/.SimRun.app.old
