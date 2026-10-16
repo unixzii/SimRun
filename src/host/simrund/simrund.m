@@ -33,6 +33,7 @@
 #include "services/sensors.h"
 #include "services/keychainwindow.h"
 #include "services/clitool.h"
+#include "services/devices.h"
 #include "inspector/layerwindow.h"
 #include "inspector/layermirror.h"
 #include "inspector/layerscene.h"
@@ -170,6 +171,7 @@ static BOOL SameProfile(NSString *a, NSString *b) { return a == b || [a isEqualT
 }
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)a { return NO; }
 - (void)applicationWillTerminate:(NSNotification *)n {
+  SRDeviceModuleStop();
   for (SRRequest *r in [_active copy]) { [self reply:r dict:@{ @"error": @"SimRun quit" }]; [r.session terminate]; }
   for (SRRequest *r in _active) if (r.session.pid > 0) kill(r.session.pid, SIGKILL);   // no time for the SIGTERM grace period
   for (SRSimns *ns in _simns.allValues) if (ns.pid > 0) kill(ns.pid, SIGTERM);
@@ -186,6 +188,8 @@ static BOOL SameProfile(NSString *a, NSString *b) { return a == b || [a isEqualT
   runtimes.delegate = self;   // filled when opened: menuNeedsUpdate:
   [appMenu addItemWithTitle:@"iOS Runtime" action:nil keyEquivalent:@""].submenu = runtimes;
   [appMenu addItemWithTitle:@"Install Command Line Tool…" action:@selector(installCommandLineTool:) keyEquivalent:@""].target = self;
+  if (SRDeviceModuleAvailable())
+    [appMenu addItemWithTitle:@"Device Settings…" action:@selector(showDeviceSettings:) keyEquivalent:@","].target = self;
   [appMenu addItem:NSMenuItem.separatorItem];
   [appMenu addItemWithTitle:@"Hide SimRun" action:@selector(hide:) keyEquivalent:@"h"];
   NSMenuItem *ho = [appMenu addItemWithTitle:@"Hide Others" action:@selector(hideOtherApplications:) keyEquivalent:@"h"];
@@ -265,6 +269,7 @@ static BOOL SameProfile(NSString *a, NSString *b) { return a == b || [a isEqualT
 - (void)quitFrontApp:(id)s { [[self frontRequest].session terminate]; }
 - (void)showFrontAppLog:(id)s { [[self frontRequest].session showLog]; }
 - (void)showKeychain:(id)s { [SRKeychainWindow.shared showWithFilter:nil]; }
+- (void)showDeviceSettings:(id)s { _interactive = YES; SRDeviceModuleShowSettings(); }
 - (void)installCommandLineTool:(id)s { [SRCommandLineTool install]; }
 - (void)showFrontAppLayers:(id)s { SRSession *session = [self frontRequest].session; if (session) [SRLayerWindow showForSession:session]; }
 - (void)showFrontAppKeychain:(id)s {
@@ -723,6 +728,14 @@ static NSSize ScreenSize(NSDictionary<NSString *, NSString *> *env) {
 }
 
 - (void)launch:(SRRequest *)r {
+  // The optional desktop producer lives in this host, not a second macOS App.
+  // Start it only when an App explicitly opts in to the virtual camera.
+  for (NSString *kv in r.env) {
+    if ([kv hasPrefix:@"SIMRUN_CAMERA_FILE="] && kv.length > @"SIMRUN_CAMERA_FILE=".length) {
+      if (!SRDeviceModuleStart()) LOG(@"optional camera module unavailable");
+      break;
+    }
+  }
   NSMutableDictionary<NSString *, NSString *> *vars = [NSMutableDictionary dictionary];
   for (NSString *kv in [SREnvironment environment:r.env withOverrides:[self displayVariablesForScene:r.env]]) {
     NSRange eq = [kv rangeOfString:@"="];
