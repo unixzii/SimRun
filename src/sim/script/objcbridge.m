@@ -73,7 +73,13 @@ static JSValue *SRSend(void) {
   inv.target = target; inv.selector = sel;
   for (NSUInteger i = 2; i < sig.numberOfArguments; i++)
     if (!SRSetArg(inv, i, a[i])) return SRThrow([NSString stringWithFormat:@"objc.send: unsupported argument type %s", [sig getArgumentTypeAtIndex:i]]);
-  [inv invoke];
+  // A native exception must cross this explicit bridge as a JS error, so the
+  // caller can catch it without terminating the app (e.g. an undefined KVC key).
+  @try { [inv invoke]; }
+  @catch (NSException *exception) {
+    return SRThrow([NSString stringWithFormat:@"objc.send: %@ raised %@: %@",
+                    NSStringFromSelector(sel), exception.name, exception.reason ?: @""]);
+  }
   return SRReturnValue(inv, SRCurrentContext());
 }
 
