@@ -8,6 +8,9 @@
 #include <fcntl.h>
 #include <mach/mach_time.h>
 #include <pwd.h>
+#include <sys/stat.h>
+#include <errno.h>
+#include <unistd.h>
 #include <mach/notify.h>
 #include "protocol.h"
 #import "mirrorwindow.h"
@@ -222,6 +225,8 @@ static NSString *SRPlainString(id s) { return [s isKindOfClass:NSAttributedStrin
   dispatch_source_t _outSource; NSMutableString *_log; NSFileHandle *_logFile;
   NSWindow *_logWindow; NSTextView *_logView;
   CFAbsoluteTime _spawnTime;
+  NSString *_windowGeometryPath;
+  BOOL _publishesWindowGeometry;
   uint32_t _shownSurfaceID, _shownChecksum; uint64_t _shownSince;   // SIMFB_CHECK diagnostics
   mach_port_t _inspectPort; dispatch_source_t _inspectSource;        // the layer tree stream, while watched
   SRLayerMirror *_mirror; NSMutableArray *_layerObservers;
@@ -237,6 +242,11 @@ static NSString *SRPlainString(id s) { return [s isKindOfClass:NSAttributedStrin
   _view.wantsLayer = YES; _view.layer.backgroundColor = NSColor.blackColor.CGColor;
   _window = [[SRMirrorWindow alloc] initWithScreenView:_view size:screenSize cornerRadius:cornerRadius];
   _window.title = title; _window.delegate = self;
+  for (NSNotificationName name in @[NSApplicationDidChangeScreenParametersNotification,
+                                    NSApplicationDidHideNotification, NSApplicationDidUnhideNotification]) {
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(windowGeometryEnvironmentChanged:)
+                                               name:name object:nil];
+  }
   _surfaceLayer = [CALayer layer];
   _surfaceLayer.frame = _view.bounds; _surfaceLayer.autoresizingMask = kCALayerWidthSizable | kCALayerHeightSizable;
   _surfaceLayer.contentsGravity = kCAGravityResize;
@@ -253,6 +263,86 @@ static NSString *SRPlainString(id s) { return [s isKindOfClass:NSAttributedStrin
   dispatch_resume(_portSource);
   return self;
 }
+
+// Geometry is published by the window owner, in CG global top-left points.
+// Consumers must not derive the device viewport from titles or chrome offsets.
+- (void)publishWindowGeometry {
+  if (!NSThread.isMainThread) {
+    __weak SRSession *weakSelf = self;
+    dispatch_async(dispatch_get_main_queue(), ^{ [weakSelf publishWindowGeometry]; });
+    return;
+  }
+  if (!_publishesWindowGeometry || _pid <= 0 || _exited) return;
+  struct passwd *pw = getpwuid(getuid());
+  if (!pw || !pw->pw_dir) return;
+  NSString *directory = [@(pw->pw_dir) stringByAppendingPathComponent:@"Library/Caches/SimRun/window-geometry"];
+  if (![NSFileManager.defaultManager createDirectoryAtPath:directory withIntermediateDirectories:YES
+        attributes:@{NSFilePosixPermissions: @0700} error:NULL]) return;
+  struct stat info;
+  if (lstat(directory.fileSystemRepresentation, &info) != 0 || !S_ISDIR(info.st_mode) ||
+      info.st_uid != getuid() || chmod(directory.fileSystemRepresentation, 0700) != 0) return;
+  NSString *path = [directory stringByAppendingPathComponent:[NSString stringWithFormat:@"%d.json", _pid]];
+  NSScreen *screen = _window.screen ?: NSScreen.screens.firstObject;
+  NSScreen *primary = NSScreen.screens.firstObject;
+  if (!screen || !primary) return;
+  CGDirectDisplayID displayID = [screen.deviceDescription[@"NSScreenNumber"] unsignedIntValue];
+  if (!displayID) displayID = CGMainDisplayID();
+  CGRect display = CGDisplayBounds(displayID), primaryCG = CGDisplayBounds(CGMainDisplayID());
+  NSRect view = _window.screenFrame, primaryNS = primary.frame;
+  CGRect rect = CGRectMake(CGRectGetMinX(primaryCG) + NSMinX(view) - NSMinX(primaryNS),
+                           CGRectGetMinY(primaryCG) + NSMaxY(primaryNS) - NSMaxY(view),
+                           NSWidth(view), NSHeight(view));
+  if (!isfinite(rect.origin.x) || !isfinite(rect.origin.y) || !isfinite(rect.size.width) ||
+      !isfinite(rect.size.height) || rect.size.width <= 0 || rect.size.height <= 0) return;
+  BOOL visible = _ready && !_headless && !_window.miniaturized && _window.visible && !NSApp.hidden;
+  NSDictionary *snapshot = @{
+    @"schema": @1, @"appPid": @(_pid), @"hostPid": @(getpid()),
+    @"windowID": @(MAX(0, _window.windowNumber)), @"displayID": @(displayID), @"visible": @(visible),
+    @"screenRect": @{@"x": @(rect.origin.x), @"y": @(rect.origin.y),
+                       @"width": @(rect.size.width), @"height": @(rect.size.height)},
+    @"displayBounds": @{@"x": @(display.origin.x), @"y": @(display.origin.y),
+                          @"width": @(display.size.width), @"height": @(display.size.height)},
+    @"backingScale": @(screen.backingScaleFactor)
+  };
+  NSData *data = [NSJSONSerialization dataWithJSONObject:snapshot options:0 error:NULL];
+  if (!data) return;
+  NSString *temporary = [directory stringByAppendingPathComponent:
+      [NSString stringWithFormat:@".%d.%@.tmp", _pid, NSUUID.UUID.UUIDString]];
+  int fd = open(temporary.fileSystemRepresentation, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
+  if (fd < 0) return;
+  BOOL ok = fchmod(fd, 0600) == 0;
+  const uint8_t *bytes = data.bytes;
+  NSUInteger remaining = data.length;
+  while (ok && remaining) {
+    ssize_t written = write(fd, bytes, remaining);
+    if (written < 0 && errno == EINTR) continue;
+    if (written <= 0) { ok = NO; break; }
+    bytes += written; remaining -= written;
+  }
+  if (close(fd) != 0) ok = NO;
+  if (ok && rename(temporary.fileSystemRepresentation, path.fileSystemRepresentation) == 0) {
+    _windowGeometryPath = path;
+  } else {
+    unlink(temporary.fileSystemRepresentation);
+  }
+}
+
+- (void)removeWindowGeometry {
+  if (!_windowGeometryPath) return;
+  NSData *data = [NSData dataWithContentsOfFile:_windowGeometryPath];
+  NSDictionary *snapshot = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:NULL] : nil;
+  if ([snapshot isKindOfClass:NSDictionary.class] && [snapshot[@"appPid"] intValue] == _pid &&
+      [snapshot[@"hostPid"] intValue] == getpid()) unlink(_windowGeometryPath.fileSystemRepresentation);
+  _windowGeometryPath = nil;
+}
+- (void)windowGeometryEnvironmentChanged:(NSNotification *)notification { [self publishWindowGeometry]; }
+- (void)windowDidMove:(NSNotification *)notification { [self publishWindowGeometry]; }
+- (void)windowDidResize:(NSNotification *)notification { [self publishWindowGeometry]; }
+- (void)windowDidMiniaturize:(NSNotification *)notification { [self publishWindowGeometry]; }
+- (void)windowDidDeminiaturize:(NSNotification *)notification { [self publishWindowGeometry]; }
+- (void)windowDidChangeScreen:(NSNotification *)notification { [self publishWindowGeometry]; }
+- (void)windowDidChangeBackingProperties:(NSNotification *)notification { [self publishWindowGeometry]; }
+- (void)dealloc { [NSNotificationCenter.defaultCenter removeObserver:self]; }
 
 // Put the window to the right of the other app windows (this process's and any standalone viewers'),
 // cascading from the left edge when the screen is full.
@@ -280,6 +370,13 @@ static NSString *SRPlainString(id s) { return [s isKindOfClass:NSAttributedStrin
   char **cargv = calloc(argv.count + 1, sizeof(char *)), **cenv = calloc(env.count + 1, sizeof(char *));
   for (NSUInteger i = 0; i < argv.count; i++) cargv[i] = (char *)argv[i].UTF8String;
   for (NSUInteger i = 0; i < env.count; i++) cenv[i] = (char *)env[i].UTF8String;
+  for (NSString *entry in env) {
+    if ([entry isEqualToString:@"SIMRUN_WINDOW_GEOMETRY=1"] ||
+        ([entry hasPrefix:@"SIMRUN_CAMERA_FILE="] && entry.length > @"SIMRUN_CAMERA_FILE=".length)) {
+      _publishesWindowGeometry = YES;
+      break;
+    }
+  }
   // the app gets its stdio and nothing else of ours (sockets, the log, clients' connections)
   posix_spawnattr_t attr; posix_spawnattr_init(&attr);
   posix_spawnattr_setflags(&attr, POSIX_SPAWN_CLOEXEC_DEFAULT);
@@ -299,6 +396,7 @@ static NSString *SRPlainString(id s) { return [s isKindOfClass:NSAttributedStrin
   free(cargv); free(cenv);
   if (r) { if (error) *error = [NSString stringWithFormat:@"spawn %@: %s", argv.firstObject, strerror(r)]; return NO; }
   _pid = pid; _spawnTime = CFAbsoluteTimeGetCurrent();
+  [self publishWindowGeometry];
   // an app that never draws still gets its window eventually, so it can be seen and closed
   __weak SRSession *weakSelfReady = self;
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 20 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{ [weakSelfReady becomeReady]; });
@@ -313,6 +411,8 @@ static NSString *SRPlainString(id s) { return [s isKindOfClass:NSAttributedStrin
   if (_exited) return;
   int st = 0; if (waitpid(_pid, &st, 0) < 0) st = 0;
   _exited = YES;
+  [self removeWindowGeometry];
+  [NSNotificationCenter.defaultCenter removeObserver:self];
   dispatch_source_cancel(_procSource); dispatch_source_cancel(_portSource);
   mach_port_mod_refs(mach_task_self(), _port, MACH_PORT_RIGHT_RECEIVE, -1);
   mach_port_deallocate(mach_task_self(), _port);
@@ -340,6 +440,7 @@ static NSString *SRPlainString(id s) { return [s isKindOfClass:NSAttributedStrin
   if (_ready || _exited) return;
   _ready = YES;
   if (!_headless) [self showWindow];
+  [self publishWindowGeometry];
   if (self.onReady) self.onReady(self);
 }
 
@@ -351,6 +452,7 @@ static NSString *SRPlainString(id s) { return [s isKindOfClass:NSAttributedStrin
   [self placeWindow];
   [_window makeKeyAndOrderFront:nil];
   [NSApp activateIgnoringOtherApps:YES];
+  [self publishWindowGeometry];
 }
 
 - (void)captureOutputFrom:(int)fd {
@@ -415,7 +517,7 @@ static NSString *SRPlainString(id s) { return [s isKindOfClass:NSAttributedStrin
     if (s && !s->_exited && s->_pid == pid) kill(pid, SIGKILL);
   });
 }
-- (void)windowWillClose:(NSNotification *)n { [self terminate]; }
+- (void)windowWillClose:(NSNotification *)n { [self removeWindowGeometry]; [self terminate]; }
 - (NSSize)windowWillResize:(NSWindow *)w toSize:(NSSize)size { return [_window constrainFrameSize:size]; }
 - (NSRect)windowWillUseStandardFrame:(NSWindow *)w defaultFrame:(NSRect)frame { return [_window standardFrameIn:frame]; }
 
@@ -646,6 +748,7 @@ static NSString *SRPlainString(id s) { return [s isKindOfClass:NSAttributedStrin
           _contentSize = content; _contentScale = sc;
           _view.pointSize = content;
           _window.screenSize = content;   // keeps the screen's top-left
+          [self publishWindowGeometry];
           _surfaceLayer.contentsScale = sc;
         }
         break;

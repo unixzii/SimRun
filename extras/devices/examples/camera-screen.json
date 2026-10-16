@@ -1,0 +1,9 @@
+{
+  "name": "Desktop camera",
+  "authorization": "authorized",
+  "requestAuthorization": "authorized",
+  "devices": [
+    {"id": "desktop-back", "name": "Desktop back", "position": "back", "source": {"kind": "screen"}},
+    {"id": "desktop-front", "name": "Desktop front", "position": "front", "source": {"kind": "screen"}}
+  ]
+}
