@@ -18,6 +18,7 @@ over its socket; `run`, `profiles`, `runtimes` and `devices` start SimRun headle
 | `simrun runtimes` | The installed iOS and watchOS runtimes (`*`: what apps of that platform run on by default) |
 | `simrun devices [-r <runtime>]` | A runtime's device types (`*`: the default) |
 | `simrun skill [path \| install [--project] [--claude] \| install --dir <dir>]` | The agent skill for `simrun eval` (`skills/simrun`, carried in SimRun.app): print its SKILL.md; print its directory; or copy it to `~/.agents/skills/simrun`, `--project` to `./.agents/skills/simrun`, `--dir` to `<dir>/simrun`. `--claude` also links Claude Code's `~/.claude/skills/simrun` (`$CLAUDE_CONFIG_DIR/skills` if set; with `--project`, `./.claude/skills/simrun`, a relative link) to the copy, replacing a copy an earlier install left there. A copy doesn't follow SimRun's updates: install again after updating. It replaces only a directory that holds its own skill, never a symbolic link that isn't its own |
+| `simrun remote [on \| off \| new-link]` | Remote control ([remote.md](remote.md)): the running apps in a web browser. Prints whether it's on and the link; `on`/`off` turn it on or off (kept for later launches; `on` starts SimRun); `new-link` changes the access key, so earlier links stop working |
 | `simrun status \| stop \| log` | Whether SimRun is running; quit it and its apps; follow its log (`~/Library/Logs/SimRun/simrund.log`) |
 | `tools/crash.py <procname> [n]` | Print the latest crash report backtrace for that process |
 
@@ -44,6 +45,9 @@ them in Launch With….
 | `SIMRUND_MOTION=none` | SimRun is a Mac without motion sensors: apps' accelerometer, gyro and device motion are unavailable ([motion.md](motion.md)) |
 | `SIMRUND_PERMISSIONS=microphone:denied,audio-capture:authorized` | SimRun pretends macOS has given it these permissions (`denied`, `authorized`, `restricted` or `undetermined`), never asking macOS: to test what apps do without the microphone ([microphone.md](microphone.md#permission)) |
 | `SIMRUND_IDLE=secs` | SimRun, started headless by `simrun`, quits after this long without apps (default 600, 0 = never) |
+| `SIMRUN_REMOTE_PORT=port` | Remote control's port (default 7810) ([remote.md](remote.md)) |
+| `SIMRUN_REMOTE_ICE=json` | Remote control's STUN/TURN servers, a JSON array of `{urls, username?, credential?}` (default Google's public STUN; `[]` none) |
+| `SIMRUN_REMOTE_LOG=1` | WebRTC's own log (info level) in SimRun's log |
 | `SIMRUND_SOCKET=path` | Use a different server socket (default `~/Library/Developer/SimRun/simrund.sock`) |
 | `SCENES_W`, `SCENES_H`, `SCENES_SCALE` | Scene size in points / scale (default: the device type's screen); SimRun sizes the display (`SIMULATOR_MAINSCREEN_*`) and window to match |
 | `HID_VERBOSE=1`, `TEXTINPUT_VERBOSE=1`, `SIMFB_VERBOSE=1`, `SCENES_VERBOSE=1`, `PBOARD_VERBOSE=1`, `DRAG_VERBOSE=1`, `DOCPICKER_VERBOSE=1`, `KEYCHAIN_VERBOSE=1`, `WEBKIT_VERBOSE=1`, `MPS_VERBOSE=1`, `SCRIPT_VERBOSE=1`, `TCC_VERBOSE=1`, `AUDIO_VERBOSE=1`, `MOTION_VERBOSE=1`, `LOCALE_VERBOSE=1`, `CONTAINER_VERBOSE=1`, `WATCH_VERBOSE=1`, `XPCSERVICES_VERBOSE=1` | Component tracing: app.dylib's modules and xpcservices.dylib (`SIMFB_VERBOSE` also reports the frame-copy latency) |

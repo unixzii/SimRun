@@ -33,6 +33,7 @@
 #include "services/sensors.h"
 #include "services/keychainwindow.h"
 #include "services/clitool.h"
+#include "remote/remote.h"
 #include "inspector/layerwindow.h"
 #include "inspector/layermirror.h"
 #include "inspector/layerscene.h"
@@ -105,6 +106,7 @@ static BOOL SameProfile(NSString *a, NSString *b) { return a == b || [a isEqualT
   BOOL _gpuStarted; mach_port_t _iosurfacePort, _metalPort;
   mach_port_t _audioPort; dispatch_source_t _audioDeath;
   BOOL _launched;
+  SRRemoteControl *_remote; NSMenuItem *_remoteItem;
 }
 
 - (instancetype)initWithMode:(SRMode)mode args:(NSArray<NSString *> *)args {
@@ -153,6 +155,20 @@ static BOOL SameProfile(NSString *a, NSString *b) { return a == b || [a isEqualT
   LOG(@"runtime %@", [SRRuntime runtimeAtRoot:SREnvironment.runtimeRoot].name ?: SREnvironment.runtimeRoot);
   if (![self simnsForRoot:SREnvironment.runtimeRoot]) { LOG(@"cannot start simns"); exit(1); }
   _launched = YES;
+  __weak SRServer *weakSelf = self;
+  _remote = [[SRRemoteControl alloc] initWithSessions:^NSArray<SRSession *> *{
+    NSMutableArray *list = [NSMutableArray array];
+    for (SRRequest *r in [weakSelf runningInstances]) if (r.session) [list addObject:r.session];
+    return list;
+  }];
+  // SimRun ▸ Remote Control says how many viewers there are
+  _remote.onChange = ^{
+    SRServer *me = weakSelf;
+    if (!me) return;
+    NSUInteger n = me->_remote.enabled ? me->_remote.viewerCount : 0;
+    me->_remoteItem.title = n ? [NSString stringWithFormat:@"Remote Control (%lu viewer%s)", (unsigned long)n, n == 1 ? "" : "s"] : @"Remote Control";
+  };
+  [_remote startIfEnabled];
 
   if (_mode == SRModeGUI) {
     _interactive = YES;
@@ -185,6 +201,14 @@ static BOOL SameProfile(NSString *a, NSString *b) { return a == b || [a isEqualT
   NSMenu *runtimes = [[NSMenu alloc] initWithTitle:@"iOS Runtime"];
   runtimes.delegate = self;   // filled when opened: menuNeedsUpdate:
   [appMenu addItemWithTitle:@"iOS Runtime" action:nil keyEquivalent:@""].submenu = runtimes;
+  // remote control (remote.md): apps in a web browser
+  NSMenu *remote = [[NSMenu alloc] initWithTitle:@"Remote Control"];
+  [remote addItemWithTitle:@"Enabled" action:@selector(toggleRemoteControl:) keyEquivalent:@""].target = self;
+  [remote addItem:NSMenuItem.separatorItem];
+  [remote addItemWithTitle:@"Copy Link" action:@selector(copyRemoteControlLink:) keyEquivalent:@""].target = self;
+  [remote addItemWithTitle:@"Reset Link" action:@selector(resetRemoteControlLink:) keyEquivalent:@""].target = self;
+  _remoteItem = [appMenu addItemWithTitle:@"Remote Control" action:nil keyEquivalent:@""];
+  _remoteItem.submenu = remote;
   [appMenu addItemWithTitle:@"Install Command Line Tool…" action:@selector(installCommandLineTool:) keyEquivalent:@""].target = self;
   [appMenu addItem:NSMenuItem.separatorItem];
   [appMenu addItemWithTitle:@"Hide SimRun" action:@selector(hide:) keyEquivalent:@"h"];
@@ -257,6 +281,11 @@ static BOOL SameProfile(NSString *a, NSString *b) { return a == b || [a isEqualT
   if (a == @selector(quitFrontApp:) || a == @selector(showFrontAppLog:) || a == @selector(showFrontAppLayers:)) return r != nil;
   if (a == @selector(showFrontAppKeychain:)) return r.appPath != nil;
   if (a == @selector(installCommandLineTool:)) return SRCommandLineTool.canInstall;
+  if (a == @selector(toggleRemoteControl:)) {
+    item.state = _remote.enabled ? NSControlStateValueOn : NSControlStateValueOff;
+    return _remote != nil;
+  }
+  if (a == @selector(copyRemoteControlLink:) || a == @selector(resetRemoteControlLink:)) return _remote.enabled;
   return YES;
 }
 - (void)addApp:(id)s { _interactive = YES; [_launcher addAppWithPanel]; }
@@ -266,6 +295,27 @@ static BOOL SameProfile(NSString *a, NSString *b) { return a == b || [a isEqualT
 - (void)showFrontAppLog:(id)s { [[self frontRequest].session showLog]; }
 - (void)showKeychain:(id)s { [SRKeychainWindow.shared showWithFilter:nil]; }
 - (void)installCommandLineTool:(id)s { [SRCommandLineTool install]; }
+- (void)toggleRemoteControl:(id)s {
+  NSString *err = nil;
+  BOOL on = !_remote.enabled;
+  if (![_remote setEnabled:on error:&err]) {
+    NSAlert *al = [NSAlert new]; al.messageText = @"Remote control couldn't be turned on"; al.informativeText = err ?: @"";
+    [al runModal];
+    return;
+  }
+  if (!on) return;
+  [self copyRemoteControlLink:nil];
+  NSAlert *al = [NSAlert new];
+  al.messageText = @"Remote control is on";
+  al.informativeText = [NSString stringWithFormat:@"Anyone with this link can see and use the apps running in SimRun. It's on the clipboard:\n\n%@\n\n"
+                        "On this Mac: %@", _remote.link, _remote.localLink];
+  [al runModal];
+}
+- (void)copyRemoteControlLink:(id)s {
+  [NSPasteboard.generalPasteboard clearContents];
+  [NSPasteboard.generalPasteboard setString:_remote.link forType:NSPasteboardTypeString];
+}
+- (void)resetRemoteControlLink:(id)s { [_remote resetAccessKey]; [self copyRemoteControlLink:nil]; }
 - (void)showFrontAppLayers:(id)s { SRSession *session = [self frontRequest].session; if (session) [SRLayerWindow showForSession:session]; }
 - (void)showFrontAppKeychain:(id)s {
   NSString *path = [self frontRequest].appPath;
@@ -1099,6 +1149,14 @@ static void SendReply(int c, NSDictionary *reply, dispatch_block_t then) {
 // The reply to a request other than run, show, quit and stop.
 - (NSDictionary *)answer:(NSString *)action request:(NSDictionary *)d {
   NSString *err = nil;
+  if ([action isEqual:@"remote"]) {
+    id enable = d[@"enable"];
+    if ([enable isKindOfClass:NSNumber.class] && ![_remote setEnabled:[enable boolValue] error:&err]) return @{ @"error": err ?: @"failed" };
+    if ([d[@"reset"] boolValue] && _remote.enabled) [_remote resetAccessKey];
+    if (!_remote.enabled) return @{ @"enabled": @NO, @"port": @(_remote.port) };
+    return @{ @"enabled": @YES, @"port": @(_remote.port), @"link": _remote.link, @"localLink": _remote.localLink,
+              @"viewers": @(_remote.viewerCount) };
+  }
   if ([action isEqual:@"list"]) {
     NSMutableArray *list = [NSMutableArray array];
     for (SRRequest *r in [self runningInstances]) [list addObject:[self describeInstance:r]];
@@ -1190,8 +1248,12 @@ int main(int argc, char **argv) {
       else [rest addObject:[@(argv[i]) stringByStandardizingPath]];
     // After a crash AppKit asks whether to reopen windows, in a modal alert that a headless server shows no one and
     // waits on forever (simrun then can't connect). -ApplePersistenceIgnoreState YES, as if passed on the command line.
-    if (mode == SRModeServe)
-      [NSUserDefaults.standardUserDefaults setVolatileDomain:@{ @"ApplePersistenceIgnoreState": @YES } forName:NSArgumentDomain];
+    if (mode == SRModeServe) {   // added to the -Key value arguments there are (tests pass settings that way)
+      NSUserDefaults *d = NSUserDefaults.standardUserDefaults;
+      NSMutableDictionary *args = [[d volatileDomainForName:NSArgumentDomain] mutableCopy] ?: [NSMutableDictionary dictionary];
+      args[@"ApplePersistenceIgnoreState"] = @YES;
+      [d setVolatileDomain:args forName:NSArgumentDomain];
+    }
     NSApplication *app = [NSApplication sharedApplication];
     // --serve: an accessory app (no Dock icon, no menu bar, never activated) until a window is shown, when the window's
     // owner (SRSession, SRLauncher) makes it a regular one

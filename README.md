@@ -194,6 +194,9 @@ with no apps running.
   app. It shows the tree of views or layers, a copy of the screen made of real layers (flat, or spread out in 3D), and
   an inspector for the selected layer. `simrun inspect MyApp` prints the tree as text. See
   [inspect.md](docs/inspect.md).
+- **Use your apps from another computer or a phone**: SimRun ▸ Remote Control ▸ Enabled (or `simrun remote on`) serves a web
+  page that streams a running app's screen over WebRTC and takes your clicks, scrolling and typing. Anyone with the
+  link can use your apps, so share it carefully. See [remote.md](docs/remote.md).
 - **Manage the background SimRun** with `simrun status`, `simrun stop` and `simrun log`. The log is the first place
   to look when an app fails to start. `simrun help` lists every command.
 

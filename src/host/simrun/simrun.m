@@ -65,6 +65,10 @@ static const char kUsage[] =
   "                             apps' data containers: their default one and their profiles\n"
   "  runtimes                   the installed iOS and watchOS runtimes (* = what apps run on by default)\n"
   "  devices [-r <runtime>]     a runtime's device types (* = the default)\n"
+  "  remote [on | off | new-link]\n"
+  "                             remote control: the running apps in a web browser, streamed over WebRTC, with\n"
+  "                             the browser's mouse, keys and text going to them. Prints whether it's on and the\n"
+  "                             link (anyone who has it can use the apps); new-link makes the old ones stop working\n"
   "  status                     whether SimRun is running\n"
   "  stop                       quit SimRun and every app in it\n"
   "  log                        follow SimRun's log (~/Library/Logs/SimRun/simrund.log)\n"
@@ -526,6 +530,23 @@ static int Status(NSArray<NSString *> *args) {
   return 0;
 }
 
+static int Remote(NSArray<NSString *> *args) {
+  if (args.count > 1) return Usage();
+  NSString *sub = args.firstObject;
+  NSMutableDictionary *req = [@{ @"action": @"remote" } mutableCopy];
+  if ([sub isEqualToString:@"on"]) req[@"enable"] = @YES;
+  else if ([sub isEqualToString:@"off"]) req[@"enable"] = @NO;
+  else if ([sub isEqualToString:@"new-link"]) req[@"reset"] = @YES;
+  else if (sub) return Usage();
+  NSDictionary *reply = Request(req, [sub isEqualToString:@"on"]);   // turning it on starts SimRun
+  if (!reply) return 1;
+  if (![reply[@"enabled"] boolValue]) { Print(@"off"); return 0; }
+  long n = [reply[@"viewers"] longValue];
+  Print([NSString stringWithFormat:@"on, port %@, %ld viewer%s\n%@\n%@ (on this Mac)", reply[@"port"], n, n == 1 ? "" : "s",
+                                   reply[@"link"], reply[@"localLink"]]);
+  return 0;
+}
+
 static int Stop(NSArray<NSString *> *args) {
   if (args.count) return Usage();
   int s = Connect(NO);
@@ -647,6 +668,7 @@ int main(int argc, char **argv) {
     if ([cmd isEqualToString:@"runtimes"]) return Runtimes(args);
     if ([cmd isEqualToString:@"devices"]) return Devices(args);
     if ([cmd isEqualToString:@"status"]) return Status(args);
+    if ([cmd isEqualToString:@"remote"]) return Remote(args);
     if ([cmd isEqualToString:@"stop"]) return Stop(args);
     if ([cmd isEqualToString:@"log"]) return Log(args);
     if ([cmd isEqualToString:@"skill"]) return Skill(args);
