@@ -4,11 +4,12 @@ SimRun is one iPhone and one Apple Watch, paired: the iPhone is the `simns` of S
 apps on it), the watch the `simns` of the watchOS runtime watch apps run on ([watchos.md](watchos.md)). Pairing is done
 the way CoreSimulator pairs a simulated device pair, with each runtime's own daemons: the IDS relay (`ids_simd`), then
 NanoRegistry. WatchConnectivity (`WCSession`) works between an iPhone app and its watch app running on the two: messages
-with replies, the application context and user info, both ways.
+and message data with replies, the application context (also one set while the other app wasn't running), user info
+and files, both ways.
 
 ```bash
 simrun run --with-watch-app build/apps/WCPhone.app   # and WCWatch, its Watch app, on the paired watch
-tests/scripts/watchconnectivity.sh                   # WCPhone ⇄ WCWatch: message, context, user info, both ways
+tests/scripts/watchconnectivity.sh                   # WCPhone ⇄ WCWatch: each of those, both ways
 ```
 
 ## Two devices
@@ -103,5 +104,9 @@ into its own `*-watchsimulator` folder, which Add Xcode Simulator Builds adds, a
   not reachable while no watch app runs).
 - A known watch app counts as installed on the watch, and its iPhone app on the iPhone, whether or not both have run.
 - Messages go only to running apps: nothing is launched for one, on either side.
-- Untested: `transferFile` (the same path as user info), complication user info, WatchConnectivity in profiles (transfers
-  go to an app's default container).
+- Untested: complication user info, WatchConnectivity in profiles (transfers go to an app's default container).
+
+WatchConnectivity doesn't deliver an application context equal to the last one sent, and that one persists in each
+device's data. The test apps tag every payload with a value new each launch, so a run of `watchconnectivity.sh` never
+repeats an earlier run's context (it used to send the same `context 2` every time, which got through only on a device
+pair's first run).
