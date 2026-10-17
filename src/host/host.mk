@@ -26,9 +26,11 @@ $(WEBRTC_STAMP):
 # to the apps), apps/ (the app library and launch options), session/ (a running app), launcher/, keychain/ (the
 # Keychain window), inspector/ (the layer debugger) and remote/ (remote control); imports across folders name the
 # folder. It finds WebRTC.framework in the app's Frameworks, or in vendor/ when run as build/bin/simrund.
-SIMRUND_SRC := $(wildcard src/host/simrund/*/*.m)
-$(BIN)/simrund: $(SIMRUND_SRC) $(wildcard src/host/simrund/*/*.h) $(HDRS) $(WEBRTC_STAMP) | $(BIN)
-	$(MACCC) -Isrc/host/simrund -Fvendor $(SIMRUND_SRC) -framework Cocoa -framework QuartzCore -framework IOSurface -framework Metal \
+SIMRUND_OBJ := $(call mac_objs,$(wildcard src/host/simrund/*/*.m))
+$(OBJ)/mac/src/host/simrund/%.o: CPPFLAGS += -Isrc/host/simrund -Fvendor
+$(SIMRUND_OBJ): | $(WEBRTC_STAMP)
+$(BIN)/simrund: $(SIMRUND_OBJ) $(WEBRTC_STAMP) | $(BIN)
+	$(MAC_LINK) -Fvendor $(SIMRUND_OBJ) -framework Cocoa -framework QuartzCore -framework IOSurface -framework Metal \
 	  -framework UniformTypeIdentifiers -framework ImageIO -framework AVFoundation -framework IOKit -framework Security \
 	  -framework SystemConfiguration -framework Network -framework CoreVideo -framework WebRTC \
 	  -Wl,-rpath,@executable_path/../Frameworks -Wl,-rpath,@executable_path/../../vendor -o $@
@@ -105,6 +107,11 @@ $(APP): $(SKILL_FILES) $(BIN)/simrund $(BIN)/simrun $(BIN)/simns $(SIMLIBS) $(WA
 	@mv $(BUILD)/.SimRun.app.new $@ && rm -rf $(BUILD)/.SimRun.app.old
 	@echo "built $@"
 
-$(BIN)/simrun: src/host/simrun/simrun.m $(HDRS) | $(BIN)
-	$(MACCC) -Wall $< -framework Foundation -o $@
+# simrun: the command line, a client of the server's socket (include/simrund_proto.h)
+SIMRUN_OBJ := $(call mac_objs,src/host/simrun/simrun.m)
+$(OBJ)/mac/src/host/simrun/%.o: CFLAGS += -Wall
+$(BIN)/simrun: $(SIMRUN_OBJ) | $(BIN)
+	$(MAC_LINK) $^ -framework Foundation -o $@
+
+OBJS += $(SIMRUND_OBJ) $(SIMRUN_OBJ)
 

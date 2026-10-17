@@ -30,6 +30,9 @@ test-apps: $(TEST_APPS)
 test-programs: $(TEST_PROGS)
 tests: test-apps test-programs
 
+# the headers each object read (mk/common.mk)
+-include $(OBJS:.o=.d)
+
 # Install the built bundle into /Applications. ditto keeps the ad-hoc signature.
 # A running SimRun must be quit first; the installed bundle is replaced in place.
 install: $(APP)
