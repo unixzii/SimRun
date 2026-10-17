@@ -1,331 +1,39 @@
-# SimRun — build everything into build/.
-#   make            core components, tools and test programs
-#   make core       SimRun.app (server + launcher, simns, injected xpcservices.dylib and app.dylib, fake SimFramebuffer, the
-#                   same for watchOS) and the simrun CLI
-#   make test-apps  sample/test apps (build/apps)
-#   make tests      test apps and test programs
-#   make install    install build/SimRun.app into /Applications
+# SimRun — build everything into build/. Each part's rules are in a fragment next to it (src/sim/sim.mk,
+# src/host/host.mk, tools/tools.mk, tests/tests.mk), sharing mk/common.mk. They are one dependency graph, so a goal
+# builds only what it needs, and -j works across all of it.
+#   make                equivalent to `make core`
+#   make core           SimRun.app (server + launcher, simns, injected xpcservices.dylib and app.dylib, fake
+#                       SimFramebuffer, the same for watchOS) and the simrun CLI
+#   make host           simrund and simrun (build/bin; simrund runs from there too)
+#   make sim            the sim side, for the iOS and watchOS Simulators (build/bin/simns, build/lib)
+#   make tools          tools for working on SimRun (build/bin)
+#   make test-apps      sample/test apps (build/apps)
+#   make showcase       just the Showcase app and its Watch app (build/apps/Showcase.app)
+#   make test-programs  test programs (build/tests)
+#   make tests          test apps and test programs
+#   make install        install build/SimRun.app into /Applications
 #   make clean
 
-# The iOS Simulator SDK comes with Xcode: when xcode-select points at the Command Line Tools, use an installed Xcode.
-ifeq ($(origin DEVELOPER_DIR),undefined)
-ifneq ($(findstring CommandLineTools,$(shell xcode-select -p 2>/dev/null)),)
-XCODE_APP := $(firstword $(wildcard /Applications/Xcode.app) $(shell mdfind "kMDItemCFBundleIdentifier == 'com.apple.dt.Xcode'" 2>/dev/null | grep -v ' '))
-ifneq ($(XCODE_APP),)
-export DEVELOPER_DIR := $(XCODE_APP)/Contents/Developer
-endif
-endif
-endif
+include mk/common.mk
+include src/sim/sim.mk
+include src/host/host.mk
+include tools/tools.mk
+include tests/tests.mk
 
-BUILD   := build
-BIN     := $(BUILD)/bin
-LIB     := $(BUILD)/lib
-APPS    := $(BUILD)/apps
-TBIN    := $(BUILD)/tests
-
-SIMCC   := xcrun -sdk iphonesimulator clang -arch arm64 -mios-simulator-version-min=17.0 -fobjc-arc -Wno-deprecated-declarations -Iinclude
-SIMSWIFT:= xcrun -sdk iphonesimulator swiftc -target arm64-apple-ios17.0-simulator
-MACCC   := xcrun -sdk macosx clang -arch arm64 -fobjc-arc -Wno-deprecated-declarations -Iinclude
-MACSWIFT:= env -u DYLD_ROOT_PATH xcrun -sdk macosx swiftc -O
-SIGN    := codesign -s - -f
-HDRS    := $(wildcard include/*.h)
-
-APP   := $(BUILD)/SimRun.app
-CORE  := $(APP) $(BIN)/simrun
-SIMLIBS := $(LIB)/xpcservices.dylib $(LIB)/app.dylib $(LIB)/SimFramebuffer $(LIB)/simpair $(LIB)/wcd.dylib $(LIB)/containermanagerd.dylib
-WATCHLIB := $(LIB)/watchos
-WATCHLIBS := $(WATCHLIB)/simns $(WATCHLIB)/xpcservices.dylib $(WATCHLIB)/app.dylib $(WATCHLIB)/SimFramebuffer $(WATCHLIB)/simpair \
-             $(WATCHLIB)/wcd.dylib $(WATCHLIB)/containermanagerd.dylib
-PARTS := $(BIN)/simrund $(BIN)/simrun $(BIN)/simns $(SIMLIBS) $(WATCHLIBS)
-TOOLS := $(BIN)/hostinput
-TEST_APPS  := $(APPS)/Hello.app $(APPS)/SUI.app $(APPS)/HIDTest.app $(APPS)/Glass.app $(APPS)/DragTest.app $(APPS)/WebTest.app $(APPS)/BGDownload.app $(APPS)/PickerTest.app $(APPS)/Showcase.app $(APPS)/AudioPlayer.app \
-              $(APPS)/WatchTest.app $(APPS)/WCPhone.app
-TEST_PROGS := $(TBIN)/nettest $(TBIN)/nwtest $(TBIN)/pbtest $(TBIN)/kctest $(TBIN)/loctest $(TBIN)/mpstest $(TBIN)/audiotest $(TBIN)/motiontest \
-              $(TBIN)/remotetest
-
-.PHONY: all core tools test-apps test-programs tests install clean $(APP) $(APPS)/Showcase.app
-all: core tools test-programs
-core: $(CORE)
+.DEFAULT_GOAL := all
+.PHONY: all core host sim tools test-apps showcase test-programs tests install clean
+all: core
+core: $(APP) $(BIN)/simrun
+host: $(BIN)/simrund $(BIN)/simrun
+sim: $(BIN)/simns $(SIMLIBS) $(WATCHLIBS)
 tools: $(TOOLS)
 test-apps: $(TEST_APPS)
+showcase: $(APPS)/Showcase.app
 test-programs: $(TEST_PROGS)
 tests: test-apps test-programs
 
-$(BIN) $(LIB) $(WATCHLIB) $(APPS) $(TBIN):
-	@mkdir -p $@
-
-# ---------------------------------------------------------------- host (macOS)
-# Google's WebRTC, for remote control (remote.md): prebuilt for macOS by github.com/stasel/WebRTC (from the official
-# source, unmodified), downloaded into vendor/, checked against its checksum and thinned to arm64. SimRun links it, and
-# carries it in Contents/Frameworks.
-WEBRTC_VERSION := 154.0.0
-WEBRTC_ZIP     := WebRTC-M154.xcframework.zip
-WEBRTC_SHA256  := a2bcdda93578c82452ceb6e49d54a2746e1bcb4caf7c2fa601ffac8028b58c16
-WEBRTC         := vendor/WebRTC.framework
-WEBRTC_STAMP   := vendor/.webrtc-$(WEBRTC_VERSION)
-$(WEBRTC_STAMP):
-	@mkdir -p vendor/dl
-	@test -f vendor/dl/$(WEBRTC_ZIP) || curl -fL --retry 3 -o vendor/dl/$(WEBRTC_ZIP) \
-	  https://github.com/stasel/WebRTC/releases/download/$(WEBRTC_VERSION)/$(WEBRTC_ZIP)
-	@echo "$(WEBRTC_SHA256)  vendor/dl/$(WEBRTC_ZIP)" | shasum -a 256 -c - >/dev/null || \
-	  { echo "$(WEBRTC_ZIP): checksum mismatch"; rm -f vendor/dl/$(WEBRTC_ZIP); exit 1; }
-	@rm -rf vendor/dl/WebRTC.xcframework $(WEBRTC) vendor/.webrtc-*
-	@unzip -q vendor/dl/$(WEBRTC_ZIP) -d vendor/dl
-	@ditto --arch arm64 vendor/dl/WebRTC.xcframework/macos-x86_64_arm64/WebRTC.framework $(WEBRTC)
-	@rm -rf vendor/dl/WebRTC.xcframework && touch $@
-	@echo "fetched WebRTC $(WEBRTC_VERSION) into $(WEBRTC)"
-
-# simrund.m, then session/ (a running app), launcher/, services/ (the Mac's side of faked system services),
-# inspector/ (the layer debugger) and remote/ (remote control); imports across folders name the folder. It finds
-# WebRTC.framework in the app's Frameworks, or in vendor/ when run as build/bin/simrund.
-SIMRUND_SRC := $(wildcard src/host/simrund/*.m src/host/simrund/*/*.m) src/host/gpuhost/gpuhost.m
-$(BIN)/simrund: $(SIMRUND_SRC) $(wildcard src/host/simrund/*/*.h) $(HDRS) $(WEBRTC_STAMP) | $(BIN)
-	$(MACCC) -Isrc/host/simrund -Fvendor $(SIMRUND_SRC) -framework Cocoa -framework QuartzCore -framework IOSurface -framework Metal \
-	  -framework UniformTypeIdentifiers -framework ImageIO -framework AVFoundation -framework IOKit -framework Security \
-	  -framework SystemConfiguration -framework Network -framework CoreVideo -framework WebRTC \
-	  -Wl,-rpath,@executable_path/../Frameworks -Wl,-rpath,@executable_path/../../vendor -o $@
-
-# a viewer without a browser (tests/remote): the same WebRTC, from vendor/
-$(TBIN)/remotetest: tests/remote/remotetest.m $(WEBRTC_STAMP) | $(TBIN)
-	$(MACCC) -Wall -Fvendor $< -framework Foundation -framework WebRTC -Wl,-rpath,$(abspath vendor) -o $@
-
-# App icon: the Icon Composer document compiled into Assets.car (Liquid Glass icon) and AppIcon.icns (fallback).
-# Xcode 27 reads "features" and a string specular (outside/inside/...). Xcode 26's actool crashes on
-# "features" and only accepts a boolean specular, so on 26 the document is rewritten before compiling.
-XCODE_MAJOR := $(shell $(if $(DEVELOPER_DIR),DEVELOPER_DIR=$(DEVELOPER_DIR)) xcodebuild -version | awk 'NR==1 { split($$2, v, "."); print v[1] }')
-ICON     := $(BUILD)/icon
-ICON_SRC := resources/AppIcon.icon
-ifeq ($(shell test "$(XCODE_MAJOR)" -ge 27 && echo y),y)
-ICON_DOC    := $(ICON_SRC)
-ICON_INPUTS := $(ICON_SRC)/icon.json $(ICON_SRC)/Assets
-else
-ICON_DOC    := $(BUILD)/icon-src/AppIcon.icon
-ICON_INPUTS := $(ICON_DOC)/icon.json
-ICON_ASSETS := $(shell find $(ICON_SRC)/Assets -type f ! -name .DS_Store | sed 's/ /\\ /g')
-define downgrade_icon
-import json, sys
-source_path, output_path = sys.argv[1], sys.argv[2]
-with open(source_path) as source_file:
-    document = json.load(source_file)
-document.pop("features", None)
-def walk(node):
-    if isinstance(node, dict):
-        specular = node.get("specular")
-        if isinstance(specular, str):
-            node["specular"] = specular not in ("none", "off", "false")
-        for child in node.values():
-            walk(child)
-    elif isinstance(node, list):
-        for child in node:
-            walk(child)
-walk(document)
-with open(output_path, "w") as output_file:
-    json.dump(document, output_file, indent=2)
-    output_file.write("\n")
-endef
-export downgrade_icon
-$(ICON_DOC)/icon.json: $(ICON_SRC)/icon.json $(ICON_ASSETS)
-	@rm -rf $(ICON_DOC)
-	@mkdir -p $(ICON_DOC)
-	@cp -R $(ICON_SRC)/Assets $(ICON_DOC)/
-	@python3 -c "$$downgrade_icon" $< $@
-	@echo "downgraded AppIcon.icon for Xcode $(XCODE_MAJOR)"
-endif
-$(ICON)/Assets.car: $(ICON_INPUTS)
-	@mkdir -p $(ICON)
-	xcrun actool $(ICON_DOC) --compile $(ICON) --platform macosx --minimum-deployment-target 14.0 --app-icon AppIcon \
-	  --output-partial-info-plist $(ICON)/partial.plist >/dev/null
-
-# SimRun.app: the server/launcher executable, the simrun helper, simns, the sim-side libraries, the agent skill, the
-# remote-control page and WebRTC.framework.
-# Assembled in a staging bundle and swapped in with a rename, so a SimRun that is running from the old bundle keeps
-# its (unlinked) files instead of having them overwritten underneath it.
-SKILL_FILES := $(shell find skills -type f ! -name .DS_Store)
-$(APP): $(SKILL_FILES) $(PARTS) resources/Info.plist resources/remote.html $(ICON)/Assets.car
-	@rm -rf $(BUILD)/.SimRun.app.new $(BUILD)/.SimRun.app.old
-	@mkdir -p $(BUILD)/.SimRun.app.new/Contents/MacOS $(BUILD)/.SimRun.app.new/Contents/Helpers $(BUILD)/.SimRun.app.new/Contents/Resources/lib/watchos \
-	  $(BUILD)/.SimRun.app.new/Contents/Frameworks
-	@cp resources/Info.plist $(BUILD)/.SimRun.app.new/Contents/Info.plist
-	@cp $(ICON)/Assets.car $(ICON)/AppIcon.icns resources/remote.html $(BUILD)/.SimRun.app.new/Contents/Resources/
-	@cp $(BIN)/simrund $(BUILD)/.SimRun.app.new/Contents/MacOS/SimRun
-	@cp $(BIN)/simrun $(BUILD)/.SimRun.app.new/Contents/Helpers/
-	@cp $(BIN)/simns $(BUILD)/.SimRun.app.new/Contents/Resources/lib/
-	@cp $(SIMLIBS) $(BUILD)/.SimRun.app.new/Contents/Resources/lib/
-	@cp $(WATCHLIBS) $(BUILD)/.SimRun.app.new/Contents/Resources/lib/watchos/
-	@rsync -a --exclude .DS_Store skills $(BUILD)/.SimRun.app.new/Contents/Resources/
-	@ditto $(WEBRTC) $(BUILD)/.SimRun.app.new/Contents/Frameworks/WebRTC.framework
-	@cd $(BUILD)/.SimRun.app.new/Contents/Frameworks/WebRTC.framework && rm -rf Headers Modules Versions/A/Headers Versions/A/Modules
-	@$(SIGN) --deep $(BUILD)/.SimRun.app.new 2>/dev/null
-	@if [ -d $@ ]; then mv $@ $(BUILD)/.SimRun.app.old; fi
-	@mv $(BUILD)/.SimRun.app.new $@ && rm -rf $(BUILD)/.SimRun.app.old
-	@echo "built $@"
-
-$(BIN)/simrun: src/host/simrun/simrun.m $(HDRS) | $(BIN)
-	$(MACCC) -Wall $< -framework Foundation -o $@
-
-$(BIN)/hostinput: tools/hostinput.swift | $(BIN)
-	$(MACSWIFT) $< -o $@
-
-# ---------------------------------------------------------------- sim side
-# common/: what the sim libraries share (common.h), compiled into each one that uses it
-COMMON := src/sim/common/common.m
-COMMON_DEPS := $(COMMON) $(wildcard src/sim/common/*.h)
-SIMLIB := $(SIMCC) -Isrc/sim/common
-$(BIN)/simns: src/sim/simns/simns.c $(HDRS) | $(BIN)
-	xcrun -sdk iphonesimulator clang -arch arm64 -mios-simulator-version-min=17.0 -Wall -Wno-deprecated-declarations -Iinclude $< -framework CoreFoundation -o $@
-	@$(SIGN) $@ 2>/dev/null
-
-# xpcservices.dylib: in the app and every helper it spawns, so Foundation only
-$(LIB)/xpcservices.dylib: src/sim/xpcservices/xpcservices.m $(COMMON_DEPS) $(HDRS) | $(LIB)
-	$(SIMLIB) -dynamiclib $< $(COMMON) -framework Foundation -o $@
-	@$(SIGN) $@ 2>/dev/null
-
-$(LIB)/SimFramebuffer: src/sim/simfb/simfb.m $(HDRS) | $(LIB)
-	$(SIMCC) -dynamiclib $< -framework Foundation -framework IOSurface -framework CoreFoundation -framework CoreGraphics -framework Metal \
-	  -install_name @rpath/SimFramebuffer.framework/SimFramebuffer -o $@
-	@$(SIGN) $@ 2>/dev/null
-
-# app.dylib: the modules SimRun puts in the app (src/sim/app/app.h), one folder each; script/'s JS modules (js/*.js)
-# are embedded as C arrays (xxd -i: core.js -> core_js[]). TCC.framework is linked through a stub (tcc/tcc.tbd; not in
-# the SDK); the other private frameworks' symbols (FrontBoardServices, GraphicsServices, BackBoardServices...) are
-# looked up at load.
-APP_MODULES := locale container watch render scenes hid textinput pboard drag docpicker keychain webkit mps script tcc audio motion
-APP_SRC := src/sim/app/app.m $(foreach m,$(APP_MODULES),$(wildcard src/sim/$(m)/*.m))
-SCRIPT_JS := $(wildcard src/sim/script/js/*.js)
-$(BUILD)/gen/script_js.h: $(SCRIPT_JS)
-	@mkdir -p $(@D)
-	@(cd src/sim/script/js && for f in *.js; do xxd -i $$f; done) > $@.tmp && mv $@.tmp $@
-APP_HDRS := $(foreach m,app $(APP_MODULES),$(wildcard src/sim/$(m)/*.h))
-$(LIB)/app.dylib: $(APP_SRC) $(APP_HDRS) src/sim/tcc/tcc.tbd $(BUILD)/gen/script_js.h $(COMMON_DEPS) $(HDRS) | $(LIB)
-	$(SIMLIB) -Isrc/sim/app -Isrc/sim/tcc -I$(BUILD)/gen -dynamiclib $(APP_SRC) $(COMMON) src/sim/tcc/tcc.tbd -framework Foundation \
-	  -framework UIKit -framework QuartzCore -framework CoreGraphics -framework IOKit -framework UniformTypeIdentifiers \
-	  -framework Security -framework Metal -framework AudioToolbox -framework CoreAudio \
-	  -Wl,-undefined,dynamic_lookup -Wl,-w -o $@
-	@$(SIGN) $@ 2>/dev/null
-
-# simpair: pairs the iPhone and the Apple Watch (docs/pairing.md); its entitlement goes in __TEXT,__entitlements,
-# where a sim process's entitlements are read from
-$(LIB)/simpair: src/sim/pair/pair.m src/sim/pair/Entitlements.plist | $(LIB)
-	$(SIMCC) $< -framework Foundation -Wl,-sectcreate,__TEXT,__entitlements,src/sim/pair/Entitlements.plist -o $@
-	@$(SIGN) $@ 2>/dev/null
-
-# wcd.dylib: in wcd, the WatchConnectivity daemon, what it would ask LaunchServices, AppConduit and Carousel
-$(LIB)/wcd.dylib: src/sim/wcd/wcd.m | $(LIB)
-	$(SIMCC) -dynamiclib $< -framework Foundation -o $@
-	@$(SIGN) $@ 2>/dev/null
-
-# containermanagerd.dylib: in containermanagerd, which would delete apps' data containers as orphans when it starts
-$(LIB)/containermanagerd.dylib: src/sim/mcm/mcm.m | $(LIB)
-	$(SIMCC) -dynamiclib $< -framework Foundation -o $@
-	@$(SIGN) $@ 2>/dev/null
-
-# watchOS: the same simns and libraries, marked for the watchOS Simulator (LC_BUILD_VERSION), which is all that tells
-# them apart. dyld_sim skips an inserted library of another platform without a word, and the watchOS SDK can't build
-# them (it has no IOSurface, and marks mach_msg, posix_spawn and UIKit unavailable); what they call exists in the
-# watchOS runtime too. In the app, SRIsWatch() says which platform it is in.
-WATCH_SDK := $(or $(shell xcrun -sdk watchsimulator --show-sdk-version 2>/dev/null),10.0)
-define watchos_copy
-	@cp $< $@.tmp && codesign --remove-signature $@.tmp
-	xcrun vtool -set-build-version watchossim 10.0 $(WATCH_SDK) -replace -output $@ $@.tmp
-	@rm $@.tmp && $(SIGN) $@ 2>/dev/null
-endef
-$(WATCHLIB)/simns: $(BIN)/simns | $(WATCHLIB)
-	$(watchos_copy)
-$(WATCHLIB)/%: $(LIB)/% | $(WATCHLIB)
-	$(watchos_copy)
-
-# ---------------------------------------------------------------- tests
-$(APPS)/Hello.app: tests/apps/hello/main.m tests/apps/hello/Info.plist | $(APPS)
-	@mkdir -p $@ && cp tests/apps/hello/Info.plist $@/
-	$(SIMCC) $< -framework UIKit -o $@/Hello
-	@$(SIGN) $@ 2>/dev/null
-
-$(APPS)/SUI.app: tests/apps/swiftui/SUI.swift tests/apps/swiftui/Info.plist | $(APPS)
-	@mkdir -p $@ && cp tests/apps/swiftui/Info.plist $@/
-	$(SIMSWIFT) -parse-as-library $< -o $@/SUI
-	@$(SIGN) $@ 2>/dev/null
-
-$(APPS)/Glass.app: tests/apps/glass/Glass.swift tests/apps/glass/Info.plist | $(APPS)
-	@mkdir -p $@ && cp tests/apps/glass/Info.plist $@/
-	xcrun -sdk iphonesimulator swiftc -target arm64-apple-ios26.0-simulator -parse-as-library $< -o $@/Glass
-	@$(SIGN) $@ 2>/dev/null
-
-$(APPS)/HIDTest.app: tests/apps/hidtest/main.m tests/apps/hidtest/Info.plist | $(APPS)
-	@mkdir -p $@ && cp tests/apps/hidtest/Info.plist $@/
-	$(SIMCC) $< -framework UIKit -o $@/HIDTest
-	@$(SIGN) $@ 2>/dev/null
-
-$(APPS)/DragTest.app: tests/apps/dragtest/main.m tests/apps/dragtest/Info.plist | $(APPS)
-	@mkdir -p $@ && cp tests/apps/dragtest/Info.plist $@/
-	$(SIMCC) $< -framework UIKit -framework CoreGraphics -o $@/DragTest
-	@$(SIGN) $@ 2>/dev/null
-
-$(APPS)/WebTest.app: tests/apps/webtest/main.m tests/apps/webtest/Info.plist | $(APPS)
-	@mkdir -p $@ && cp tests/apps/webtest/Info.plist $@/
-	$(SIMCC) $< -framework UIKit -framework WebKit -framework QuartzCore -o $@/WebTest
-	@$(SIGN) $@ 2>/dev/null
-
-$(APPS)/PickerTest.app: tests/apps/pickertest/main.m tests/apps/pickertest/Info.plist | $(APPS)
-	@mkdir -p $@ && cp tests/apps/pickertest/Info.plist $@/
-	$(SIMCC) $< -framework UIKit -framework UniformTypeIdentifiers -o $@/PickerTest
-	@$(SIGN) $@ 2>/dev/null
-
-# BGDownload: a background URLSession download. Like Xcode's simulator builds, its entitlements (application-identifier,
-# which nsurlsessiond takes the client's bundle ID from on iOS 26 and earlier) go in __TEXT,__entitlements.
-$(APPS)/BGDownload.app: tests/apps/bgdownload/main.m tests/apps/bgdownload/Info.plist tests/apps/bgdownload/Entitlements.plist | $(APPS)
-	@mkdir -p $@ && cp tests/apps/bgdownload/Info.plist $@/
-	$(SIMCC) $< -framework UIKit -Wl,-sectcreate,__TEXT,__entitlements,tests/apps/bgdownload/Entitlements.plist -o $@/BGDownload
-	@$(SIGN) $@ 2>/dev/null
-
-# WatchTest: a watch-only SwiftUI app, built for the watchOS Simulator.
-$(APPS)/WatchTest.app: tests/apps/watchtest/WatchTest.swift tests/apps/watchtest/Info.plist | $(APPS)
-	@mkdir -p $@ && cp tests/apps/watchtest/Info.plist $@/
-	xcrun -sdk watchsimulator swiftc -target arm64-apple-watchos10.0-simulator -parse-as-library $< -o $@/WatchTest
-	@$(SIGN) $@ 2>/dev/null
-
-# WCPhone and WCWatch: WatchConnectivity between SimRun's iPhone and Apple Watch. WCWatch is WCPhone's watch app, in its
-# Watch/ folder as Xcode puts it there (and in build/apps, to run it).
-$(APPS)/WCWatch.app: tests/apps/wcwatch/WCWatch.swift tests/apps/wcphone/Session.swift tests/apps/wcwatch/Info.plist | $(APPS)
-	@mkdir -p $@ && cp tests/apps/wcwatch/Info.plist $@/
-	xcrun -sdk watchsimulator swiftc -target arm64-apple-watchos10.0-simulator -parse-as-library tests/apps/wcwatch/WCWatch.swift tests/apps/wcphone/Session.swift -o $@/WCWatch
-	@$(SIGN) $@ 2>/dev/null
-$(APPS)/WCPhone.app: tests/apps/wcphone/WCPhone.swift tests/apps/wcphone/Session.swift tests/apps/wcphone/Info.plist $(APPS)/WCWatch.app | $(APPS)
-	@rm -rf $@ && mkdir -p $@/Watch && cp tests/apps/wcphone/Info.plist $@/ && cp -R $(APPS)/WCWatch.app $@/Watch/
-	$(SIMSWIFT) -parse-as-library tests/apps/wcphone/WCPhone.swift tests/apps/wcphone/Session.swift -o $@/WCPhone
-	@$(SIGN) $@ 2>/dev/null
-
-$(APPS)/AudioPlayer.app: tests/apps/audioplayer/AudioPlayer.swift tests/apps/audioplayer/Info.plist | $(APPS)
-	@mkdir -p $@ && cp tests/apps/audioplayer/Info.plist $@/
-	$(SIMSWIFT) -parse-as-library $< -o $@/AudioPlayer
-	@$(SIGN) $@ 2>/dev/null
-
-# Showcase: a SwiftUI tour of what works under SimRun, with its Watch app; built by its own Makefile.
-$(APPS)/Showcase.app: | $(APPS)
-	@$(MAKE) --no-print-directory -C tests/apps/showcase BUILD=$(abspath $(BUILD))
-
-$(TBIN)/nettest: tests/net/nettest.m | $(TBIN)
-	$(SIMCC) $< -framework Foundation -o $@
-	@$(SIGN) $@ 2>/dev/null
-$(TBIN)/nwtest: tests/net/nwtest.m | $(TBIN)
-	$(SIMCC) $< -framework Foundation -framework Network -o $@
-	@$(SIGN) $@ 2>/dev/null
-$(TBIN)/pbtest: tests/pboard/pbtest.m | $(TBIN)
-	$(SIMCC) $< -framework UIKit -o $@
-	@$(SIGN) $@ 2>/dev/null
-$(TBIN)/kctest: tests/keychain/kctest.m | $(TBIN)
-	$(SIMCC) $< -framework Foundation -framework Security -o $@
-	@$(SIGN) $@ 2>/dev/null
-$(TBIN)/loctest: tests/locale/loctest.m | $(TBIN)
-	$(SIMCC) $< -framework Foundation -o $@
-	@$(SIGN) $@ 2>/dev/null
-$(TBIN)/mpstest: tests/mps/mpstest.m | $(TBIN)
-	$(SIMCC) $< -framework Foundation -framework Metal -framework MetalPerformanceShaders -framework MetalPerformanceShadersGraph -o $@
-	@$(SIGN) $@ 2>/dev/null
-$(TBIN)/audiotest: tests/audio/audiotest.m | $(TBIN)
-	$(SIMCC) $< -framework Foundation -framework AVFoundation -framework AudioToolbox -framework CoreMedia -o $@
-$(TBIN)/motiontest: tests/motion/motiontest.m | $(TBIN)
-	$(SIMCC) $< -framework Foundation -framework CoreMotion -o $@
-	@$(SIGN) $@ 2>/dev/null
+# the headers each object read (mk/common.mk)
+-include $(OBJS:.o=.d)
 
 # Install the built bundle into /Applications. ditto keeps the ad-hoc signature.
 # A running SimRun must be quit first; the installed bundle is replaced in place.

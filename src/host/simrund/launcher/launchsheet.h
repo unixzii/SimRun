@@ -3,7 +3,7 @@
 // SimRun services) and Diagnostics (logging, tracing).
 #pragma once
 #import <Cocoa/Cocoa.h>
-#import "library.h"
+#import "apps/library.h"
 
 @interface SRLaunchSheet : NSObject
 // Shows the options of `app`'s `profile` (nil: its default one) as a sheet on `window`. Launch (Relaunch if `running`)

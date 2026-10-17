@@ -1,7 +1,7 @@
 // launchsheet.m — see launchsheet.h.
 #import "launchsheet.h"
-#import "launchoptions.h"
-#import "session/environment.h"
+#import "apps/launchoptions.h"
+#import "device/environment.h"
 #import "tabbar.h"
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 

@@ -23,7 +23,7 @@ simrun (CLI) ───unix socket──▶ build/bin/simrund   macOS AppKit serv
                                               xpcservices.dylib  the frameworks' bundled XPC services (Metal's shader
                                                              compiler, MTLCompilerService; MapKit's SnapshotService) spawned
                                                              for the app as launchd_sim would; all of SimRun such a service gets
-                                              app.dylib      one module per folder of src/sim, started in this order by
+                                              app.dylib      one module per folder of shims/app, started in this order by
                                                              app/app.m, each in the processes it belongs in (the app;
                                                              for container, tcc, audio also WebKit's extensions):
                                                 locale       the Mac's language & region (locale, languages, 24-hour
@@ -83,7 +83,7 @@ Simulator Builds** scans
 `~/Library/Developer/Xcode/DerivedData/*/Build/Products/*-iphonesimulator/` for `.app` bundles. An app is accepted
 if it has a top-level `Info.plist` with a `CFBundleExecutable` whose arm64 slice is built for the `IOSSIMULATOR`
 platform, or for `IOS` and not encrypted: a device build. A device build runs as a copy converted for the Simulator
-(`launcher/devicebuild.m`), in `~/Library/Caches/dev.simrun.SimRun/DeviceBuilds/<name>-<hash of its path>/`: an APFS
+(`apps/devicebuild.m`), in `~/Library/Caches/dev.simrun.SimRun/DeviceBuilds/<name>-<hash of its path>/`: an APFS
 clone of the bundle, without `Watch/`, whose arm64 iOS Mach-Os are thinned to arm64 and marked `IOSSIMULATOR`
 (`LC_BUILD_VERSION`; an old `LC_VERSION_MIN_IPHONEOS` becomes one), with a `__RESTRICT` segment renamed (dyld would
 ignore `DYLD_INSERT_LIBRARIES`), Info.plist platform keys made the simulator's, and the device signatures and
@@ -200,21 +200,25 @@ and `simrun screenshot` take `--profile` to pick one of an app's instances.
 
 | Path | Contents |
 |---|---|
-| `include/` | Shared headers: viewer wire protocol, simns control protocol, gpuhost, simfb, scenes, hid and textinput APIs, keychain store |
-| `src/host/` | macOS side: `simrund/` (SimRun.app: `simrund.m` the server and menus; `session/` a running app's window session, environment, runtimes and device types, the paired iPhone and watch; `launcher/` the launcher + library, Launch With… sheet + per-app launch options; `services/` host pasteboard, file panels for document pickers, privacy permissions, motion sensors, Keychain window, Install Command Line Tool; `inspector/` the layer debugger; `remote/` remote control over WebRTC, [remote.md](remote.md)), `simrun/` (the `simrun` command line), `gpuhost/` (IOSurface + Metal host services) |
+| `include/` | Shared headers, the contracts between processes: the viewer wire protocol (`protocol.h`), the simns control protocol, the `simrun` client protocol, the sim2host services' (pasteboard, document picker, privacy, motion) and the keychain store |
+| `src/host/` | macOS side: `simrund/` (SimRun.app; one folder per part, imports across folders name the folder: `server/` the process, `simrund.m` (the server, its menus, the `simrun` clients, launching) and Install Command Line Tool; `device/` the simulated iPhone and Apple Watch: runtimes, device types, data containers, where SimRun's pieces live, the pair; `sim2host/` the Mac-side services each simns publishes to the apps: IOSurface + Metal (`gpuhost`), pasteboard, file panels for document pickers, privacy permissions, motion sensors; `apps/` the app library, device builds' simulator copies, per-app launch options; `session/` a running app: its session and window; `launcher/` the launcher window and Launch With… sheet; `keychain/` the Keychain window; `inspector/` the layer debugger; `remote/` remote control over WebRTC, [remote.md](remote.md)), `simrun/` (the `simrun` command line) |
 | `resources/` | SimRun.app's Info.plist and app icon (`AppIcon.icon`, an Icon Composer document) |
-| `src/sim/` | Simulator side: `simns/` (launchd_sim stand-in), `xpcservices/` (xpcservices.dylib), `app/` (app.dylib's start and its module list), `pair/` (simpair: pairs the iPhone and the watch), `wcd/` (wcd.dylib, in the WatchConnectivity daemon), `mcm/` (containermanagerd.dylib, which keeps containermanagerd from deleting apps' data containers) and app.dylib's modules `locale/`, `container/`, `watch/`, `render/`, `scenes/`, `hid/`, `textinput/`, `pboard/`, `drag/`, `docpicker/`, `keychain/`, `webkit/`, `mps/`, `script/`, `tcc/`, `audio/`, `motion/`; `common/` (what the libraries share: the process's role, SimRun's services, spawning helpers), `simfb/` (SimFramebuffer); built into `lib/`, and again marked for the watchOS Simulator into `lib/watchos/` |
+| `src/sim/` | Simulator side, one folder per build target: `simns/` (launchd_sim stand-in), `simpair/` (pairs the iPhone and the watch), `simfb/` (SimFramebuffer), and `shims/`, the dylibs inserted into sim processes, again one folder each: `xpcservices/` (xpcservices.dylib), `app/` (app.dylib: its start and module list, and a folder per module: `locale/`, `container/`, `watch/`, `render/`, `scenes/`, `hid/`, `textinput/`, `pboard/`, `drag/`, `docpicker/`, `keychain/`, `webkit/`, `mps/`, `script/`, `tcc/`, `audio/`, `motion/`), `wcd/` (wcd.dylib, in the WatchConnectivity daemon), `containermanagerd/` (containermanagerd.dylib, which keeps containermanagerd from deleting apps' data containers); `common/` is no target: what the libraries share (the process's role, SimRun's services, spawning helpers), compiled into each; built into `lib/`, and again marked for the watchOS Simulator into `lib/watchos/` |
 | `tools/` | `hostinput.swift` (synthesize Mac clicks/typing into the viewer), `crash.py` (crash-report backtrace) |
-| `tests/` | Test apps (`hello` UIKit, `swiftui`, `hidtest`, `dragtest`, `webtest` WKWebView, `bgdownload` background URLSession, `pickertest` document pickers, `glass` Liquid Glass, `showcase` a SwiftUI tour of everything that works, with its Watch app (its own Makefile), `audioplayer` a music player for trying sound, `watchtest` a watchOS app, `wcphone` and `wcwatch` WatchConnectivity between them) and programs (`net/nettest`, `net/nwtest`, `pboard/pbtest`, `keychain/kctest`, `locale/loctest`, `mps/mpstest`, `audio/audiotest` playing and recording, `motion/motiontest` CoreMotion's streams), and scripts for `simrun eval` (`scripts/`) |
+| `tests/` | Test apps (`hello` UIKit, `swiftui`, `hidtest`, `dragtest`, `webtest` WKWebView, `bgdownload` background URLSession, `pickertest` document pickers, `glass` Liquid Glass, `showcase` a SwiftUI tour of everything that works, with its Watch app, `audioplayer` a music player for trying sound, `watchtest` a watchOS app, `wcphone` and `wcwatch` WatchConnectivity between them) and programs (`net/nettest`, `net/nwtest`, `pboard/pbtest`, `keychain/kctest`, `locale/loctest`, `mps/mpstest`, `audio/audiotest` playing and recording, `motion/motiontest` CoreMotion's streams), and scripts for `simrun eval` (`scripts/`) |
 | `skills/` | The agent skill (`simrun/`: SKILL.md and an API reference) that SimRun.app carries in `Contents/Resources/skills/` and `simrun skill` prints or installs |
 | `docs/` | These write-ups |
 
 ## Building
 
-Everything builds into `build/` (`SimRun.app`, `bin/`, `lib/`, `apps/`, `tests/`). `make` builds SimRun.app, the
-`simrun` command line (`build/bin/simrun`), the tools and the test programs; `make core` only SimRun.app and `simrun`, `make tools` the tools,
-`make test-apps` the test apps (`build/apps/`), `make test-programs` the test programs (`build/tests/`), and
-`make tests` both. Rebuilding while SimRun
+Everything builds into `build/` (`SimRun.app`, `bin/`, `lib/`, `apps/`, `tests/`, and the objects in `obj/`). `make`
+builds SimRun.app, the `simrun` command line (`build/bin/simrun`), the tools and the test programs; `make core` only
+SimRun.app and `simrun`, `make host` simrund and `simrun`, `make sim` the sim side, `make tools` the tools,
+`make test-apps` the test apps (`build/apps/`; `make showcase` only Showcase), `make test-programs` the test programs
+(`build/tests/`), and `make tests` both. The Makefile has the goals; each part's rules are in a fragment next to it
+(`src/sim/sim.mk`, `src/host/host.mk`, `tools/tools.mk`, `tests/tests.mk`) sharing `mk/common.mk`, with the build's
+scripts beside it in `mk/`. They make one dependency graph: each source of SimRun's own products is compiled to its own object, with the
+headers it read noted, so a change rebuilds only what it touches, and `-j` works across all of it. Rebuilding while SimRun
 is open is safe (the bundle is assembled in a staging directory and swapped in with a rename); quit and reopen SimRun
 (or `simrun stop`) to pick up the new build. Until then the old SimRun gets no open or save panels
 ([docpicker.md](docpicker.md#not-supported)).

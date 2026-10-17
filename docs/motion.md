@@ -77,7 +77,7 @@ no events.
 ## SimRun's version
 
 ```
-simrund (sensors.m)                                       app (app.dylib's motion module)
+simrund (motionhost.m)                                    app (app.dylib's motion module)
   SRMO_SERVICE (dev.simrun.motion, include/motion.h)        CMMotionManager's accelerometer, gyro and device motion
     while any app is started: ReportInterval 10000            methods, replaced when CoreMotion loads
     (the lid's 100000)
@@ -86,12 +86,12 @@ simrund (sensors.m)                                       app (app.dylib's motio
                                                                 ─▶ each manager's streams, at its interval, on its queue
 ```
 
-- **simrund** (`src/host/simrund/services/sensors.m`) looks for the three devices the first time an app asks, opens
+- **simrund** (`src/host/simrund/sim2host/motionhost.m`) looks for the three devices the first time an app asks, opens
   them and reads them on its queue (the lid's angle also once when an app starts, with `GetReport`). It runs the sensors at 100 Hz while any app has asked for samples (`start`),
   stops them (`ReportInterval` 0) when the last one stops or goes away, and when SimRun exits. A watchdog starts them
   again if they go quiet for a second while wanted (another reader may stop them when it is done). The samples go to
   every app that started, in iOS's units (g; radians per second) and the base's frame, batched once per gyro report.
-- **The app** (`src/sim/motion/motion.m`) replaces `CMMotionManager`'s methods for the three streams (availability,
+- **The app** (`src/sim/shims/app/motion/motion.m`) replaces `CMMotionManager`'s methods for the three streams (availability,
   start and stop with and without a queue, `is…Active`, the latest sample, the reference frame, and the class's
   available frames) when CoreMotion's classes show up. It asks simrund what the Mac has once, starts its samples while
   any manager runs a stream, and stops them when none does (a manager that goes away stops its streams).

@@ -45,7 +45,7 @@ later (0). CMCapture (`AVCaptureDevice`'s `authorizationStatusForMediaType:` / `
 same way. The device's tccd isn't there in SimRun (and there is no SpringBoard for its prompt), so the request failed
 and apps were told "denied".
 
-## SimRun's version (app.dylib's audio module, `src/sim/audio/mic.m`)
+## SimRun's version (app.dylib's audio module, `src/sim/shims/app/audio/mic.m`)
 
 ```
 app process
@@ -96,12 +96,12 @@ what the Mac plays). macOS asks for them, and keeps them, for SimRun.app: when i
 also when `simrun` starts it, which spawns it responsible for itself (`responsibility_spawnattrs_setdisclaim`) so that
 it isn't the terminal's. Its Info.plist says why (`NSMicrophoneUsageDescription`, `NSAudioCaptureUsageDescription`).
 simrund serves them to apps as `dev.simrun.privacy` ([include/privacy.h](../include/privacy.h),
-`src/host/simrund/services/permissions.m`): the microphone's from `AVCaptureDevice`, recording what the Mac plays
+`src/host/simrund/sim2host/privacyhost.m`): the microphone's from `AVCaptureDevice`, recording what the Mac plays
 (`kTCCServiceAudioCapture`, which has no API) from libTCC's `TCCAccessPreflight` / `TCCAccessRequest`. Asked for one
 that macOS hasn't decided, it asks macOS (its prompt, once however many apps ask at the same time) and answers when
 the user has.
 
-**The app's**, from app.dylib's tcc module (`src/sim/tcc/`), with which the audio module registers
+**The app's**, from app.dylib's tcc module (`src/sim/shims/app/tcc/`), with which the audio module registers
 `kTCCServiceMicrophone`: it answers `tcc_server_message_request_authorization` for the services registered with it (the
 options' policies, recorded by interposing `tcc_message_options_set_request_prompt_policy` and
 `…_set_reply_handler_policy`, say whether it is a status check or a request, and whether the reply is awaited):

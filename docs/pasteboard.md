@@ -42,7 +42,7 @@ Neither fits SimRun.
 
 ```
 app process                                                      simrund (macOS)
-  UIKit ─NSXPC─▶ pboard module: fake pasted                       SRPasteboardHost (src/host/simrund/services/pasteboard.m)
+  UIKit ─NSXPC─▶ pboard module: fake pasted                       SRPasteboardHost (src/host/simrund/sim2host/pasteboardhost.m)
                  NSXPCListener checked in as                        sim2host XPC listener "dev.simrun.pasteboard"
                  com.apple.pasteboard.pasted (app's namespace)      registered in simns' global namespace
                  ── read / data / write (pboard.h) ─sim2host XPC─▶  NSPasteboard (general, find, dev.simrun.pboard.<name>)
@@ -50,7 +50,7 @@ app process                                                      simrund (macOS)
                  posts com.apple.pasteboard.changed {state}
 ```
 
-- **The pboard module** (`src/sim/pboard/pboard.m`, in app.dylib) implements `PBClientToServerProtocol`:
+- **The pboard module** (`src/sim/shims/app/pboard/pboard.m`, in app.dylib) implements `PBClientToServerProtocol`:
   - *read* → `read` from the host (types per item, no data) → a `PBItemCollection` with those types (placeholder
     loaders; the client installs its own); *load* → `data` for one item/type.
   - *save* → replies at once (the client may be waiting on the main thread while its data provider needs that thread),

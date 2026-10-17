@@ -29,7 +29,7 @@ URLSession starts `ids_simd` on an iPhone with no watch; it is idle there.
 
 ## Pairing
 
-The watch comes up with the first watch app; once both `simns` are ready (`-[SRServer pairDevices]`), `session/pairing.m`
+The watch comes up with the first watch app; once both `simns` are ready (`-[SRServer pairDevices]`), `device/pairing.m`
 pairs them, as CoreSimulator's `-[SimDevicePair ONPSQ_connectIPCRelayOnDevices]` and `ONPSQ_setActiveOnPairedDevices`
 do with CoreSimulatorBridge in each device:
 
@@ -37,7 +37,7 @@ do with CoreSimulatorBridge in each device:
    message out of line). SimRun looks it up in each `simns` (control message `SIMNS_MSG_LOOKUP`, which launches the
    daemon, simns_proto.h) and registers it in the other as `com.apple.IDSSimRPC.remote.<UDID>`, as CoreSimulator does
    with `-[SimDevice lookup:]` / `registerPort:service:`.
-2. **simpair** runs in each device's namespace with the other's UDID (`src/sim/pair/pair.m`, CoreSimulatorBridge's
+2. **simpair** runs in each device's namespace with the other's UDID (`src/sim/simpair/simpair.m`, CoreSimulatorBridge's
    `ids_relay_connect` and `ids_relay_set_active`): `IDSSimulatorLocalPairingTransportConnect(peer)` (`ids_simd` looks
    the remote up and connects), `…TransportResume` (EALREADY when the relay was never suspended), then
    `NRPairedDeviceRegistry`: nothing if the peer is the active paired device already, `-switchToSimulator:` if it paired
@@ -59,7 +59,7 @@ daemon is down ([simns.md](simns.md#on-demand-sim-daemons)).
 `wcd`, the WatchConnectivity daemon, asks LaunchServices, AppConduit and Carousel things SimRun doesn't run. Running the
 real `lsd` was tried: every app then waits for it synchronously on its main thread, and an app hung while it started.
 So `simns` inserts `wcd.dylib` into `wcd` (`SIMNS_DAEMON_INSERT`, set by SimRun for each `simns`), which answers in
-`wcd` itself (`src/sim/wcd/wcd.m`):
+`wcd` itself (`src/sim/shims/wcd/wcd.m`):
 
 | What wcd asks | Without SimRun | `wcd.dylib` |
 |---|---|---|

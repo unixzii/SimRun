@@ -1,6 +1,6 @@
 # hid/ — touch and keyboard input without backboardd
 
-**Status: working.** app.dylib's hid module (`src/sim/hid/hid.m`) makes UIKit deliver real input in a sim app process
+**Status: working.** app.dylib's hid module (`src/sim/shims/app/hid/hid.m`) makes UIKit deliver real input in a sim app process
 that has no backboardd or SpringBoard. All of the following were verified:
 - UIButton `touchUpInside` actions, UISwitch, UITapGestureRecognizer, UITableView row selection.
 - UIScrollView/UITableView panning, deceleration and tap-to-stop.
@@ -230,7 +230,7 @@ finger on the glass, not just those that opt into scroll events.
 
 ## 5. In app.dylib
 
-- It is a module of app.dylib (`src/sim/app/app.h`), started after render and scenes. It calls the scenes module's
+- It is a module of app.dylib (`src/sim/shims/app/app.h`), started after render and scenes. It calls the scenes module's
   `SRScenesUpdate` directly, and the drag module calls `SRHIDDetachTouches`/`SRHIDDragEvent`; it includes
   `include/protocol.h`. The API stays exported (test apps look up `SRHIDTouch` with `dlsym`).
 - **Interposers:** only one, `GSEventIsHardwareKeyboardAttached`; no other module interposes it. It answers only where
@@ -281,7 +281,7 @@ finger on the glass, not just those that opt into scroll events.
   service.
 
 ## Files
-- `src/sim/hid/hid.m`: the hid module of app.dylib, with `include/hid.h` (the API).
+- `src/sim/shims/app/hid/hid.m`: the hid module of app.dylib, with `hid.h` (the API).
 - `app.m` → `HIDTest.app`: a UIButton, UITextField with delegate logging, UISwitch, a 100-row UITableView, tap,
   double-tap, pinch and rotation recognizers, touches/presses logging and UIKeyCommands. All of its logs carry the
   "[app]" prefix. The Table | Zoom switch swaps the table for a pannable, pinch-zoomable tile map (0.33–4×, double tap

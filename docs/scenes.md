@@ -4,7 +4,7 @@ Status: **working.** A scene-based sim UIKit app run by SimRun (no launchd_sim, 
 runningboardd) gets `application:didFinishLaunchingWithOptions:`, then `scene:willConnectToSession:options:` with a
 `UIWindowScene` of the display's size (`SIMULATOR_MAINSCREEN_*`, e.g. 402x874 pt @3x; `SCENES_W`/`SCENES_H`/
 `SCENES_SCALE` override it). It then becomes foreground-active and the main run loop keeps going. Resize, rotation
-and foreground/background transitions also work. This is app.dylib's scenes module (`src/sim/scenes/scenes.m`);
+and foreground/background transitions also work. This is app.dylib's scenes module (`src/sim/shims/app/scenes/scenes.m`);
 `SCENES_VERBOSE=1` traces it.
 
 Output from the workstream's `sample_output.txt` (Hello.app, before SimRun):
@@ -217,7 +217,7 @@ identifier, and CarouselUIServices' metrics for the display instead of the safe-
   differently ("unknown service") and libxpc does not disable logging. Behaviour can differ from a plain run.
 
 ## Files
-- `src/sim/scenes/scenes.m` (was `shim.m`): the scenes module of app.dylib, plus `include/scenes.h` (exported API).
+- `src/sim/shims/app/scenes/scenes.m` (was `shim.m`): the scenes module of app.dylib, plus `scenes.h` (exported API).
 - `app.m` → `Hello.app` (the workstream's): ../main.m plus logging for didFinishLaunching, willConnect (bounds/scale), the lifecycle
   callbacks and geometry changes, and a heartbeat that shows the main thread keeps running.
 - IDA databases / decompilations used: `~/Developer/SimRun-research/idb-scenes/` (UIKitCore.i64, FrontBoardServices.i64,
