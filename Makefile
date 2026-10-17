@@ -1,7 +1,7 @@
 # SimRun — build everything into build/. Each part's rules are in a fragment next to it (src/sim/sim.mk,
 # src/host/host.mk, tools/tools.mk, tests/tests.mk), sharing mk/common.mk. They are one dependency graph, so a goal
 # builds only what it needs, and -j works across all of it.
-#   make                core components, tools and test programs
+#   make                equivalent to `make core`
 #   make core           SimRun.app (server + launcher, simns, injected xpcservices.dylib and app.dylib, fake
 #                       SimFramebuffer, the same for watchOS) and the simrun CLI
 #   make host           simrund and simrun (build/bin; simrund runs from there too)
@@ -22,7 +22,7 @@ include tests/tests.mk
 
 .DEFAULT_GOAL := all
 .PHONY: all core host sim tools test-apps showcase test-programs tests install clean
-all: core tools test-programs
+all: core
 core: $(APP) $(BIN)/simrun
 host: $(BIN)/simrund $(BIN)/simrun
 sim: $(BIN)/simns $(SIMLIBS) $(WATCHLIBS)
