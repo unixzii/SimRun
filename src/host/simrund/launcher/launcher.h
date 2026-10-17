@@ -2,7 +2,7 @@
 // (appdetail.h), and the app commands in the toolbar.
 #pragma once
 #import <Cocoa/Cocoa.h>
-#import "library.h"
+#import "apps/library.h"
 
 typedef NS_ENUM(NSInteger, SRAppState) {
   SRAppStateStopped,

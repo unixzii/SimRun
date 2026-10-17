@@ -76,7 +76,7 @@ with no record or metadata of containermanagerd's, and containermanagerd deletes
 it scans the folder (a container without metadata is corrupt, `-[MCMContainerClassCache
 _handleUnrecoverableCorruptContainerPath:]`). Every app's data was gone whenever containermanagerd started: an app
 group, an `NSFileCoordinator` (filecoordinationd) or WatchConnectivity's wcd starts it. So `containermanagerd.dylib`
-(src/sim/mcm), which SimRun inserts (SIMNS_DAEMON_INSERT), skips both; it logs each one to SimRun's log.
+(src/sim/shims/containermanagerd), which SimRun inserts (SIMNS_DAEMON_INSERT), skips both; it logs each one to SimRun's log.
 nsurlsessiond does background URLSession transfers (`backgroundSessionConfigurationWithIdentifier:`); without it,
 creating a task fails with NSURLErrorDomain -1 ("remote session is unavailable"). It accepts a client only if it
 can tell its bundle ID: from iOS 27 the code signature's identifier (an Xcode build's ad-hoc signature has it),

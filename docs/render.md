@@ -13,8 +13,8 @@ Measured: 1206x2622 BGRA at about 50–55 fps in steady state (3 s runs give 150
 This is the record of the prototype. Its pieces are gone: gpuhost.m now runs inside SimRun, and `rhost`, `catest`,
 `fakeframes` and `simrun.sh` were removed (they are in the git history), and later what served running without SimRun
 (no simns: the slot-passed services, the CARenderServer name; the in-process frame handler). rshim.m's
-MTLCompilerService launcher is now xpcservices.dylib (`src/sim/xpcservices/`), and starting the render server is
-app.dylib's render module (`src/sim/render/`). Section 6 has where things are now.
+MTLCompilerService launcher is now xpcservices.dylib (`src/sim/shims/xpcservices/`), and starting the render server is
+app.dylib's render module (`src/sim/shims/app/render/`). Section 6 has where things are now.
 
 ## 1. Architecture
 
@@ -245,30 +245,30 @@ which only 27.1 has, so on older runtimes SimRun's processes load every dylib fr
 
 **Sim side.** SimRun injects `xpcservices.dylib:app.dylib` and sets `SIMULATOR_FRAMEBUFFER_FRAMEWORK` to its
 `SimFramebuffer` (architecture.md).
-* app.dylib's render module (`src/sim/render/render.m`) starts the server first thing, before UIKit/BackBoard asks for
+* app.dylib's render module (`src/sim/shims/app/render/render.m`) starts the server first thing, before UIKit/BackBoard asks for
   displays, exactly as backboardd does: `[CAWindowServer serverWithOptions:@{}]`. After this,
   `[CAWindowServer server].displays[0]` is the `CAWindowServerDisplay` ("LCD", the device's screen, displayId 1), and
   `[CADisplay mainDisplay]` works for clients. It then hosts the scene's layers (`CALayerHost`) in a displayable context.
-* The fake SimFramebuffer (`src/sim/simfb/simfb.m`, `include/simfb.h`) sends `SR_MSG_SURFACE` (IOSurface send right, w,
+* The fake SimFramebuffer (`src/sim/simfb/simfb.m`, `simfb.h`) sends `SR_MSG_SURFACE` (IOSurface send right, w,
   h, scale) to the session port (`mach_ports_lookup()[0]`) whenever the presented surface changes, plus `SR_MSG_FRAME`
   per present (`include/protocol.h`), from display buffers it copies each present into. `SimRunFBFrameCount()` is what
   scripts wait on.
 * Display geometry comes from `SIMULATOR_MAINSCREEN_WIDTH/HEIGHT/SCALE/PITCH` (set by SimRun from the device type).
   `SIMFB_REFRESH_CENTIHZ` (default 6000), `SIMFB_DISPLAY_UID`, `SIMFB_VERBOSE=1`.
-* xpcservices.dylib (`src/sim/xpcservices/xpcservices.m`): the MTLCompilerService launcher (4.3).
+* xpcservices.dylib (`src/sim/shims/xpcservices/xpcservices.m`): the MTLCompilerService launcher (4.3).
   `XPCSERVICES_VERBOSE=1`; `XPCSERVICES_DISABLE=1` disables the spawn.
 
-**Host side.** `src/host/gpuhost/gpuhost.m`: `srgpu_host_start(&iosurfacePort, &metalPort)` creates both sim2host
+**Host side.** `src/host/simrund/sim2host/gpuhost.m`: `srgpu_host_start(&iosurfacePort, &metalPort)` creates both sim2host
 listeners in SimRun, and SimRun registers them in each simns (`SIMNS_MSG_REGISTER` `"com.apple.IOSurface.Remote"`,
 `"com.apple.metal.simulator"`, then `SIMNS_MSG_READY` once simns has said `SIMNS_MSG_HELLO`). MTLCompilerService is
 handled inside the sim app, so nothing is needed on the host for it. If simns learns to launch bundled XPC services,
 xpcservices.dylib can go.
 
 ## 7. Files (now)
-* `src/sim/simfb/simfb.m` / `include/simfb.h`: fake SimFramebuffer (sim dylib `SimFramebuffer`) and its viewer sink.
-* `src/sim/xpcservices/xpcservices.m`: the MTLCompilerService spawner and the `xpc_main` replacement.
-* `src/sim/render/render.m`: the in-process render server and scene layer hosting (an app.dylib module).
-* `src/host/gpuhost/gpuhost.m` / `include/gpuhost.h`: host GPU services (IOSurfaceRemoteServer + MTLSimImplementation).
+* `src/sim/simfb/simfb.m` / `simfb.h`: fake SimFramebuffer (sim dylib `SimFramebuffer`) and its viewer sink.
+* `src/sim/shims/xpcservices/xpcservices.m`: the MTLCompilerService spawner and the `xpc_main` replacement.
+* `src/sim/shims/app/render/render.m`: the in-process render server and scene layer hosting (an app.dylib module).
+* `src/host/simrund/sim2host/gpuhost.m` / `gpuhost.h`: host GPU services (IOSurfaceRemoteServer + MTLSimImplementation).
 
 ## 8. Open issues / what's needed for a real UIKit app
 1. **UIApplicationMain still needs BackBoard.** `BKSDisplayServicesStart()` requires `com.apple.backboard.display.services`

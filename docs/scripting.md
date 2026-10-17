@@ -140,7 +140,7 @@ timings to its stderr.
 
 ## How it works
 
-The script module (`src/sim/script/`, in app.dylib) runs in every app. It links only what apps load anyway; JavaScriptCore is loaded on the first
+The script module (`src/sim/shims/app/script/`, in app.dylib) runs in every app. It links only what apps load anyway; JavaScriptCore is loaded on the first
 script and UIKit's accessibility support on the first look at the screen, so an app that is never scripted pays for
 neither.
 
@@ -163,7 +163,7 @@ simrun eval ──unix socket──▶ SimRun ──Mach──▶ the script mod
   printing thousands of lines doesn't stall (3000 lines arrive in order).
 - If the client goes away (Ctrl-C), the script still runs to the end; its output is dropped.
 
-The library is split by concern (`src/sim/script/`): `script.m` (the channel to SimRun), `context.m` (the JSContext,
+The library is split by concern (`src/sim/shims/app/script/`): `script.m` (the channel to SimRun), `context.m` (the JSContext,
 timers, running a script), `ui.m` (touches and keys through the hid module, the frame count, the view dump), `ax.m` (the
 elements: roles, states, visibility, refs, reading order, scrolling into view) and `objcbridge.m`; on top of them the
 API in JS, `js/core.js` (formatting, waiting), `keyboard.js`, `snapshot.js`, `locator.js`, `expect.js` and `app.js`

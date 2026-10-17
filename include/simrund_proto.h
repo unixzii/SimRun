@@ -12,7 +12,7 @@
 //               or RuntimeRoot; default: SimRun's); device: a device type (identifier or name; default: the runtime's);
 //               insert: an extra sim dylib to inject; headless: no window, SimRun never comes forward, the app gets
 //               pasteboards of its own and no file panels (SRSession headless); pick: files and folders its document
-//               pickers choose from, with no panel (filepanel.h). The message carries the client's
+//               pickers choose from, with no panel (docpickerhost.h). The message carries the client's
 //               stdin/stdout/stderr as SCM_RIGHTS, so the app writes straight to the client's terminal.
 //               replies: { pid: int } app started, then { exit: int } app finished (raw wait(2) status); or
 //               { error: string } launch failed. Closing the connection before { exit } terminates the app (this is how

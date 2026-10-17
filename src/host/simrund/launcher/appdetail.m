@@ -1,7 +1,7 @@
 // appdetail.m — see appdetail.h.
 #import "appdetail.h"
-#import "session/environment.h"
-#import "launchoptions.h"
+#import "device/environment.h"
+#import "apps/launchoptions.h"
 #import "tabbar.h"
 
 static NSString *const kDefaultProfile = @"default";   // instancesOfApp:'s key for the default container

@@ -30,7 +30,7 @@ app process
   SecKeyGeneratePair()                                         SimRun.app: Keychain window (keychainwindow.m)
 ```
 
-- **The keychain module** (`src/sim/keychain/keychain.m`, in app.dylib) interposes the four SecItem functions and
+- **The keychain module** (`src/sim/shims/app/keychain/keychain.m`, in app.dylib) interposes the four SecItem functions and
   implements their semantics over the store; securityd is never contacted.
   - Store: `~/Library/Developer/SimRun/data/Library/Keychains/simrun-keychain.plist` — the shared data directory
     (`SIMULATOR_SHARED_RESOURCES_DIRECTORY`, follows `SIMRUN_DATA`), not the app's own container — mode
@@ -63,7 +63,7 @@ app process
   `kSecPublicKeyAttrs`) adds the key from inside Security.framework, a call within one image that interposing can't
   catch. So it is interposed as well: the key is generated without permanence and then added here with the attributes
   meant for each half. `SecKeyGeneratePair` goes the same way.
-- **Keychain window** (`src/host/simrund/services/keychainwindow.m`): one row per item (kind, service/server/label,
+- **Keychain window** (`src/host/simrund/keychain/keychainwindow.m`): one row per item (kind, service/server/label,
   account/tag, password, access group, app, modified) and every attribute of the selected item below. Filter by app,
   service, account or group; double-click a password item to edit its password; ⌫ or the context menu deletes; Show
   in Finder reveals the file. It watches the directory and reloads when apps change the file.

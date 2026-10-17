@@ -75,10 +75,12 @@ $(WEBRTC_STAMP):
 	@rm -rf vendor/dl/WebRTC.xcframework && touch $@
 	@echo "fetched WebRTC $(WEBRTC_VERSION) into $(WEBRTC)"
 
-# simrund.m, then session/ (a running app), launcher/, services/ (the Mac's side of faked system services),
-# inspector/ (the layer debugger) and remote/ (remote control); imports across folders name the folder. It finds
-# WebRTC.framework in the app's Frameworks, or in vendor/ when run as build/bin/simrund.
-SIMRUND_SRC := $(wildcard src/host/simrund/*.m src/host/simrund/*/*.m) src/host/gpuhost/gpuhost.m
+# simrund, one folder per part: server/ (the process: SRServer, its menus and clients), device/ (the simulated iPhone and
+# Apple Watch: runtimes, device types, data containers, pairing), sim2host/ (the Mac-side services each simns publishes
+# to the apps), apps/ (the app library and launch options), session/ (a running app), launcher/, keychain/ (the
+# Keychain window), inspector/ (the layer debugger) and remote/ (remote control); imports across folders name the
+# folder. It finds WebRTC.framework in the app's Frameworks, or in vendor/ when run as build/bin/simrund.
+SIMRUND_SRC := $(wildcard src/host/simrund/*/*.m)
 $(BIN)/simrund: $(SIMRUND_SRC) $(wildcard src/host/simrund/*/*.h) $(HDRS) $(WEBRTC_STAMP) | $(BIN)
 	$(MACCC) -Isrc/host/simrund -Fvendor $(SIMRUND_SRC) -framework Cocoa -framework QuartzCore -framework IOSurface -framework Metal \
 	  -framework UniformTypeIdentifiers -framework ImageIO -framework AVFoundation -framework IOKit -framework Security \
@@ -167,55 +169,65 @@ $(BIN)/hostinput: tools/hostinput.swift | $(BIN)
 	$(MACSWIFT) $< -o $@
 
 # ---------------------------------------------------------------- sim side
-# common/: what the sim libraries share (common.h), compiled into each one that uses it
-COMMON := src/sim/common/common.m
-COMMON_DEPS := $(COMMON) $(wildcard src/sim/common/*.h)
-SIMLIB := $(SIMCC) -Isrc/sim/common
-$(BIN)/simns: src/sim/simns/simns.c $(HDRS) | $(BIN)
+# src/sim: one folder per build target, named after it (simfb builds SimFramebuffer); shims/ groups the dylibs that are
+# inserted into sim processes, its folders following the same rule. common/ is no target: what the sim libraries share
+# (common.h), compiled into each one that uses it.
+SIM := src/sim
+SHIMS := $(SIM)/shims
+COMMON := $(SIM)/common/common.m
+COMMON_DEPS := $(COMMON) $(wildcard $(SIM)/common/*.h)
+SIMLIB := $(SIMCC) -I$(SIM)/common
+
+# simns: the launchd_sim stand-in (docs/simns.md), run by SimRun as `simns --serve`
+$(BIN)/simns: $(SIM)/simns/simns.c $(HDRS) | $(BIN)
 	xcrun -sdk iphonesimulator clang -arch arm64 -mios-simulator-version-min=17.0 -Wall -Wno-deprecated-declarations -Iinclude $< -framework CoreFoundation -o $@
 	@$(SIGN) $@ 2>/dev/null
 
-# xpcservices.dylib: in the app and every helper it spawns, so Foundation only
-$(LIB)/xpcservices.dylib: src/sim/xpcservices/xpcservices.m $(COMMON_DEPS) $(HDRS) | $(LIB)
-	$(SIMLIB) -dynamiclib $< $(COMMON) -framework Foundation -o $@
+# simpair: pairs the iPhone and the Apple Watch (docs/pairing.md); its entitlement goes in __TEXT,__entitlements,
+# where a sim process's entitlements are read from
+$(LIB)/simpair: $(SIM)/simpair/simpair.m $(SIM)/simpair/Entitlements.plist | $(LIB)
+	$(SIMCC) $< -framework Foundation -Wl,-sectcreate,__TEXT,__entitlements,$(SIM)/simpair/Entitlements.plist -o $@
 	@$(SIGN) $@ 2>/dev/null
 
-$(LIB)/SimFramebuffer: src/sim/simfb/simfb.m $(HDRS) | $(LIB)
+# SimFramebuffer: the fake SimFramebuffer.framework (SIMULATOR_FRAMEBUFFER_FRAMEWORK)
+$(LIB)/SimFramebuffer: $(SIM)/simfb/simfb.m $(wildcard $(SIM)/simfb/*.h) $(HDRS) | $(LIB)
 	$(SIMCC) -dynamiclib $< -framework Foundation -framework IOSurface -framework CoreFoundation -framework CoreGraphics -framework Metal \
 	  -install_name @rpath/SimFramebuffer.framework/SimFramebuffer -o $@
 	@$(SIGN) $@ 2>/dev/null
 
-# app.dylib: the modules SimRun puts in the app (src/sim/app/app.h), one folder each; script/'s JS modules (js/*.js)
-# are embedded as C arrays (xxd -i: core.js -> core_js[]). TCC.framework is linked through a stub (tcc/tcc.tbd; not in
-# the SDK); the other private frameworks' symbols (FrontBoardServices, GraphicsServices, BackBoardServices...) are
-# looked up at load.
+# shims/xpcservices: xpcservices.dylib, in the app and every helper it spawns, so Foundation only
+$(LIB)/xpcservices.dylib: $(SHIMS)/xpcservices/xpcservices.m $(COMMON_DEPS) $(HDRS) | $(LIB)
+	$(SIMLIB) -dynamiclib $< $(COMMON) -framework Foundation -o $@
+	@$(SIGN) $@ 2>/dev/null
+
+# shims/app: app.dylib, the modules SimRun puts in the app (app.h), one folder each, which include each other's headers
+# by folder ("hid/hid.h"); script/'s JS modules (js/*.js) are embedded as C arrays (xxd -i: core.js -> core_js[]).
+# TCC.framework is linked through a stub (tcc/tcc.tbd; not in the SDK); the other private frameworks' symbols
+# (FrontBoardServices, GraphicsServices, BackBoardServices...) are looked up at load.
+APP_DIR := $(SHIMS)/app
 APP_MODULES := locale container watch render scenes hid textinput pboard drag docpicker keychain webkit mps script tcc audio motion
-APP_SRC := src/sim/app/app.m $(foreach m,$(APP_MODULES),$(wildcard src/sim/$(m)/*.m))
-SCRIPT_JS := $(wildcard src/sim/script/js/*.js)
+APP_SRC := $(APP_DIR)/app.m $(foreach m,$(APP_MODULES),$(wildcard $(APP_DIR)/$(m)/*.m))
+SCRIPT_JS := $(wildcard $(APP_DIR)/script/js/*.js)
 $(BUILD)/gen/script_js.h: $(SCRIPT_JS)
 	@mkdir -p $(@D)
-	@(cd src/sim/script/js && for f in *.js; do xxd -i $$f; done) > $@.tmp && mv $@.tmp $@
-APP_HDRS := $(foreach m,app $(APP_MODULES),$(wildcard src/sim/$(m)/*.h))
-$(LIB)/app.dylib: $(APP_SRC) $(APP_HDRS) src/sim/tcc/tcc.tbd $(BUILD)/gen/script_js.h $(COMMON_DEPS) $(HDRS) | $(LIB)
-	$(SIMLIB) -Isrc/sim/app -Isrc/sim/tcc -I$(BUILD)/gen -dynamiclib $(APP_SRC) $(COMMON) src/sim/tcc/tcc.tbd -framework Foundation \
+	@(cd $(APP_DIR)/script/js && for f in *.js; do xxd -i $$f; done) > $@.tmp && mv $@.tmp $@
+APP_HDRS := $(wildcard $(APP_DIR)/*.h) $(foreach m,$(APP_MODULES),$(wildcard $(APP_DIR)/$(m)/*.h))
+$(LIB)/app.dylib: $(APP_SRC) $(APP_HDRS) $(APP_DIR)/tcc/tcc.tbd $(BUILD)/gen/script_js.h $(COMMON_DEPS) $(HDRS) | $(LIB)
+	$(SIMLIB) -I$(APP_DIR) -I$(BUILD)/gen -dynamiclib $(APP_SRC) $(COMMON) $(APP_DIR)/tcc/tcc.tbd -framework Foundation \
 	  -framework UIKit -framework QuartzCore -framework CoreGraphics -framework IOKit -framework UniformTypeIdentifiers \
 	  -framework Security -framework Metal -framework AudioToolbox -framework CoreAudio \
 	  -Wl,-undefined,dynamic_lookup -Wl,-w -o $@
 	@$(SIGN) $@ 2>/dev/null
 
-# simpair: pairs the iPhone and the Apple Watch (docs/pairing.md); its entitlement goes in __TEXT,__entitlements,
-# where a sim process's entitlements are read from
-$(LIB)/simpair: src/sim/pair/pair.m src/sim/pair/Entitlements.plist | $(LIB)
-	$(SIMCC) $< -framework Foundation -Wl,-sectcreate,__TEXT,__entitlements,src/sim/pair/Entitlements.plist -o $@
-	@$(SIGN) $@ 2>/dev/null
-
-# wcd.dylib: in wcd, the WatchConnectivity daemon, what it would ask LaunchServices, AppConduit and Carousel
-$(LIB)/wcd.dylib: src/sim/wcd/wcd.m | $(LIB)
+# shims/wcd: wcd.dylib, in wcd, the WatchConnectivity daemon (SIMNS_DAEMON_INSERT), what it would ask LaunchServices,
+# AppConduit and Carousel
+$(LIB)/wcd.dylib: $(SHIMS)/wcd/wcd.m | $(LIB)
 	$(SIMCC) -dynamiclib $< -framework Foundation -o $@
 	@$(SIGN) $@ 2>/dev/null
 
-# containermanagerd.dylib: in containermanagerd, which would delete apps' data containers as orphans when it starts
-$(LIB)/containermanagerd.dylib: src/sim/mcm/mcm.m | $(LIB)
+# shims/containermanagerd: containermanagerd.dylib, in containermanagerd (SIMNS_DAEMON_INSERT), which would delete
+# apps' data containers as orphans when it starts
+$(LIB)/containermanagerd.dylib: $(SHIMS)/containermanagerd/containermanagerd.m | $(LIB)
 	$(SIMCC) -dynamiclib $< -framework Foundation -o $@
 	@$(SIGN) $@ 2>/dev/null
 

@@ -1,6 +1,6 @@
 # textinput/ — the app's input method
 
-**Status: working.** app.dylib's textinput module (`src/sim/textinput/textinput.m`) puts text into the focused text
+**Status: working.** app.dylib's textinput module (`src/sim/shims/app/textinput/textinput.m`) puts text into the focused text
 input the way the system keyboard does. `simrun eval`'s `fill` and `type` go through it, and so does what the Mac's
 input methods type in the SimRun window: Pinyin, Japanese and the other input methods with their marked text and
 candidate window, dead keys, and any keyboard layout.

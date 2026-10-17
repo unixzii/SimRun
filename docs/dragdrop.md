@@ -43,7 +43,7 @@ can't run under SimRun.
 
 ## SimRun's version
 
-- **The drag module** (`src/sim/drag/drag.m`, in app.dylib) checks in both druid names in the app's simns
+- **The drag module** (`src/sim/shims/app/drag/drag.m`, in app.dylib) checks in both druid names in the app's simns
   namespace and implements the server side of the protocols for drags that stay in the app. NSXPC interfaces must match
   the client's (proxy arguments, allowed classes), so it uses the `remoteObjectInterface` of a throwaway
   `_UIDruidSourceConnection` / `_UIDruidDestinationConnection`.

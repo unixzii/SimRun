@@ -49,7 +49,7 @@ app process (app.dylib: webkit)                                   appex process 
   makeLibXPCConnectionError: -> connection from the listener port
 ```
 
-- **The webkit module** (`src/sim/webkit/webkit.m`, in app.dylib) runs in every app. Once BrowserEngineKit is loaded (a dyld
+- **The webkit module** (`src/sim/shims/app/webkit/webkit.m`, in app.dylib) runs in every app. Once BrowserEngineKit is loaded (a dyld
   add-image callback, because WebKit is often loaded lazily), it replaces the six `+[BE*Process …]` launchers.
   - A launch runs on a background queue. It finds the appex by its Info.plist `CFBundleIdentifier`, registers a
     handshake port under a unique name in the app's namespace, spawns the executable and waits up to 30 s for the
