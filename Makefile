@@ -21,7 +21,7 @@ include tools/tools.mk
 include tests/tests.mk
 
 .DEFAULT_GOAL := all
-.PHONY: all core host sim tools test-apps showcase test-programs tests install clean $(APP)
+.PHONY: all core host sim tools test-apps showcase test-programs tests install clean
 all: core tools test-programs
 core: $(APP) $(BIN)/simrun
 host: $(BIN)/simrund $(BIN)/simrun

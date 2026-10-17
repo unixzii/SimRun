@@ -53,7 +53,8 @@ $(ICON)/Assets.car: $(ICON_INPUTS)
 	  --output-partial-info-plist $(ICON)/partial.plist >/dev/null
 
 # SimRun.app: the server/launcher executable, the simrun helper, simns, the sim-side libraries, the agent skill, the
-# remote-control page and WebRTC.framework (mk/bundle.sh assembles and signs it).
+# remote-control page and WebRTC.framework (mk/bundle.sh assembles and signs it). Made again only when one of those
+# changed: the bundle's time is when it was last made.
 APP := $(BUILD)/SimRun.app
 SKILL_FILES := $(shell find skills -type f ! -name .DS_Store)
 $(APP): resources/Info.plist resources/remote.html $(ICON)/Assets.car $(BIN)/simrund $(BIN)/simrun $(BIN)/simns $(SIMLIBS) \
@@ -66,6 +67,7 @@ $(APP): resources/Info.plist resources/remote.html $(ICON)/Assets.car $(BIN)/sim
 	  $(foreach f,$(BIN)/simns $(SIMLIBS),Contents/Resources/lib/=$(f)) \
 	  $(foreach f,$(WATCHLIBS),Contents/Resources/lib/watchos/=$(f)) \
 	  Contents/Frameworks/=$(BUILD)/WebRTC.framework
+	@touch $@
 	@echo "built $@"
 
 # simrun: the command line, a client of the server's socket (include/simrund_proto.h)
