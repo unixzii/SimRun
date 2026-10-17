@@ -8,6 +8,7 @@
 #   make sim            the sim side, for the iOS and watchOS Simulators (build/bin/simns, build/lib)
 #   make tools          tools for working on SimRun (build/bin)
 #   make test-apps      sample/test apps (build/apps)
+#   make showcase       just the Showcase app and its Watch app (build/apps/Showcase.app)
 #   make test-programs  test programs (build/tests)
 #   make tests          test apps and test programs
 #   make install        install build/SimRun.app into /Applications
@@ -20,13 +21,14 @@ include tools/tools.mk
 include tests/tests.mk
 
 .DEFAULT_GOAL := all
-.PHONY: all core host sim tools test-apps test-programs tests install clean $(APP)
+.PHONY: all core host sim tools test-apps showcase test-programs tests install clean $(APP)
 all: core tools test-programs
 core: $(APP) $(BIN)/simrun
 host: $(BIN)/simrund $(BIN)/simrun
 sim: $(BIN)/simns $(SIMLIBS) $(WATCHLIBS)
 tools: $(TOOLS)
 test-apps: $(TEST_APPS)
+showcase: $(APPS)/Showcase.app
 test-programs: $(TEST_PROGS)
 tests: test-apps test-programs
 

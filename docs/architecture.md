@@ -205,16 +205,20 @@ and `simrun screenshot` take `--profile` to pick one of an app's instances.
 | `resources/` | SimRun.app's Info.plist and app icon (`AppIcon.icon`, an Icon Composer document) |
 | `src/sim/` | Simulator side, one folder per build target: `simns/` (launchd_sim stand-in), `simpair/` (pairs the iPhone and the watch), `simfb/` (SimFramebuffer), and `shims/`, the dylibs inserted into sim processes, again one folder each: `xpcservices/` (xpcservices.dylib), `app/` (app.dylib: its start and module list, and a folder per module: `locale/`, `container/`, `watch/`, `render/`, `scenes/`, `hid/`, `textinput/`, `pboard/`, `drag/`, `docpicker/`, `keychain/`, `webkit/`, `mps/`, `script/`, `tcc/`, `audio/`, `motion/`), `wcd/` (wcd.dylib, in the WatchConnectivity daemon), `containermanagerd/` (containermanagerd.dylib, which keeps containermanagerd from deleting apps' data containers); `common/` is no target: what the libraries share (the process's role, SimRun's services, spawning helpers), compiled into each; built into `lib/`, and again marked for the watchOS Simulator into `lib/watchos/` |
 | `tools/` | `hostinput.swift` (synthesize Mac clicks/typing into the viewer), `crash.py` (crash-report backtrace) |
-| `tests/` | Test apps (`hello` UIKit, `swiftui`, `hidtest`, `dragtest`, `webtest` WKWebView, `bgdownload` background URLSession, `pickertest` document pickers, `glass` Liquid Glass, `showcase` a SwiftUI tour of everything that works, with its Watch app (its own Makefile), `audioplayer` a music player for trying sound, `watchtest` a watchOS app, `wcphone` and `wcwatch` WatchConnectivity between them) and programs (`net/nettest`, `net/nwtest`, `pboard/pbtest`, `keychain/kctest`, `locale/loctest`, `mps/mpstest`, `audio/audiotest` playing and recording, `motion/motiontest` CoreMotion's streams), and scripts for `simrun eval` (`scripts/`) |
+| `tests/` | Test apps (`hello` UIKit, `swiftui`, `hidtest`, `dragtest`, `webtest` WKWebView, `bgdownload` background URLSession, `pickertest` document pickers, `glass` Liquid Glass, `showcase` a SwiftUI tour of everything that works, with its Watch app, `audioplayer` a music player for trying sound, `watchtest` a watchOS app, `wcphone` and `wcwatch` WatchConnectivity between them) and programs (`net/nettest`, `net/nwtest`, `pboard/pbtest`, `keychain/kctest`, `locale/loctest`, `mps/mpstest`, `audio/audiotest` playing and recording, `motion/motiontest` CoreMotion's streams), and scripts for `simrun eval` (`scripts/`) |
 | `skills/` | The agent skill (`simrun/`: SKILL.md and an API reference) that SimRun.app carries in `Contents/Resources/skills/` and `simrun skill` prints or installs |
 | `docs/` | These write-ups |
 
 ## Building
 
-Everything builds into `build/` (`SimRun.app`, `bin/`, `lib/`, `apps/`, `tests/`). `make` builds SimRun.app, the
-`simrun` command line (`build/bin/simrun`), the tools and the test programs; `make core` only SimRun.app and `simrun`, `make tools` the tools,
-`make test-apps` the test apps (`build/apps/`), `make test-programs` the test programs (`build/tests/`), and
-`make tests` both. Rebuilding while SimRun
+Everything builds into `build/` (`SimRun.app`, `bin/`, `lib/`, `apps/`, `tests/`, and the objects in `obj/`). `make`
+builds SimRun.app, the `simrun` command line (`build/bin/simrun`), the tools and the test programs; `make core` only
+SimRun.app and `simrun`, `make host` simrund and `simrun`, `make sim` the sim side, `make tools` the tools,
+`make test-apps` the test apps (`build/apps/`; `make showcase` only Showcase), `make test-programs` the test programs
+(`build/tests/`), and `make tests` both. The Makefile has the goals; each part's rules are in a fragment next to it
+(`src/sim/sim.mk`, `src/host/host.mk`, `tools/tools.mk`, `tests/tests.mk`) sharing `mk/common.mk`, with the build's
+scripts beside it in `mk/`. They make one dependency graph: each source of SimRun's own products is compiled to its own object, with the
+headers it read noted, so a change rebuilds only what it touches, and `-j` works across all of it. Rebuilding while SimRun
 is open is safe (the bundle is assembled in a staging directory and swapped in with a rename); quit and reopen SimRun
 (or `simrun stop`) to pick up the new build. Until then the old SimRun gets no open or save panels
 ([docpicker.md](docpicker.md#not-supported)).
