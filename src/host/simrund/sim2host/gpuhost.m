@@ -32,18 +32,26 @@ int srgpu_host_start(mach_port_t *ios_port, mach_port_t *mtl_port) {
   NSMutableDictionary *opts = [NSMutableDictionary dictionary];
   if (getenv("GPUHOST_VERBOSE")) {
     extern NSString *IOSurfaceRemoteServerOptionDebugLogBlock, *IOSurfaceRemoteServerOptionDebugLogQueue;
-    opts[IOSurfaceRemoteServerOptionDebugLogBlock] = ^(id msg) { fprintf(stderr, "[iosurface-server] %s\n", [[msg description] UTF8String]); };
+    opts[IOSurfaceRemoteServerOptionDebugLogBlock] = ^(id msg) {
+      fprintf(stderr, "[iosurface-server] %s\n", [[msg description] UTF8String]);
+    };
     opts[IOSurfaceRemoteServerOptionDebugLogQueue] = q;
   }
   gIOSServer = [[NSClassFromString(@"IOSurfaceRemoteServer") alloc] initWithListener:gIOSListener options:opts];
-  if (!gIOSServer) { fprintf(stderr, "[gpuhost] IOSurfaceRemoteServer init failed\n"); return -1; }
+  if (!gIOSServer) {
+    fprintf(stderr, "[gpuhost] IOSurfaceRemoteServer init failed\n");
+    return -1;
+  }
   *ios_port = listener_port(gIOSListener);
 
   // 2. Metal (what SimMetalHost.xpc does): dlopen host MTLSimImplementation, init_with_xpc_connection(listener, registryID, 0)
   void *h = dlopen("/System/Library/PrivateFrameworks/MTLSimImplementation.framework/MTLSimImplementation", RTLD_NOW);
   int (*init)(xpc_connection_t, uint64_t, uint64_t) = h ? dlsym(h, "init_with_xpc_connection") : NULL;
   id<MTLDevice> dev = MTLCreateSystemDefaultDevice();
-  if (!init || !dev) { fprintf(stderr, "[gpuhost] MTLSimImplementation unavailable: %s\n", dlerror()); return -2; }
+  if (!init || !dev) {
+    fprintf(stderr, "[gpuhost] MTLSimImplementation unavailable: %s\n", dlerror());
+    return -2;
+  }
   gMTLListener = xpc_connection_create(NULL, dispatch_get_main_queue());
   xpc_connection_enable_sim2host_4sim(gMTLListener);
   init(gMTLListener, dev.registryID, 0);

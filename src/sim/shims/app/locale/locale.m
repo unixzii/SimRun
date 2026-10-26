@@ -15,19 +15,26 @@ static int gVerbose;
 void SRLocaleStart(void) {
   gVerbose = getenv("LOCALE_VERBOSE") != NULL;
   const char *json = getenv("SIMRUN_HOST_INTL");
-  if (!json) return;
+  if (!json)
+    return;
   NSDictionary *host = [NSJSONSerialization JSONObjectWithData:[NSData dataWithBytesNoCopy:(void *)json length:strlen(json) freeWhenDone:NO]
                                                        options:0 error:NULL];
-  if (![host isKindOfClass:NSDictionary.class]) return;
+  if (![host isKindOfClass:NSDictionary.class])
+    return;
   NSDictionary *cur = CFBridgingRelease(CFPreferencesCopyMultiple((__bridge CFArrayRef)host.allKeys, kCFPreferencesAnyApplication,
                                                                   kCFPreferencesCurrentUser, kCFPreferencesAnyHost));
   NSMutableDictionary *set = [NSMutableDictionary dictionary];
   NSMutableArray *remove = [NSMutableArray array];
   [host enumerateKeysAndObjectsUsingBlock:^(NSString *k, id v, BOOL *stop) {
-    if (v == NSNull.null) { if (cur[k]) [remove addObject:k]; }
-    else if (![cur[k] isEqual:v]) set[k] = v;
+    if (v == NSNull.null) {
+      if (cur[k])
+        [remove addObject:k];
+    }
+    else if (![cur[k] isEqual:v])
+      set[k] = v;
   }];
-  if (!set.count && !remove.count) return;
+  if (!set.count && !remove.count)
+    return;
   CFPreferencesSetMultiple((__bridge CFDictionaryRef)set, (__bridge CFArrayRef)remove, kCFPreferencesAnyApplication,
                            kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
   CFPreferencesSynchronize(kCFPreferencesAnyApplication, kCFPreferencesCurrentUser, kCFPreferencesAnyHost);

@@ -31,11 +31,17 @@ struct DemoPage<Content: View>: View {
     Group {
       if scrolls {
         ScrollView {
-          VStack(spacing: 16) { header; content }.padding(.horizontal, 16).padding(.bottom, 32)
+          VStack(spacing: 16) {
+            header
+            content
+          }.padding(.horizontal, 16).padding(.bottom, 32)
         }
         .scrollDismissesKeyboard(.interactively)
       } else {
-        VStack(spacing: 16) { header; content }.padding(.horizontal, 16).padding(.bottom, 12)
+        VStack(spacing: 16) {
+          header
+          content
+        }.padding(.horizontal, 16).padding(.bottom, 12)
       }
     }
     .background(alignment: .top) {
@@ -75,7 +81,9 @@ struct Panel<Content: View>: View {
     VStack(alignment: .leading, spacing: 12) {
       if let title {
         HStack(spacing: 6) {
-          if let symbol { Image(systemName: symbol).foregroundStyle(.secondary) }
+          if let symbol {
+            Image(systemName: symbol).foregroundStyle(.secondary)
+          }
           Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary).textCase(.uppercase)
           Spacer()
           trailing
@@ -150,11 +158,15 @@ struct Toast: ViewModifier {
   }
 }
 extension View {
-  func toast(_ message: Binding<String?>) -> some View { modifier(Toast(message: message)) }
+  func toast(_ message: Binding<String?>) -> some View {
+    modifier(Toast(message: message))
+  }
 }
 
 extension Data {
   var hex: String { map { String(format: "%02x", $0) }.joined() }
 }
 
-func byteString(_ n: Int) -> String { ByteCountFormatter.string(fromByteCount: Int64(n), countStyle: .file) }
+func byteString(_ n: Int) -> String {
+  ByteCountFormatter.string(fromByteCount: Int64(n), countStyle: .file)
+}

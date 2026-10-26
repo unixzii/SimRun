@@ -4,7 +4,9 @@ import SwiftUI
 import WebKit
 
 struct WebDemo: View {
-  enum Source: String, CaseIterable { case local = "Local Page", web = "Web" }
+  enum Source: String, CaseIterable {
+    case local = "Local Page", web = "Web"
+  }
   @State private var source = Source.local
   @State private var address = "https://www.apple.com"
   @State private var loaded: URL?
@@ -24,7 +26,9 @@ struct WebDemo: View {
           TextField("Address", text: $address)
             .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
             .onSubmit(go)
-          if model.loading { ProgressView().controlSize(.small) }
+          if model.loading {
+            ProgressView().controlSize(.small)
+          }
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
         .glassEffect(.regular.interactive(), in: .capsule)
@@ -45,16 +49,24 @@ struct WebDemo: View {
         StatusBadge(text: model.title.isEmpty ? "Loading…" : model.title, symbol: "doc.richtext", color: Feature.web.tint)
           .lineLimit(1)
         Spacer()
-        if let t = model.loadTime { Text(String(format: "%.2f s", t)).font(.caption.monospacedDigit()).foregroundStyle(.secondary) }
+        if let t = model.loadTime {
+          Text(String(format: "%.2f s", t)).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+        }
       }
     }
     .toast($toast)
-    .onAppear { if loaded == nil { loaded = URL(string: address) } }
+    .onAppear {
+      if loaded == nil {
+        loaded = URL(string: address)
+      }
+    }
   }
 
   private func go() {
     var s = address.trimmingCharacters(in: .whitespaces)
-    if !s.contains("://") { s = "https://" + s }
+    if !s.contains("://") {
+      s = "https://" + s
+    }
     address = s
     loaded = URL(string: s)
   }
@@ -74,7 +86,9 @@ private struct WebViewHost: UIViewRepresentable {
   let url: URL?
   let onMessage: (String) -> Void
 
-  func makeCoordinator() -> Coordinator { Coordinator(model: model) }
+  func makeCoordinator() -> Coordinator {
+    Coordinator(model: model)
+  }
 
   func makeUIView(context: Context) -> WKWebView {
     let config = WKWebViewConfiguration()
@@ -91,10 +105,12 @@ private struct WebViewHost: UIViewRepresentable {
     let c = context.coordinator
     c.onMessage = onMessage
     if let html, c.shown != "local" {
-      c.shown = "local"; c.start = CACurrentMediaTime()
+      c.shown = "local"
+      c.start = CACurrentMediaTime()
       w.loadHTMLString(html, baseURL: nil)
     } else if let url, c.shown != url.absoluteString {
-      c.shown = url.absoluteString; c.start = CACurrentMediaTime()
+      c.shown = url.absoluteString
+      c.start = CACurrentMediaTime()
       w.load(URLRequest(url: url))
     }
   }
@@ -105,7 +121,9 @@ private struct WebViewHost: UIViewRepresentable {
     var start = 0.0
     var onMessage: ((String) -> Void)?
     private var observations: [NSKeyValueObservation] = []
-    init(model: WebModel) { self.model = model }
+    init(model: WebModel) {
+      self.model = model
+    }
 
     func observe(_ w: WKWebView) {
       observations = [
@@ -115,9 +133,15 @@ private struct WebViewHost: UIViewRepresentable {
         w.observe(\.hasOnlySecureContent) { [model] w, _ in DispatchQueue.main.async { model.secure = w.hasOnlySecureContent && w.url?.scheme == "https" } },
       ]
     }
-    func webView(_ w: WKWebView, didStartProvisionalNavigation n: WKNavigation!) { model.loadTime = nil }
-    func webView(_ w: WKWebView, didFinish n: WKNavigation!) { model.loadTime = CACurrentMediaTime() - start }
-    func webView(_ w: WKWebView, didFailProvisionalNavigation n: WKNavigation!, withError e: Error) { model.title = e.localizedDescription }
+    func webView(_ w: WKWebView, didStartProvisionalNavigation n: WKNavigation!) {
+      model.loadTime = nil
+    }
+    func webView(_ w: WKWebView, didFinish n: WKNavigation!) {
+      model.loadTime = CACurrentMediaTime() - start
+    }
+    func webView(_ w: WKWebView, didFailProvisionalNavigation n: WKNavigation!, withError e: Error) {
+      model.title = e.localizedDescription
+    }
     func userContentController(_ c: WKUserContentController, didReceive m: WKScriptMessage) {
       onMessage?("From JavaScript: \(m.body)")
     }
@@ -151,22 +175,47 @@ private enum LocalPage {
   <script>
     document.getElementById('ua').textContent = navigator.userAgent;
     let n = 0;
-    function ping() { n++; document.getElementById('clicks').textContent = n + '×';
-      window.webkit.messageHandlers.native.postMessage('button pressed ' + n + (n == 1 ? ' time' : ' times')); }
-    const c = document.getElementById('c'), g = c.getContext('2d'); let W, H, P = [], pointer = null;
-    function size() { W = c.width = innerWidth * devicePixelRatio; H = c.height = innerHeight * devicePixelRatio; }
-    size(); addEventListener('resize', size);
-    for (let i = 0; i < 140; i++) P.push({ x: Math.random(), y: Math.random(), vx: 0, vy: 0, h: Math.random() * 360 });
-    const move = e => { const t = e.touches ? e.touches[0] : e; pointer = { x: t.clientX / innerWidth, y: t.clientY / innerHeight }; };
-    addEventListener('touchmove', move); addEventListener('touchstart', move); addEventListener('touchend', () => pointer = null);
+    function ping() {
+      n++;
+      document.getElementById('clicks').textContent = n + '×';
+      window.webkit.messageHandlers.native.postMessage('button pressed ' + n + (n == 1 ? ' time' : ' times'));
+    }
+    const c = document.getElementById('c'), g = c.getContext('2d');
+    let W, H, P = [], pointer = null;
+    function size() {
+      W = c.width = innerWidth * devicePixelRatio;
+      H = c.height = innerHeight * devicePixelRatio;
+    }
+    size();
+    addEventListener('resize', size);
+    for (let i = 0; i < 140; i++)
+      P.push({ x: Math.random(), y: Math.random(), vx: 0, vy: 0, h: Math.random() * 360 });
+    const move = e => {
+      const t = e.touches ? e.touches[0] : e;
+      pointer = { x: t.clientX / innerWidth, y: t.clientY / innerHeight };
+    };
+    addEventListener('touchmove', move);
+    addEventListener('touchstart', move);
+    addEventListener('touchend', () => pointer = null);
     function frame(ts) {
-      g.fillStyle = 'rgba(11,16,32,.25)'; g.fillRect(0, 0, W, H);
+      g.fillStyle = 'rgba(11,16,32,.25)';
+      g.fillRect(0, 0, W, H);
       for (const p of P) {
-        p.vx += (Math.sin(ts / 2000 + p.y * 6) * .00004); p.vy += (Math.cos(ts / 2400 + p.x * 6) * .00004);
-        if (pointer) { const dx = pointer.x - p.x, dy = pointer.y - p.y, d = Math.hypot(dx, dy) + .02; p.vx += dx / d * .0004; p.vy += dy / d * .0004; }
-        p.vx *= .97; p.vy *= .97; p.x = (p.x + p.vx + 1) % 1; p.y = (p.y + p.vy + 1) % 1;
-        g.beginPath(); g.fillStyle = `hsla(${(p.h + ts / 40) % 360},90%,65%,.9)`;
-        g.arc(p.x * W, p.y * H, 2.2 * devicePixelRatio, 0, 7); g.fill();
+        p.vx += (Math.sin(ts / 2000 + p.y * 6) * .00004);
+        p.vy += (Math.cos(ts / 2400 + p.x * 6) * .00004);
+        if (pointer) {
+          const dx = pointer.x - p.x, dy = pointer.y - p.y, d = Math.hypot(dx, dy) + .02;
+          p.vx += dx / d * .0004;
+          p.vy += dy / d * .0004;
+        }
+        p.vx *= .97;
+        p.vy *= .97;
+        p.x = (p.x + p.vx + 1) % 1;
+        p.y = (p.y + p.vy + 1) % 1;
+        g.beginPath();
+        g.fillStyle = `hsla(${(p.h + ts / 40) % 360},90%,65%,.9)`;
+        g.arc(p.x * W, p.y * H, 2.2 * devicePixelRatio, 0, 7);
+        g.fill();
       }
       requestAnimationFrame(frame);
     }

@@ -64,7 +64,9 @@ struct DevicePage: View {
       }
       LabeledContent("System") { Text("\(device.systemName) \(device.systemVersion)") }
       LabeledContent("Screen") { Text("\(Int(device.screenBounds.width))×\(Int(device.screenBounds.height)) @\(Int(device.screenScale))x") }
-      if let model = env["SIMULATOR_MODEL_IDENTIFIER"] { LabeledContent("Model") { Text(model).font(.footnote.monospaced()) } }
+      if let model = env["SIMULATOR_MODEL_IDENTIFIER"] {
+        LabeledContent("Model") { Text(model).font(.footnote.monospaced()) }
+      }
       LabeledContent("Wrist") { Text(device.wristLocation == .left ? "Left" : "Right") }
       LabeledContent("Process") { Text("pid \(ProcessInfo.processInfo.processIdentifier)").monospacedDigit() }
     }

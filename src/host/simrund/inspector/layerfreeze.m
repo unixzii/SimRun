@@ -6,7 +6,9 @@ static NSString *const kWhenKey = @"LayerFreezeWhen", *const kUpdatesKey = @"Lay
 // The rounded, lightly filled group the rows sit in.
 static NSBox *Group(void) {
   NSBox *b = [NSBox new];
-  b.boxType = NSBoxCustom; b.borderWidth = 0; b.cornerRadius = 10;
+  b.boxType = NSBoxCustom;
+  b.borderWidth = 0;
+  b.cornerRadius = 10;
   b.fillColor = NSColor.quaternarySystemFillColor;
   b.contentViewMargins = NSZeroSize;
   return b;
@@ -26,37 +28,60 @@ static NSTextField *Label(NSString *s) {
 - (void)loadView {
   NSView *v = [NSView new];
   NSTextField *title = [NSTextField labelWithString:@"Freeze Options"];
-  title.font = [NSFont systemFontOfSize:13 weight:NSFontWeightSemibold]; title.textColor = NSColor.secondaryLabelColor;
+  title.font = [NSFont systemFontOfSize:13 weight:NSFontWeightSemibold];
+  title.textColor = NSColor.secondaryLabelColor;
 
   _when = [NSPopUpButton new];
   [_when addItemsWithTitles:@[ @"Now", @"After Updates", @"After Time" ]];
   _when.bordered = NO;
-  _when.target = self; _when.action = @selector(whenChanged:);
+  _when.target = self;
+  _when.action = @selector(whenChanged:);
   _countLabel = Label(@"Updates");
   _count = [NSTextField textFieldWithString:@""];
-  _count.bordered = NO; _count.drawsBackground = NO; _count.alignment = NSTextAlignmentRight;
+  _count.bordered = NO;
+  _count.drawsBackground = NO;
+  _count.alignment = NSTextAlignmentRight;
   _count.font = [NSFont monospacedDigitSystemFontOfSize:13 weight:NSFontWeightRegular];
   NSNumberFormatter *nf = [NSNumberFormatter new];
-  nf.numberStyle = NSNumberFormatterDecimalStyle; nf.minimum = @1; nf.maximum = @9999; nf.maximumFractionDigits = 0; nf.usesGroupingSeparator = NO;
+  nf.numberStyle = NSNumberFormatterDecimalStyle;
+  nf.minimum = @1;
+  nf.maximum = @9999;
+  nf.maximumFractionDigits = 0;
+  nf.usesGroupingSeparator = NO;
   _count.formatter = nf;
-  _count.target = self; _count.action = @selector(countChanged:);
+  _count.target = self;
+  _count.action = @selector(countChanged:);
   _stepper = [NSStepper new];
-  _stepper.minValue = 1; _stepper.maxValue = 9999; _stepper.increment = 1; _stepper.valueWraps = NO;
-  _stepper.target = self; _stepper.action = @selector(stepped:);
+  _stepper.minValue = 1;
+  _stepper.maxValue = 9999;
+  _stepper.increment = 1;
+  _stepper.valueWraps = NO;
+  _stepper.target = self;
+  _stepper.action = @selector(stepped:);
 
   NSBox *group = Group();
-  NSBox *rowLine = [NSBox new]; rowLine.boxType = NSBoxSeparator;
+  NSBox *rowLine = [NSBox new];
+  rowLine.boxType = NSBoxSeparator;
   NSTextField *whenLabel = Label(@"Freeze");
   NSView *in = group.contentView;
-  for (NSView *x in @[ whenLabel, _when, rowLine, _countLabel, _count, _stepper ]) { x.translatesAutoresizingMaskIntoConstraints = NO; [in addSubview:x]; }
+  for (NSView *x in @[ whenLabel, _when, rowLine, _countLabel, _count, _stepper ]) {
+    x.translatesAutoresizingMaskIntoConstraints = NO;
+    [in addSubview:x];
+  }
 
-  NSBox *footLine = [NSBox new]; footLine.boxType = NSBoxSeparator;
+  NSBox *footLine = [NSBox new];
+  footLine.boxType = NSBoxSeparator;
   _about = [NSTextField wrappingLabelWithString:@""];
-  _about.font = [NSFont systemFontOfSize:12]; _about.textColor = NSColor.secondaryLabelColor;
+  _about.font = [NSFont systemFontOfSize:12];
+  _about.textColor = NSColor.secondaryLabelColor;
   _about.preferredMaxLayoutWidth = 300;
   NSButton *freeze = [NSButton buttonWithTitle:@"Freeze" target:self action:@selector(freeze:)];
-  freeze.controlSize = NSControlSizeLarge; freeze.keyEquivalent = @"\r";
-  for (NSView *x in @[ title, group, footLine, _about, freeze ]) { x.translatesAutoresizingMaskIntoConstraints = NO; [v addSubview:x]; }
+  freeze.controlSize = NSControlSizeLarge;
+  freeze.keyEquivalent = @"\r";
+  for (NSView *x in @[ title, group, footLine, _about, freeze ]) {
+    x.translatesAutoresizingMaskIntoConstraints = NO;
+    [v addSubview:x];
+  }
 
   const CGFloat m = 20, rowH = 44;
   [NSLayoutConstraint activateConstraints:@[
@@ -101,8 +126,12 @@ static NSTextField *Label(NSString *s) {
   [self show];
 }
 
-- (SRFreezeWhen)selectedWhen { return (SRFreezeWhen)_when.indexOfSelectedItem; }
-- (NSString *)countKey { return self.selectedWhen == SRFreezeAfterSeconds ? kSecondsKey : kUpdatesKey; }
+- (SRFreezeWhen)selectedWhen {
+  return (SRFreezeWhen)_when.indexOfSelectedItem;
+}
+- (NSString *)countKey {
+  return self.selectedWhen == SRFreezeAfterSeconds ? kSecondsKey : kUpdatesKey;
+}
 - (NSInteger)savedCount {
   NSInteger n = [NSUserDefaults.standardUserDefaults integerForKey:self.countKey];
   return n > 0 ? n : (self.selectedWhen == SRFreezeAfterSeconds ? 3 : 1);
@@ -113,14 +142,18 @@ static NSTextField *Label(NSString *s) {
   SRFreezeWhen when = self.selectedWhen;
   NSInteger n = self.savedCount;
   BOOL counts = when != SRFreezeNow;
-  _count.integerValue = n; _stepper.integerValue = n;
+  _count.integerValue = n;
+  _stepper.integerValue = n;
   _countLabel.stringValue = when == SRFreezeAfterSeconds ? @"Seconds" : @"Updates";
-  _count.enabled = counts; _stepper.enabled = counts;
+  _count.enabled = counts;
+  _stepper.enabled = counts;
   _countLabel.textColor = counts ? NSColor.labelColor : NSColor.tertiaryLabelColor;
   _count.textColor = counts ? NSColor.labelColor : NSColor.tertiaryLabelColor;
   NSString *what;
   switch (when) {
-    case SRFreezeNow: what = @"The layers will freeze as they are now."; break;
+    case SRFreezeNow:
+      what = @"The layers will freeze as they are now.";
+      break;
     case SRFreezeAfterUpdates:
       what = n == 1 ? @"The layers will freeze after the app's next update (a commit that changes them)."
                     : [NSString stringWithFormat:@"The layers will freeze after the app's next %ld updates (commits that change them).", (long)n];
@@ -141,12 +174,18 @@ static NSTextField *Label(NSString *s) {
   [NSUserDefaults.standardUserDefaults setInteger:n forKey:self.countKey];
   [self show];
 }
-- (void)countChanged:(NSTextField *)f { [self setCount:f.integerValue]; }
-- (void)stepped:(NSStepper *)s { [self setCount:s.integerValue]; }
+- (void)countChanged:(NSTextField *)f {
+  [self setCount:f.integerValue];
+}
+- (void)stepped:(NSStepper *)s {
+  [self setCount:s.integerValue];
+}
 
 - (void)freeze:(id)sender {
-  if (_count.currentEditor) [self setCount:_count.integerValue];   // typed but not yet entered
+  if (_count.currentEditor)
+    [self setCount:_count.integerValue];   // typed but not yet entered
   SRFreezeWhen when = self.selectedWhen;
-  if (self.onFreeze) self.onFreeze(when, when == SRFreezeNow ? 0 : self.savedCount);
+  if (self.onFreeze)
+    self.onFreeze(when, when == SRFreezeNow ? 0 : self.savedCount);
 }
 @end

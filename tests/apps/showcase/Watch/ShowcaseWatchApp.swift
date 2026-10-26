@@ -18,44 +18,68 @@ enum Page: String, CaseIterable, Identifiable, Hashable {
 
   var title: String {
     switch self {
-    case .crown: "Digital Crown"
-    case .touch: "Touch"
-    case .iPhone: "iPhone"
-    case .sandbox: "Sandbox"
-    case .time: "Time & Region"
-    case .device: "This Watch"
+    case .crown:
+      "Digital Crown"
+    case .touch:
+      "Touch"
+    case .iPhone:
+      "iPhone"
+    case .sandbox:
+      "Sandbox"
+    case .time:
+      "Time & Region"
+    case .device:
+      "This Watch"
     }
   }
   var symbol: String {
     switch self {
-    case .crown: "digitalcrown.arrow.clockwise.fill"
-    case .touch: "hand.tap.fill"
-    case .iPhone: "iphone.radiowaves.left.and.right"
-    case .sandbox: "shippingbox.fill"
-    case .time: "globe"
-    case .device: "applewatch"
+    case .crown:
+      "digitalcrown.arrow.clockwise.fill"
+    case .touch:
+      "hand.tap.fill"
+    case .iPhone:
+      "iphone.radiowaves.left.and.right"
+    case .sandbox:
+      "shippingbox.fill"
+    case .time:
+      "globe"
+    case .device:
+      "applewatch"
     }
   }
   var colors: [Color] {
     switch self {
-    case .crown: [Color(red: 1.00, green: 0.62, blue: 0.20), Color(red: 0.95, green: 0.36, blue: 0.10)]
-    case .touch: [Color(red: 1.00, green: 0.42, blue: 0.36), Color(red: 0.96, green: 0.20, blue: 0.44)]
-    case .iPhone: [Color(red: 0.25, green: 0.70, blue: 1.00), Color(red: 0.10, green: 0.45, blue: 0.95)]
-    case .sandbox: [Color(red: 0.98, green: 0.70, blue: 0.20), Color(red: 0.95, green: 0.48, blue: 0.10)]
-    case .time: [Color(red: 0.35, green: 0.60, blue: 1.00), Color(red: 0.45, green: 0.35, blue: 0.95)]
-    case .device: [Color(red: 0.55, green: 0.55, blue: 0.60), Color(red: 0.30, green: 0.30, blue: 0.36)]
+    case .crown:
+      [Color(red: 1.00, green: 0.62, blue: 0.20), Color(red: 0.95, green: 0.36, blue: 0.10)]
+    case .touch:
+      [Color(red: 1.00, green: 0.42, blue: 0.36), Color(red: 0.96, green: 0.20, blue: 0.44)]
+    case .iPhone:
+      [Color(red: 0.25, green: 0.70, blue: 1.00), Color(red: 0.10, green: 0.45, blue: 0.95)]
+    case .sandbox:
+      [Color(red: 0.98, green: 0.70, blue: 0.20), Color(red: 0.95, green: 0.48, blue: 0.10)]
+    case .time:
+      [Color(red: 0.35, green: 0.60, blue: 1.00), Color(red: 0.45, green: 0.35, blue: 0.95)]
+    case .device:
+      [Color(red: 0.55, green: 0.55, blue: 0.60), Color(red: 0.30, green: 0.30, blue: 0.36)]
     }
   }
   var gradient: LinearGradient { LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing) }
 
   @ViewBuilder var page: some View {
     switch self {
-    case .crown: CrownPage()
-    case .touch: TouchPage()
-    case .iPhone: PhonePage()
-    case .sandbox: SandboxPage()
-    case .time: TimePage()
-    case .device: DevicePage()
+    case .crown:
+      CrownPage()
+    case .touch:
+      TouchPage()
+    case .iPhone:
+      PhonePage()
+    case .sandbox:
+      SandboxPage()
+    case .time:
+      TimePage()
+    case .device:
+      DevicePage()
     }
   }
 }
@@ -81,7 +105,9 @@ struct HomeView: View {
     }
     .tint(link.accent.color)
     .onAppear {   // SHOWCASE_PAGE=<page> opens that page at launch (e.g. SHOWCASE_PAGE=crown)
-      if path.isEmpty, let p = ProcessInfo.processInfo.environment["SHOWCASE_PAGE"].flatMap(Page.init(rawValue:)) { path = [p] }
+      if path.isEmpty, let p = ProcessInfo.processInfo.environment["SHOWCASE_PAGE"].flatMap(Page.init(rawValue:)) {
+        path = [p]
+      }
     }
   }
 }
@@ -101,7 +127,9 @@ enum LaunchRecord {
   static func recordLaunch() {
     let d = UserDefaults.standard
     d.set(d.integer(forKey: "launchCount") + 1, forKey: "launchCount")
-    if d.object(forKey: "firstLaunch") == nil { d.set(Date(), forKey: "firstLaunch") }
+    if d.object(forKey: "firstLaunch") == nil {
+      d.set(Date(), forKey: "firstLaunch")
+    }
   }
   static var count: Int { UserDefaults.standard.integer(forKey: "launchCount") }
   static var first: Date? { UserDefaults.standard.object(forKey: "firstLaunch") as? Date }

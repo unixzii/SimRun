@@ -30,7 +30,11 @@ struct Track: Identifiable {
     @Published var isPlaying = false
     @Published var time: TimeInterval = 0
     @Published var duration: TimeInterval = 0
-    @Published var volume: Float = 1 { didSet { audio?.volume = volume } }
+    @Published var volume: Float = 1 {
+        didSet {
+            audio?.volume = volume
+        }
+    }
     @Published var error: String?
     private var audio: AVAudioPlayer?
     private var timer: Timer?
@@ -40,7 +44,9 @@ struct Track: Identifiable {
         do {
             try AVAudioSession.sharedInstance().setCategory(.playback)
             try AVAudioSession.sharedInstance().setActive(true)
-        } catch { self.error = "Audio session: \(error.localizedDescription)" }
+        } catch {
+            self.error = "Audio session: \(error.localizedDescription)"
+        }
     }
 
     // Files are added as they are; folders with the audio files in them (not their subfolders).
@@ -48,7 +54,10 @@ struct Track: Identifiable {
         var files: [URL] = []
         for url in urls {
             var isDir: ObjCBool = false
-            guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) else { error = "No such file: \(url.path)"; continue }
+            guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) else {
+                error = "No such file: \(url.path)"
+                continue
+            }
             if isDir.boolValue {
                 let items = (try? FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: nil)) ?? []
                 files += items.filter(isAudioFile)
@@ -70,26 +79,44 @@ struct Track: Identifiable {
         let title = try? await AVMetadataItem.metadataItems(from: metadata, filteredByIdentifier: .commonIdentifierTitle).first?.load(.stringValue)
         let artist = try? await AVMetadataItem.metadataItems(from: metadata, filteredByIdentifier: .commonIdentifierArtist).first?.load(.stringValue)
         let duration = try? await asset.load(.duration)
-        guard let i = tracks.firstIndex(where: { $0.id == id }) else { return }
-        if let title, !title.isEmpty { tracks[i].title = title }
+        guard let i = tracks.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+        if let title, !title.isEmpty {
+            tracks[i].title = title
+        }
         tracks[i].artist = artist ?? nil
-        if let duration, duration.isNumeric { tracks[i].duration = duration.seconds }
+        if let duration, duration.isNumeric {
+            tracks[i].duration = duration.seconds
+        }
     }
 
     var currentTrack: Track? { tracks.first { $0.id == current } }
 
     func play(_ id: Track.ID) {
-        guard let track = tracks.first(where: { $0.id == id }) else { return }
+        guard let track = tracks.first(where: { $0.id == id }) else {
+            return
+        }
         stop()
         do {
             let audio = try AVAudioPlayer(contentsOf: track.url)
             audio.delegate = self
             audio.volume = volume
-            guard audio.play() else { throw CocoaError(.fileReadCorruptFile) }
+            guard audio.play() else {
+                throw CocoaError(.fileReadCorruptFile)
+            }
             self.audio = audio
-            current = id; duration = audio.duration; time = 0; isPlaying = true; error = nil
+            current = id
+            duration = audio.duration
+            time = 0
+            isPlaying = true
+            error = nil
             timer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
-                MainActor.assumeIsolated { if let self, let a = self.audio { self.time = a.currentTime } }
+                MainActor.assumeIsolated {
+                    if let self, let a = self.audio {
+                        self.time = a.currentTime
+                    }
+                }
             }
         } catch {
             current = id
@@ -98,40 +125,76 @@ struct Track: Identifiable {
     }
 
     func togglePlay() {
-        guard let audio else { if let first = current ?? tracks.first?.id { play(first) }; return }
-        if audio.isPlaying { audio.pause() } else { audio.play() }
+        guard let audio else {
+            if let first = current ?? tracks.first?.id {
+                play(first)
+            }
+            return
+        }
+        if audio.isPlaying {
+            audio.pause()
+        } else {
+            audio.play()
+        }
         isPlaying = audio.isPlaying
     }
 
-    func seek(to t: TimeInterval) { audio?.currentTime = t; time = t }
+    func seek(to t: TimeInterval) {
+        audio?.currentTime = t
+        time = t
+    }
 
     func skip(_ by: Int) {
-        guard let i = tracks.firstIndex(where: { $0.id == current }) else { return }
-        if by < 0, time > 3 { seek(to: 0); return }   // back: to the start first, like Music
+        guard let i = tracks.firstIndex(where: { $0.id == current }) else {
+            return
+        }
+        if by < 0, time > 3 {   // back: to the start first, like Music
+            seek(to: 0)
+            return
+        }
         let j = i + by
-        if tracks.indices.contains(j) { play(tracks[j].id) }
+        if tracks.indices.contains(j) {
+            play(tracks[j].id)
+        }
     }
 
     func remove(at offsets: IndexSet) {
-        if let current, offsets.contains(where: { tracks[$0].id == current }) { stop(); self.current = nil }
+        if let current, offsets.contains(where: { tracks[$0].id == current }) {
+            stop()
+            self.current = nil
+        }
         tracks.remove(atOffsets: offsets)
     }
 
     private func stop() {
-        timer?.invalidate(); timer = nil
-        audio?.stop(); audio = nil
-        isPlaying = false; time = 0; duration = 0
+        timer?.invalidate()
+        timer = nil
+        audio?.stop()
+        audio = nil
+        isPlaying = false
+        time = 0
+        duration = 0
     }
 
     nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         MainActor.assumeIsolated {
-            guard let i = tracks.firstIndex(where: { $0.id == current }) else { return }
-            if i + 1 < tracks.count { play(tracks[i + 1].id) } else { stop(); time = 0 }
+            guard let i = tracks.firstIndex(where: { $0.id == current }) else {
+                return
+            }
+            if i + 1 < tracks.count {
+                play(tracks[i + 1].id)
+            } else {
+                stop()
+                time = 0
+            }
         }
     }
 
     nonisolated func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
-        MainActor.assumeIsolated { self.error = "Decoding failed: \(error?.localizedDescription ?? "unknown error")"; stop() }
+        MainActor.assumeIsolated {
+            self.error = "Decoding failed: \(error?.localizedDescription ?? "unknown error")"
+            stop()
+        }
     }
 }
 
@@ -172,9 +235,12 @@ struct ContentView: View {
             .fileImporter(isPresented: $importing, allowedContentTypes: [.audio, .folder], allowsMultipleSelection: true) { result in
                 switch result {
                 case .success(let urls):
-                    for url in urls { _ = url.startAccessingSecurityScopedResource() }   // kept for as long as the app runs
+                    for url in urls {   // kept for as long as the app runs
+                        _ = url.startAccessingSecurityScopedResource()
+                    }
                     player.add(urls)
-                case .failure(let error): player.error = error.localizedDescription
+                case .failure(let error):
+                    player.error = error.localizedDescription
                 }
             }
         }
@@ -195,7 +261,9 @@ struct TrackRow: View {
                 Text(track.artist ?? track.url.pathExtension.uppercased()).font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer()
-            if let d = track.duration { Text(format(d)).font(.caption.monospacedDigit()).foregroundStyle(.secondary) }
+            if let d = track.duration {
+                Text(format(d)).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+            }
         }
         .contentShape(Rectangle())
     }
@@ -218,7 +286,10 @@ struct NowPlaying: View {
             VStack(spacing: 4) {
                 Slider(value: Binding(get: { scrubbing ?? player.time }, set: { scrubbing = $0 }),
                        in: 0...max(player.duration, 0.01)) { editing in
-                    if !editing, let t = scrubbing { player.seek(to: t); scrubbing = nil }
+                    if !editing, let t = scrubbing {
+                        player.seek(to: t)
+                        scrubbing = nil
+                    }
                 }
                 .disabled(player.duration == 0)
                 HStack {

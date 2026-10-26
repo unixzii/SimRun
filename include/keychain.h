@@ -27,7 +27,8 @@
 static inline BOOL srkc_transact(NSString *path, BOOL write, BOOL (^body)(NSMutableArray<NSMutableDictionary *> *items)) {
   [NSFileManager.defaultManager createDirectoryAtPath:path.stringByDeletingLastPathComponent withIntermediateDirectories:YES attributes:nil error:nil];
   int lock = open([path stringByAppendingString:@".lock"].fileSystemRepresentation, O_RDWR | O_CREAT | O_CLOEXEC, 0600);
-  if (lock < 0) return NO;
+  if (lock < 0)
+    return NO;
   flock(lock, write ? LOCK_EX : LOCK_SH);
   BOOL ok = YES;
   NSMutableArray *items = [NSMutableArray array];
@@ -36,13 +37,17 @@ static inline BOOL srkc_transact(NSString *path, BOOL write, BOOL (^body)(NSMuta
     NSDictionary *root = [NSPropertyListSerialization propertyListWithData:d options:NSPropertyListMutableContainers format:NULL error:NULL];
     id a = [root isKindOfClass:NSDictionary.class] ? root[@"items"] : nil;
     if ([a isKindOfClass:NSMutableArray.class]) {
-      for (id it in a) if ([it isKindOfClass:NSMutableDictionary.class] && [it[@"class"] isKindOfClass:NSString.class]) [items addObject:it];
-    } else ok = NO;   // damaged (hand-edited?): don't overwrite it
+      for (id it in a)
+        if ([it isKindOfClass:NSMutableDictionary.class] && [it[@"class"] isKindOfClass:NSString.class])
+          [items addObject:it];
+    } else
+      ok = NO;   // damaged (hand-edited?): don't overwrite it
   }
   if (ok && body(items) && write) {
     NSData *out = [NSPropertyListSerialization dataWithPropertyList:@{ @"version": @1, @"items": items } format:NSPropertyListXMLFormat_v1_0 options:0 error:NULL];
     ok = out && [out writeToFile:path options:NSDataWritingAtomic error:NULL];
-    if (ok) chmod(path.fileSystemRepresentation, 0600);   // plaintext secrets: owner only
+    if (ok)
+      chmod(path.fileSystemRepresentation, 0600);   // plaintext secrets: owner only
   }
   flock(lock, LOCK_UN);
   close(lock);

@@ -4,7 +4,11 @@ import SwiftUI
 
 struct LocaleDemo: View {
   private let locale = Locale.autoupdatingCurrent
-  private var calendar: Calendar { var c = Calendar.autoupdatingCurrent; c.locale = locale; return c }
+  private var calendar: Calendar {
+    var c = Calendar.autoupdatingCurrent
+    c.locale = locale
+    return c
+  }
 
   var body: some View {
     DemoPage(feature: .locale) {
@@ -70,19 +74,26 @@ struct LocaleDemo: View {
 
   private var measurementName: String {
     switch locale.measurementSystem {
-    case .us: "US"
-    case .uk: "UK"
-    default: "Metric"
+    case .us:
+      "US"
+    case .uk:
+      "UK"
+    default:
+      "Metric"
     }
   }
 
   private var flag: String {
-    guard let r = locale.region?.identifier, r.count == 2 else { return "" }
+    guard let r = locale.region?.identifier, r.count == 2 else {
+      return ""
+    }
     return String(String.UnicodeScalarView(r.unicodeScalars.compactMap { UnicodeScalar(127397 + $0.value) }))
   }
 
   private func name(language code: String?) -> String {
-    guard let code else { return "—" }
+    guard let code else {
+      return "—"
+    }
     let native = Locale(identifier: code).localizedString(forLanguageCode: code) ?? code
     return native.prefix(1).uppercased() + native.dropFirst()
   }

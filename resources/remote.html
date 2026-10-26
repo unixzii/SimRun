@@ -63,19 +63,23 @@ function notice(text, retry) {
   $("notice").hidden = !text;
   $("retry").hidden = !retry;
 }
-function status(state) { $("dot").className = state; }
+function status(state) {
+  $("dot").className = state;
+}
 
 async function api(path, options = {}) {
   const r = await fetch(path, { ...options, headers: { ...(options.headers || {}), Authorization: "Bearer " + key } });
   const body = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(body.error || r.statusText);
+  if (!r.ok)
+    throw new Error(body.error || r.statusText);
   return body;
 }
 
 // ---------------------------------------------------------------- apps
 async function loadApps() {
   const r = await api("/api/apps");
-  apps = r.apps; iceServers = r.iceServers || [];
+  apps = r.apps;
+  iceServers = r.iceServers || [];
   const chosen = current ?? +params.get("app");
   appsEl.replaceChildren(...apps.map(a => new Option(`${a.title} (${a.id})`, a.id, false, a.id === chosen)));
   appsEl.disabled = apps.length < 2;
@@ -83,23 +87,41 @@ async function loadApps() {
 }
 
 async function start() {
-  if (!key) { notice("Open this page with the link SimRun gives you (SimRun ▸ Remote Control ▸ Copy Link, or simrun remote): it carries the access key."); return; }
+  if (!key) {
+    notice("Open this page with the link SimRun gives you (SimRun ▸ Remote Control ▸ Copy Link, or simrun remote): it carries the access key.");
+    return;
+  }
   try {
     const app = await loadApps();
-    if (!app) { notice("No apps are running in SimRun. This page connects when one starts."); setTimeout(start, 3000); return; }
+    if (!app) {
+      notice("No apps are running in SimRun. This page connects when one starts.");
+      setTimeout(start, 3000);
+      return;
+    }
     await connect(app.id);
-  } catch (e) { status("bad"); notice(e.message, true); }
+  } catch (e) {
+    status("bad");
+    notice(e.message, true);
+  }
 }
 
 appsEl.onchange = () => connect(+appsEl.value).catch(e => notice(e.message, true));
 $("full").onchange = () => current && connect(current).catch(e => notice(e.message, true));
-$("retry").onclick = () => { notice("Connecting…"); current = null; start(); };
+$("retry").onclick = () => {
+  notice("Connecting…");
+  current = null;
+  start();
+};
 
 // ---------------------------------------------------------------- WebRTC
 function disconnect() {
   clearInterval(statsTimer);
-  if (channel) channel.onclose = null;
-  if (pc) { pc.onconnectionstatechange = null; pc.close(); }
+  if (channel)
+    channel.onclose = null;
+  if (pc) {
+    pc.onconnectionstatechange = null;
+    pc.close();
+  }
   pc = channel = null;
   releaseInput();
 }
@@ -109,44 +131,71 @@ async function connect(id) {
   current = id;
   history.replaceState(null, "", `#${key}&app=${id}`);
   const app = apps.find(a => a.id === id);
-  if (app) setScreen(app.width, app.height);
-  status(""); notice("Connecting…");
+  if (app)
+    setScreen(app.width, app.height);
+  status("");
+  notice("Connecting…");
   const conn = pc = new RTCPeerConnection({ iceServers, bundlePolicy: "max-bundle" });
   const tr = conn.addTransceiver("video", { direction: "recvonly" });
   // H.264 first: SimRun encodes it on the Mac's media engine
   const caps = RTCRtpReceiver.getCapabilities && RTCRtpReceiver.getCapabilities("video");
   if (caps && tr.setCodecPreferences) {
     const h264 = caps.codecs.filter(c => /h264/i.test(c.mimeType));
-    try { tr.setCodecPreferences([...h264, ...caps.codecs.filter(c => !h264.includes(c))]); } catch {}
+    try {
+      tr.setCodecPreferences([...h264, ...caps.codecs.filter(c => !h264.includes(c))]);
+    } catch {}
   }
   channel = conn.createDataChannel("input", { ordered: true });
   channel.onmessage = e => onMessage(JSON.parse(e.data));
-  channel.onclose = () => { if (pc === conn) { status("bad"); notice("Disconnected.", true); releaseInput(); } };
+  channel.onclose = () => {
+    if (pc === conn) {
+      status("bad");
+      notice("Disconnected.", true);
+      releaseInput();
+    }
+  };
   conn.ontrack = e => {
     video.srcObject = e.streams[0] || new MediaStream([e.track]);
-    if ("jitterBufferTarget" in e.receiver) e.receiver.jitterBufferTarget = 0;   // lowest latency
-    if ("playoutDelayHint" in e.receiver) e.receiver.playoutDelayHint = 0;
+    if ("jitterBufferTarget" in e.receiver)
+      e.receiver.jitterBufferTarget = 0;   // lowest latency
+    if ("playoutDelayHint" in e.receiver)
+      e.receiver.playoutDelayHint = 0;
   };
   conn.onconnectionstatechange = () => {
-    if (conn.connectionState === "connected") { status("on"); notice(""); focusInput(); }
-    if (conn.connectionState === "failed") { status("bad"); notice("The connection failed. If this Mac is on another network, it may need a TURN server (SIMRUN_REMOTE_ICE).", true); }
+    if (conn.connectionState === "connected") {
+      status("on");
+      notice("");
+      focusInput();
+    }
+    if (conn.connectionState === "failed") {
+      status("bad");
+      notice("The connection failed. If this Mac is on another network, it may need a TURN server (SIMRUN_REMOTE_ICE).", true);
+    }
   };
   await conn.setLocalDescription(await conn.createOffer());
   await gathered(conn, 2000);
-  if (pc !== conn) return;
+  if (pc !== conn)
+    return;
   const r = await api(`/api/connect?app=${id}`, { method: "POST", headers: { "Content-Type": "application/json" },
                                                   body: JSON.stringify({ sdp: conn.localDescription.sdp, full: $("full").checked }) });
-  if (pc !== conn) return;
+  if (pc !== conn)
+    return;
   await conn.setRemoteDescription({ type: "answer", sdp: r.sdp });
   statsTimer = setInterval(() => showStats(conn), 1000);
 }
 
 // SimRun takes the offer with every candidate in it (no trickle ICE)
 function gathered(conn, timeout) {
-  if (conn.iceGatheringState === "complete") return Promise.resolve();
+  if (conn.iceGatheringState === "complete")
+    return Promise.resolve();
   return new Promise(resolve => {
     const t = setTimeout(resolve, timeout);
-    conn.addEventListener("icegatheringstatechange", () => { if (conn.iceGatheringState === "complete") { clearTimeout(t); resolve(); } });
+    conn.addEventListener("icegatheringstatechange", () => {
+      if (conn.iceGatheringState === "complete") {
+        clearTimeout(t);
+        resolve();
+      }
+    });
   });
 }
 
@@ -154,32 +203,47 @@ let lastBytes = 0, lastTime = 0;
 async function showStats(conn) {
   const report = await conn.getStats();
   report.forEach(s => {
-    if (s.type !== "inbound-rtp" || s.kind !== "video") return;
+    if (s.type !== "inbound-rtp" || s.kind !== "video")
+      return;
     const codec = s.codecId && report.get(s.codecId);
     const mbps = lastTime ? (s.bytesReceived - lastBytes) * 8 / ((s.timestamp - lastTime) * 1000) : 0;
-    lastBytes = s.bytesReceived; lastTime = s.timestamp;
+    lastBytes = s.bytesReceived;
+    lastTime = s.timestamp;
     $("stats").textContent = `${s.frameWidth || 0}×${s.frameHeight || 0} · ${Math.round(s.framesPerSecond || 0)} fps · ${mbps.toFixed(1)} Mbit/s` +
                              (codec ? ` · ${codec.mimeType.replace("video/", "")}` : "");
   });
 }
 
-function send(message) { if (channel && channel.readyState === "open") channel.send(JSON.stringify(message)); }
+function send(message) {
+  if (channel && channel.readyState === "open")
+    channel.send(JSON.stringify(message));
+}
 
 function onMessage(m) {
-  if (m.t === "screen") setScreen(m.w, m.h);
+  if (m.t === "screen")
+    setScreen(m.w, m.h);
   else if (m.t === "text") {
     const was = textFocused;
     textFocused = !!m.focused;
     caret = { x: m.x, y: m.y, w: m.w, h: m.h };
     placeInput();
-    if (was && !textFocused) hideKeyboard();
+    if (was && !textFocused)
+      hideKeyboard();
   }
-  else if (m.t === "bye") { const conn = pc; disconnect(); status("bad"); notice(m.reason, true); if (conn) conn.close(); }
+  else if (m.t === "bye") {
+    const conn = pc;
+    disconnect();
+    status("bad");
+    notice(m.reason, true);
+    if (conn)
+      conn.close();
+  }
 }
 
 // ---------------------------------------------------------------- the screen: its size, and where points are
 function setScreen(w, h) {
-  if (!w || !h) return;
+  if (!w || !h)
+    return;
   screenSize = { w, h };
   screenEl.style.aspectRatio = `${w} / ${h}`;
   screenEl.style.visibility = "visible";
@@ -187,7 +251,8 @@ function setScreen(w, h) {
 }
 function layout() {   // as large as the stage allows, at the screen's aspect ratio
   const stage = $("stage").getBoundingClientRect(), pad = 32;
-  if (!screenSize.w) return;
+  if (!screenSize.w)
+    return;
   const s = Math.min((stage.width - pad) / screenSize.w, (stage.height - pad) / screenSize.h);
   screenEl.style.width = `${Math.max(0, screenSize.w * s)}px`;
   screenEl.style.height = `${Math.max(0, screenSize.h * s)}px`;
@@ -195,11 +260,16 @@ function layout() {   // as large as the stage allows, at the screen's aspect ra
 }
 addEventListener("resize", layout);
 // and when the stage changes size without the window (the header wraps once the stats line is there)
-if (window.ResizeObserver) new ResizeObserver(() => layout()).observe($("stage"));
+if (window.ResizeObserver)
+  new ResizeObserver(() => layout()).observe($("stage"));
 // The page fills what's visible: when a soft keyboard comes up (iOS Safari leaves the layout viewport as it is and
 // pans it), the app's screen shrinks to fit above it instead of going under it.
 if (window.visualViewport) {
-  const fit = () => { document.body.style.height = `${visualViewport.height}px`; window.scrollTo(0, 0); layout(); };
+  const fit = () => {
+    document.body.style.height = `${visualViewport.height}px`;
+    window.scrollTo(0, 0);
+    layout();
+  };
   visualViewport.addEventListener("resize", fit);
   visualViewport.addEventListener("scroll", () => window.scrollTo(0, 0));
 }
@@ -208,12 +278,15 @@ function toPoint(e) {
   const r = screenEl.getBoundingClientRect();
   return { x: (e.clientX - r.left) / r.width * screenSize.w, y: (e.clientY - r.top) / r.height * screenSize.h };
 }
-function pointsPerPixel() { return screenSize.w / screenEl.getBoundingClientRect().width; }
+function pointsPerPixel() {
+  return screenSize.w / screenEl.getBoundingClientRect().width;
+}
 
 // ---------------------------------------------------------------- pointer: one finger
 let finger = null;
 screenEl.addEventListener("pointerdown", e => {
-  if (finger !== null || !screenSize.w || (e.pointerType === "mouse" && e.button !== 0)) return;
+  if (finger !== null || !screenSize.w || (e.pointerType === "mouse" && e.button !== 0))
+    return;
   e.preventDefault();
   finger = e.pointerId;
   screenEl.setPointerCapture(e.pointerId);
@@ -221,12 +294,15 @@ screenEl.addEventListener("pointerdown", e => {
   focusInput();
 });
 screenEl.addEventListener("pointermove", e => {
-  if (e.pointerId !== finger) return;
-  for (const c of (e.getCoalescedEvents ? e.getCoalescedEvents() : null) || [e]) send({ t: "touch", p: 1, ...toPoint(c) });
+  if (e.pointerId !== finger)
+    return;
+  for (const c of (e.getCoalescedEvents ? e.getCoalescedEvents() : null) || [e])
+    send({ t: "touch", p: 1, ...toPoint(c) });
 });
 for (const type of ["pointerup", "pointercancel"])
   screenEl.addEventListener(type, e => {
-    if (e.pointerId !== finger) return;
+    if (e.pointerId !== finger)
+      return;
     finger = null;
     send({ t: "touch", p: 2, ...toPoint(e) });
   });
@@ -238,13 +314,17 @@ screenEl.addEventListener("mousedown", e => e.preventDefault());
 let pinching = false, pinchEnd = null;
 screenEl.addEventListener("wheel", e => {
   e.preventDefault();
-  if (!screenSize.w) return;
+  if (!screenSize.w)
+    return;
   const p = toPoint(e);
   if (e.ctrlKey) {
     send({ t: "pinch", ...p, m: -e.deltaY / 100, p: pinching ? 4 : 1 });
     pinching = true;
     clearTimeout(pinchEnd);
-    pinchEnd = setTimeout(() => { send({ t: "pinch", ...p, m: 0, p: 8 }); pinching = false; }, 150);
+    pinchEnd = setTimeout(() => {
+      send({ t: "pinch", ...p, m: 0, p: 8 });
+      pinching = false;
+    }, 150);
     return;
   }
   const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? screenEl.getBoundingClientRect().height : 1;
@@ -273,75 +353,114 @@ const MODIFIER_KEYS = /^(Shift|Control|Alt|Meta|OS|CapsLock)/;
 const MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 function modifiers(e) {   // NSEvent.modifierFlags; elsewhere than on a Mac, Ctrl is ⌘ (copy, paste, undo)
   let m = 0;
-  if (e.getModifierState && e.getModifierState("CapsLock")) m |= 1 << 16;
-  if (e.shiftKey) m |= 1 << 17;
-  if (e.altKey) m |= 1 << 19;
-  if (e.ctrlKey) m |= MAC ? 1 << 18 : 1 << 20;
-  if (e.metaKey) m |= MAC ? 1 << 20 : 1 << 18;
+  if (e.getModifierState && e.getModifierState("CapsLock"))
+    m |= 1 << 16;
+  if (e.shiftKey)
+    m |= 1 << 17;
+  if (e.altKey)
+    m |= 1 << 19;
+  if (e.ctrlKey)
+    m |= MAC ? 1 << 18 : 1 << 20;
+  if (e.metaKey)
+    m |= MAC ? 1 << 20 : 1 << 18;
   return m;
 }
 const keysDown = new Map();   // code -> key code sent down
 ime.addEventListener("keydown", e => {
-  if (e.isComposing || e.keyCode === 229 || MODIFIER_KEYS.test(e.code)) return;   // modifiers ride on each key's flags
+  if (e.isComposing || e.keyCode === 229 || MODIFIER_KEYS.test(e.code))
+    return;   // modifiers ride on each key's flags
   const code = KEYS[e.code];
-  if (code === undefined) return;
+  if (code === undefined)
+    return;
   const shortcut = e.metaKey || e.ctrlKey;
-  if (textFocused && !shortcut && e.key.length === 1) return;   // it types: it comes as text (the input event)
+  if (textFocused && !shortcut && e.key.length === 1)
+    return;   // it types: it comes as text (the input event)
   e.preventDefault();
-  if (e.repeat) return;   // UIKit repeats held keys itself
+  if (e.repeat)
+    return;   // UIKit repeats held keys itself
   keysDown.set(e.code, code);
   send({ t: "key", d: 1, k: code, m: modifiers(e) });
 });
 ime.addEventListener("keyup", e => {
-  if (!keysDown.has(e.code)) return;
+  if (!keysDown.has(e.code))
+    return;
   send({ t: "key", d: 0, k: keysDown.get(e.code), m: modifiers(e) });
   keysDown.delete(e.code);
 });
 function releaseInput() {
-  for (const k of keysDown.values()) send({ t: "key", d: 0, k, m: 0 });
+  for (const k of keysDown.values())
+    send({ t: "key", d: 0, k, m: 0 });
   keysDown.clear();
-  if (finger !== null) finger = null;
+  if (finger !== null)
+    finger = null;
 }
 addEventListener("blur", releaseInput);
 
 function sendText(kind, text, sel = 0) {
   // in pieces that fit SimRun's message (1 KB of UTF-8), split between characters
   const chars = [...text];
-  if (kind !== 1 || chars.length <= 200) { send({ t: "text", k: kind, s: text, l: sel, n: 0 }); return; }
-  for (let i = 0; i < chars.length; i += 200) send({ t: "text", k: 1, s: chars.slice(i, i + 200).join(""), l: 0, n: 0 });
+  if (kind !== 1 || chars.length <= 200) {
+    send({ t: "text", k: kind, s: text, l: sel, n: 0 });
+    return;
+  }
+  for (let i = 0; i < chars.length; i += 200)
+    send({ t: "text", k: 1, s: chars.slice(i, i + 200).join(""), l: 0, n: 0 });
 }
 let composing = false;
-ime.addEventListener("compositionstart", () => { composing = true; });
-ime.addEventListener("compositionupdate", e => { if (textFocused) sendText(2, e.data || "", (e.data || "").length); });
+ime.addEventListener("compositionstart", () => {
+  composing = true;
+});
+ime.addEventListener("compositionupdate", e => {
+  if (textFocused)
+    sendText(2, e.data || "", (e.data || "").length);
+});
 ime.addEventListener("compositionend", e => {
   composing = false;
-  if (textFocused) sendText(1, e.data || "");
+  if (textFocused)
+    sendText(1, e.data || "");
   resetInput();
 });
 ime.addEventListener("beforeinput", e => {
-  if (!textFocused || composing) return;
-  if (e.inputType === "deleteContentBackward") { e.preventDefault(); tapKey(0x33); }   // soft keyboards: no key event
-  else if (e.inputType === "insertLineBreak") { e.preventDefault(); tapKey(0x24); }
+  if (!textFocused || composing)
+    return;
+  if (e.inputType === "deleteContentBackward") {   // soft keyboards: no key event
+    e.preventDefault();
+    tapKey(0x33);
+  }
+  else if (e.inputType === "insertLineBreak") {
+    e.preventDefault();
+    tapKey(0x24);
+  }
 });
 ime.addEventListener("input", e => {
-  if (composing || e.isComposing) return;
+  if (composing || e.isComposing)
+    return;
   if (textFocused && e.inputType && e.inputType.startsWith("insert") && !/Composition/.test(e.inputType))
     sendText(1, e.data ?? ime.value.replaceAll(SENTINEL, ""));
   resetInput();
 });
-function tapKey(code) { send({ t: "key", d: 1, k: code, m: 0 }); send({ t: "key", d: 0, k: code, m: 0 }); }
+function tapKey(code) {
+  send({ t: "key", d: 1, k: code, m: 0 });
+  send({ t: "key", d: 0, k: code, m: 0 });
+}
 
 // The input sits at the app's caret, so the IME's candidate window shows there.
 function placeInput() {
   $("keyboard").classList.toggle("show", textFocused);
   const r = screenEl.getBoundingClientRect();
-  if (!textFocused || !screenSize.w) { ime.style.left = "-100px"; return; }
+  if (!textFocused || !screenSize.w) {
+    ime.style.left = "-100px";
+    return;
+  }
   const k = r.width / screenSize.w;
   ime.style.left = `${r.left + caret.x * k}px`;
   ime.style.top = `${r.top + caret.y * k}px`;
   ime.style.height = `${Math.max(16, caret.h * k)}px`;
 }
-function focusInput() { if (!TOUCH) ime.focus({ preventScroll: true }); }
+function focusInput() {
+  if (!TOUCH)
+    ime.focus({ preventScroll: true });
+}
 
 // Touch screens: the Keyboard button, shown while a text input in the app has focus, brings up the soft keyboard (a
 // page can bring it up only in a tap: remote.md). It goes when the app's text input loses focus.
@@ -349,21 +468,34 @@ const TOUCH = matchMedia("(pointer: coarse)").matches;
 const SENTINEL = "\u200b";   // something for Backspace to delete: Android keyboards send nothing for it in an empty field
 function resetInput() {
   ime.value = TOUCH ? SENTINEL : "";
-  if (TOUCH && document.activeElement === ime) ime.setSelectionRange(ime.value.length, ime.value.length);
+  if (TOUCH && document.activeElement === ime)
+    ime.setSelectionRange(ime.value.length, ime.value.length);
 }
 function showKeyboard() {
-  if (document.activeElement !== ime) { resetInput(); ime.focus({ preventScroll: true }); resetInput(); }
+  if (document.activeElement !== ime) {
+    resetInput();
+    ime.focus({ preventScroll: true });
+    resetInput();
+  }
   placeInput();
 }
 function hideKeyboard() {
-  if (!TOUCH || document.activeElement !== ime) return;
+  if (!TOUCH || document.activeElement !== ime)
+    return;
   ime.blur();
   placeInput();
 }
 // focused without its keyboard (the user put it away): blurred and focused again, in the tap
-$("keyboard").onclick = () => { if (document.activeElement === ime) ime.blur(); showKeyboard(); };
+$("keyboard").onclick = () => {
+  if (document.activeElement === ime)
+    ime.blur();
+  showKeyboard();
+};
 ime.addEventListener("blur", placeInput);
-document.addEventListener("pointerdown", e => { if (!screenEl.contains(e.target) && e.target.tagName !== "SELECT") setTimeout(focusInput); });
+document.addEventListener("pointerdown", e => {
+  if (!screenEl.contains(e.target) && e.target.tagName !== "SELECT")
+    setTimeout(focusInput);
+});
 
 addEventListener("hashchange", () => location.reload());   // another link (another key) pasted over this one
 start();

@@ -32,7 +32,9 @@ struct ContainerDemo: View {
           VStack(spacing: 0) {
             ForEach(files) { f in
               fileRow(f)
-              if f.id != files.last?.id { Divider().padding(.leading, 40) }
+              if f.id != files.last?.id {
+                Divider().padding(.leading, 40)
+              }
             }
           }
         }
@@ -107,14 +109,19 @@ struct ContainerDemo: View {
 
   private func save() {
     let text = note.trimmingCharacters(in: .whitespaces)
-    guard !text.isEmpty else { return }
-    let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd HH.mm.ss"
+    guard !text.isEmpty else {
+      return
+    }
+    let f = DateFormatter()
+    f.dateFormat = "yyyy-MM-dd HH.mm.ss"
     let url = documents.appendingPathComponent("Note \(f.string(from: Date())).txt")
     do {
       try text.write(to: url, atomically: true, encoding: .utf8)
       note = ""
       toast = "Saved to Documents"
-    } catch { toast = error.localizedDescription }
+    } catch {
+      toast = error.localizedDescription
+    }
     withAnimation(.snappy) { reload() }
   }
 
@@ -134,9 +141,13 @@ struct ContainerDemo: View {
   }
 
   private func directorySize(_ url: URL) -> Int {
-    guard let e = FileManager.default.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey]) else { return 0 }
+    guard let e = FileManager.default.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey]) else {
+      return 0
+    }
     var total = 0
-    for case let u as URL in e { total += (try? u.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0 }
+    for case let u as URL in e {
+      total += (try? u.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+    }
     return total
   }
 }

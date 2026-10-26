@@ -6,7 +6,11 @@
 #import <UIKit/UIKit.h>
 
 static int gFail;
-static void check(BOOL ok, NSString *what) { printf("%s %s\n", ok ? "ok  " : "FAIL", what.UTF8String); if (!ok) gFail++; }
+static void check(BOOL ok, NSString *what) {
+  printf("%s %s\n", ok ? "ok  " : "FAIL", what.UTF8String);
+  if (!ok)
+    gFail++;
+}
 
 static void dump(UIPasteboard *pb) {
   printf("changeCount %ld, %ld items\n", (long)pb.changeCount, (long)pb.numberOfItems);
@@ -32,7 +36,10 @@ static void selftest(void) {
   check([[[NSString alloc] initWithData:html encoding:NSUTF8StringEncoding] isEqual:@"<b>first</b>"], @"html representation");
 
   UIGraphicsImageRenderer *r = [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(8, 8)];
-  UIImage *img = [r imageWithActions:^(UIGraphicsImageRendererContext *ctx) { [UIColor.redColor setFill]; [ctx fillRect:CGRectMake(0, 0, 8, 8)]; }];
+  UIImage *img = [r imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
+    [UIColor.redColor setFill];
+    [ctx fillRect:CGRectMake(0, 0, 8, 8)];
+  }];
   pb.image = img;
   check(pb.hasImages && pb.image.size.width > 0, [NSString stringWithFormat:@"image round trip (%@)", NSStringFromCGSize(pb.image.size)]);
 
@@ -49,19 +56,36 @@ int main(int argc, char **argv) {
   @autoreleasepool {
     NSString *cmd = argc > 1 ? @(argv[1]) : nil;
     UIPasteboard *pb = UIPasteboard.generalPasteboard;
-    if (!cmd) { selftest(); return gFail ? 1 : 0; }
-    if ([cmd isEqual:@"get"]) { dump(pb); return 0; }
-    if ([cmd isEqual:@"set"] && argc > 2) { pb.string = @(argv[2]); dump(pb); return 0; }
+    if (!cmd) {
+      selftest();
+      return gFail ? 1 : 0;
+    }
+    if ([cmd isEqual:@"get"]) {
+      dump(pb);
+      return 0;
+    }
+    if ([cmd isEqual:@"set"] && argc > 2) {
+      pb.string = @(argv[2]);
+      dump(pb);
+      return 0;
+    }
     if ([cmd isEqual:@"watch"]) {
       dump(pb);
       // UIKit posts the notification for this process's own changes only; others show up as a new changeCount
       [NSNotificationCenter.defaultCenter addObserverForName:UIPasteboardChangedNotification object:nil queue:NSOperationQueue.mainQueue
-                                                  usingBlock:^(NSNotification *n) { printf("-- changed (notification)\n"); dump(pb); fflush(stdout); }];
+                                                  usingBlock:^(NSNotification *n) {
+        printf("-- changed (notification)\n");
+        dump(pb);
+        fflush(stdout);
+      }];
       __block NSInteger seen = pb.changeCount;
       [NSTimer scheduledTimerWithTimeInterval:0.25 repeats:YES block:^(NSTimer *t) {
-        if (pb.changeCount == seen) return;
+        if (pb.changeCount == seen)
+          return;
         seen = pb.changeCount;
-        printf("-- changed (changeCount)\n"); dump(pb); fflush(stdout);
+        printf("-- changed (changeCount)\n");
+        dump(pb);
+        fflush(stdout);
       }];
       CFRunLoopRunInMode(kCFRunLoopDefaultMode, argc > 2 ? atof(argv[2]) : 30, false);
       return 0;

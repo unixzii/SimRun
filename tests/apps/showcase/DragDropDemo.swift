@@ -3,7 +3,12 @@
 import SwiftUI
 
 struct DragDropDemo: View {
-  struct Sticker: Identifiable, Equatable { let id = UUID(); var emoji: String; var position: CGPoint; var tilt: Double }
+  struct Sticker: Identifiable, Equatable {
+    let id = UUID()
+    var emoji: String
+    var position: CGPoint
+    var tilt: Double
+  }
   private let tray = ["🍓", "🍋", "🫐", "🥝", "🍑", "🌈", "⭐️", "🚀", "🎈", "🪐"]
   @State private var stickers: [Sticker] = []
   @State private var boardTargeted = false
@@ -47,7 +52,9 @@ struct DragDropDemo: View {
       }
       .scaleEffect(boardTargeted ? 1.01 : 1)
       .dropDestination(for: String.self) { items, location in
-        guard let item = items.first else { return false }
+        guard let item = items.first else {
+          return false
+        }
         withAnimation(.spring(duration: 0.35, bounce: 0.4)) { place(item, at: location) }
         return true
       } isTargeted: { boardTargeted = $0 }
@@ -61,7 +68,9 @@ struct DragDropDemo: View {
           .background(binTargeted ? AnyShapeStyle(Color.red) : AnyShapeStyle(Color.red.opacity(0.12)),
                       in: .rect(cornerRadius: 16, style: .continuous))
           .dropDestination(for: String.self) { items, _ in
-            guard let item = items.first, item.hasPrefix("move:") else { return false }
+            guard let item = items.first, item.hasPrefix("move:") else {
+              return false
+            }
             let id = item.dropFirst(5)
             withAnimation(.spring) { stickers.removeAll { $0.id.uuidString == id } }
             return true

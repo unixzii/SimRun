@@ -13,7 +13,10 @@ struct PhonePage: View {
         LabeledContent("Reachable") { Text(link.reachable ? "Yes" : "No") }
           .accessibilityIdentifier("reachable")
         LabeledContent("Theme") {
-          HStack(spacing: 4) { Circle().fill(link.accent.gradient).frame(width: 12, height: 12); Text(link.accent.rawValue.capitalized) }
+          HStack(spacing: 4) {
+            Circle().fill(link.accent.gradient).frame(width: 12, height: 12)
+            Text(link.accent.rawValue.capitalized)
+          }
         }
       }
       Section {

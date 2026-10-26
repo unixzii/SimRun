@@ -33,7 +33,8 @@ static const SRModule kModules[SRModuleCount] = {
 };
 
 BOOL SRModuleOn(SRModuleID module) {
-  static BOOL on[SRModuleCount]; static dispatch_once_t once;
+  static BOOL on[SRModuleCount];
+  static dispatch_once_t once;
   dispatch_once(&once, ^{
     for (int m = 0; m < SRModuleCount; m++)
       on[m] = (kModules[m].roles & (1u << SRProcessRole())) && !(kModules[m].disable && getenv(kModules[m].disable));
@@ -42,5 +43,7 @@ BOOL SRModuleOn(SRModuleID module) {
 }
 
 __attribute__((constructor)) static void SRAppStart(void) {
-  for (int m = 0; m < SRModuleCount; m++) if (SRModuleOn(m)) kModules[m].start();
+  for (int m = 0; m < SRModuleCount; m++)
+    if (SRModuleOn(m))
+      kModules[m].start();
 }

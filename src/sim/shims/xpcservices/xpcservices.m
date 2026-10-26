@@ -31,7 +31,8 @@ static NSArray<NSString *> *service_environment(const char *path) {
   NSDictionary *ev = [xs isKindOfClass:NSDictionary.class] && [xs[@"EnvironmentVariables"] isKindOfClass:NSDictionary.class] ? xs[@"EnvironmentVariables"] : @{};
   NSMutableArray<NSString *> *env = [NSMutableArray array];
   [ev enumerateKeysAndObjectsUsingBlock:^(id key, id v, BOOL *stop) {
-    if ([key isKindOfClass:NSString.class] && [v isKindOfClass:NSString.class]) [env addObject:[NSString stringWithFormat:@"%@=%@", key, v]];
+    if ([key isKindOfClass:NSString.class] && [v isKindOfClass:NSString.class])
+      [env addObject:[NSString stringWithFormat:@"%@=%@", key, v]];
   }];
   return env;
 }
@@ -52,15 +53,21 @@ static SRService gServices[] = {
 };
 
 static dispatch_queue_t service_queue(void) {
-  static dispatch_queue_t q; static dispatch_once_t once;
-  dispatch_once(&once, ^{ q = dispatch_queue_create("dev.simrun.xpcservices", DISPATCH_QUEUE_SERIAL); });
+  static dispatch_queue_t q;
+  static dispatch_once_t once;
+  dispatch_once(&once, ^{
+    q = dispatch_queue_create("dev.simrun.xpcservices", DISPATCH_QUEUE_SERIAL);
+  });
   return q;
 }
 static xpc_connection_t my_xpc_connection_create(const char *name, dispatch_queue_t q) {
   SRService *svc = NULL;
   if (name && !getenv("XPCSERVICES_DISABLE"))
     for (size_t i = 0; i < sizeof gServices / sizeof *gServices; i++)
-      if (!strcmp(name, gServices[i].name)) { svc = &gServices[i]; break; }
+      if (!strcmp(name, gServices[i].name)) {
+        svc = &gServices[i];
+        break;
+      }
   if (svc) {
     __block mach_port_t port = MACH_PORT_NULL;
     dispatch_sync(service_queue(), ^{
@@ -73,20 +80,27 @@ static xpc_connection_t my_xpc_connection_create(const char *name, dispatch_queu
         // Like launchd_sim, launch it again after it has died (crashed, or jetsam): Metal reconnects on its next
         // request. Handing out the dead listener instead fails every later connection ("Connection init failed at
         // send right creation with error 9") and CA aborts on the next shader it needs.
-        char path[1024]; snprintf(path, sizeof path, "%s%s", getenv("DYLD_ROOT_PATH") ?: "", svc->bundlePath);
+        char path[1024];
+        snprintf(path, sizeof path, "%s%s", getenv("DYLD_ROOT_PATH") ?: "", svc->bundlePath);
         // the service gets only this dylib, none of the app's
         SRHelper h = { .path = path, .role = SRRoleXPCService, .insert = "xpcservices.dylib", .environment = service_environment(path),
                        .inNamespace = svc->inNamespace, .timeoutSeconds = 20, .tag = "xpcservices" };
         mach_port_t p = MACH_PORT_NULL;
         pid_t pid = SRSpawnHelper(&h, &p);
-        if (pid < 0) return;
+        if (pid < 0)
+          return;
         LOG("spawned %s pid %d -> listener %#x\n", path, pid, p);
-        svc->port = p; svc->pid = pid;
+        svc->port = p;
+        svc->pid = pid;
         dispatch_source_t ds = dispatch_source_create(DISPATCH_SOURCE_TYPE_PROC, pid, DISPATCH_PROC_EXIT, service_queue());
         dispatch_source_set_event_handler(ds, ^{
-          int st = 0; waitpid(pid, &st, WNOHANG);
+          int st = 0;
+          waitpid(pid, &st, WNOHANG);
           LOG("%s pid %d exited (status %#x); relaunching on the next connection\n", svc->name, pid, st);
-          if (svc->pid == pid && svc->port) { mach_port_deallocate(mach_task_self(), svc->port); svc->port = MACH_PORT_NULL; }
+          if (svc->pid == pid && svc->port) {
+            mach_port_deallocate(mach_task_self(), svc->port);
+            svc->port = MACH_PORT_NULL;
+          }
           dispatch_source_cancel(ds);
         });
         dispatch_resume(ds);
@@ -96,7 +110,8 @@ static xpc_connection_t my_xpc_connection_create(const char *name, dispatch_queu
     });
     if (port) {
       xpc_connection_t c = sr_xpc_create_from_endpoint(xpc_endpoint_create_mach_port_4sim(port));
-      if (q) xpc_connection_set_target_queue(c, q);
+      if (q)
+        xpc_connection_set_target_queue(c, q);
       LOG("xpc_connection_create(%s) -> listener %#x\n", name, port);
       return c;
     }
@@ -105,14 +120,18 @@ static xpc_connection_t my_xpc_connection_create(const char *name, dispatch_queu
 }
 // In the spawned service process: replacement for xpc_main(handler).
 static void my_xpc_main(void (*handler)(xpc_connection_t)) {
-  if (SRProcessRole() != SRRoleXPCService) { sr_xpc_main(handler); return; }
+  if (SRProcessRole() != SRRoleXPCService) {
+    sr_xpc_main(handler);
+    return;
+  }
   xpc_connection_t l = sr_xpc_connection_create(NULL, NULL);
   // One serial queue for all peers: under launchd_sim a _MultipleInstances service (MTLCompilerService) has one
   // connection per process. Run concurrently, the iOS 26.5 compiler's LLVM crashes at random (EXC_BAD_ACCESS in
   // Specializer::specialize, EarlyCSE, PredicateInfo, ErrorHandler::reset ...).
   dispatch_queue_t peers = dispatch_queue_create("dev.simrun.xpcservices.peers", DISPATCH_QUEUE_SERIAL);
   xpc_connection_set_event_handler(l, ^(xpc_object_t peer) {
-    if (xpc_get_type(peer) != XPC_TYPE_CONNECTION) return;
+    if (xpc_get_type(peer) != XPC_TYPE_CONNECTION)
+      return;
     xpc_connection_set_target_queue(peer, peers);
     handler(peer);
   });
@@ -122,7 +141,9 @@ static void my_xpc_main(void (*handler)(xpc_connection_t)) {
   dispatch_main();
 }
 
-__attribute__((used, section("__DATA,__interpose"))) static struct { const void *n, *o; } interposers[] = {
+__attribute__((used, section("__DATA,__interpose"))) static struct {
+  const void *n, *o;
+} interposers[] = {
   { (const void *)my_xpc_connection_create, (const void *)sr_xpc_connection_create },
   { (const void *)my_xpc_main, (const void *)sr_xpc_main },
 };

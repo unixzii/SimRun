@@ -19,7 +19,10 @@
 // Replaces `sel` of `cls` with `block` (which takes self first); NO if there is no such method.
 static BOOL Swizzle(const char *cls, const char *sel, id block) {
   Method m = class_getInstanceMethod(objc_getClass(cls), sel_registerName(sel));
-  if (!m) { LOG("no -[%s %s]: SimRun's app containers may be deleted", cls, sel); return NO; }
+  if (!m) {
+    LOG("no -[%s %s]: SimRun's app containers may be deleted", cls, sel);
+    return NO;
+  }
   method_setImplementation(m, imp_implementationWithBlock(block));
   return YES;
 }

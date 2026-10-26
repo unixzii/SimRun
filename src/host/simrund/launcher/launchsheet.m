@@ -28,16 +28,21 @@ static NSArray<NSArray *> *TracingSwitches(void) {
 static const CGFloat kLabelWidth = 170, kFieldWidth = 360;
 static const CGFloat kPageInsetTop = 20, kPageInsetBottom = 12;   // around a page's content, inside its scroll view
 
-static NSTextField *Label(NSString *s) { return [NSTextField labelWithString:s]; }
+static NSTextField *Label(NSString *s) {
+  return [NSTextField labelWithString:s];
+}
 static NSTextField *Note(NSString *s) {
   NSTextField *f = [NSTextField wrappingLabelWithString:s];
-  f.font = [NSFont systemFontOfSize:NSFont.smallSystemFontSize]; f.textColor = NSColor.secondaryLabelColor;
+  f.font = [NSFont systemFontOfSize:NSFont.smallSystemFontSize];
+  f.textColor = NSColor.secondaryLabelColor;
   f.preferredMaxLayoutWidth = kFieldWidth;
   return f;
 }
 static NSTextField *Value(NSString *s) {
   NSTextField *f = [NSTextField labelWithString:s ?: @""];
-  f.selectable = YES; f.lineBreakMode = NSLineBreakByTruncatingMiddle; f.toolTip = s;
+  f.selectable = YES;
+  f.lineBreakMode = NSLineBreakByTruncatingMiddle;
+  f.toolTip = s;
   [f setContentCompressionResistancePriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
   return f;
 }
@@ -45,9 +50,13 @@ static NSTextField *Value(NSString *s) {
 static NSGridView *Form(NSArray<NSArray<NSView *> *> *rows, NSInteger columns) {
   NSGridView *g = [NSGridView gridViewWithViews:rows];
   g.translatesAutoresizingMaskIntoConstraints = NO;
-  g.rowSpacing = 10; g.columnSpacing = 12; g.rowAlignment = NSGridRowAlignmentFirstBaseline;
-  [g columnAtIndex:0].xPlacement = NSGridCellPlacementTrailing; [g columnAtIndex:0].width = kLabelWidth;
-  for (NSInteger c = 1; c < columns; c++) [g columnAtIndex:c].width = (kFieldWidth - (columns - 2) * g.columnSpacing) / (columns - 1);
+  g.rowSpacing = 10;
+  g.columnSpacing = 12;
+  g.rowAlignment = NSGridRowAlignmentFirstBaseline;
+  [g columnAtIndex:0].xPlacement = NSGridCellPlacementTrailing;
+  [g columnAtIndex:0].width = kLabelWidth;
+  for (NSInteger c = 1; c < columns; c++)
+    [g columnAtIndex:c].width = (kFieldWidth - (columns - 2) * g.columnSpacing) / (columns - 1);
   return g;
 }
 
@@ -55,16 +64,23 @@ static NSGridView *Form(NSArray<NSArray<NSView *> *> *rows, NSInteger columns) {
 @interface SRFlippedView : NSView
 @end
 @implementation SRFlippedView
-- (BOOL)isFlipped { return YES; }
+- (BOOL)isFlipped {
+  return YES;
+}
 @end
 
 @interface SRLaunchSheet () <NSTableViewDataSource, NSTableViewDelegate>
 @end
 
 @implementation SRLaunchSheet {
-  SRAppInfo *_app; NSString *_profile; SRLaunchOptions *_options; BOOL _running; void (^_launch)(void);
+  SRAppInfo *_app;
+  NSString *_profile;
+  SRLaunchOptions *_options;
+  BOOL _running;
+  void (^_launch)(void);
   NSWindow *_sheet, *_parent;
-  SRTabBar *_tabBar; NSArray<NSView *> *_pages;
+  SRTabBar *_tabBar;
+  NSArray<NSView *> *_pages;
   NSPopUpButton *_runtime, *_device, *_locale, *_microphone;
   NSButton *_watchApp;   // an iPhone app with a Watch app: run that too
   NSButton *_micLoop;
@@ -76,16 +92,25 @@ static NSMutableSet<SRLaunchSheet *> *gShown;   // a sheet keeps itself alive un
 
 + (void)beginForApp:(SRAppInfo *)app profile:(NSString *)profile running:(BOOL)running window:(NSWindow *)window
              launch:(void (^)(void))launch {
-  if (!window || window.attachedSheet) return;
+  if (!window || window.attachedSheet)
+    return;
   SRLaunchSheet *s = [SRLaunchSheet new];
-  s->_app = app; s->_profile = [profile copy]; s->_running = running; s->_launch = [launch copy]; s->_parent = window;
+  s->_app = app;
+  s->_profile = [profile copy];
+  s->_running = running;
+  s->_launch = [launch copy];
+  s->_parent = window;
   s->_options = [SRLaunchOptions optionsForAppAtPath:app.path profile:profile];
   [SREnvironment reloadInstalledRuntimes];
   s->_switchBoxes = [NSMutableArray array];
-  [s build]; [s refresh];
-  if (!gShown) gShown = [NSMutableSet set];
+  [s build];
+  [s refresh];
+  if (!gShown)
+    gShown = [NSMutableSet set];
   [gShown addObject:s];
-  [window beginSheet:s->_sheet completionHandler:^(NSModalResponse r) { [gShown removeObject:s]; }];
+  [window beginSheet:s->_sheet completionHandler:^(NSModalResponse r) {
+    [gShown removeObject:s];
+  }];
 }
 
 // ---------------------------------------------------------------- layout
@@ -94,21 +119,26 @@ static NSMutableSet<SRLaunchSheet *> *gShown;   // a sheet keeps itself alive un
   NSView *root = _sheet.contentView;
 
   NSImageView *icon = [NSImageView imageViewWithImage:_app.icon];
-  NSTextField *title = Label(_app.name); title.font = [NSFont systemFontOfSize:15];
+  NSTextField *title = Label(_app.name);
+  title.font = [NSFont systemFontOfSize:15];
   // whose options these are: each profile has its own
   NSTextField *profile = Label([NSString stringWithFormat:@"Profile: %@", _profile ?: @"Default"]);
   profile.textColor = NSColor.secondaryLabelColor;
-  NSStackView *header = [NSStackView stackViewWithViews:@[ icon, title, profile ]]; header.spacing = 8;
+  NSStackView *header = [NSStackView stackViewWithViews:@[ icon, title, profile ]];
+  header.spacing = 8;
   [header setCustomSpacing:12 afterView:title];
 
   SRTabBar *tabBar = _tabBar = [SRTabBar tabBarWithTitles:@[ @"Info", @"Arguments", @"Options", @"Diagnostics" ]];
   __weak SRLaunchSheet *weakSelf = self;
-  tabBar.onSelect = ^(NSInteger i) { [weakSelf showPage:i]; };
+  tabBar.onSelect = ^(NSInteger i) {
+    [weakSelf showPage:i];
+  };
 
   _pages = @[ [self infoPage], [self argumentsPage], [self optionsPage], [self diagnosticsPage] ];
   NSView *pageArea = [NSView new];
   for (NSView *p in _pages) {
-    p.translatesAutoresizingMaskIntoConstraints = NO; [pageArea addSubview:p];
+    p.translatesAutoresizingMaskIntoConstraints = NO;
+    [pageArea addSubview:p];
     [NSLayoutConstraint activateConstraints:@[
       [p.topAnchor constraintEqualToAnchor:pageArea.topAnchor], [p.leadingAnchor constraintEqualToAnchor:pageArea.leadingAnchor],
       [p.trailingAnchor constraintEqualToAnchor:pageArea.trailingAnchor], [p.bottomAnchor constraintEqualToAnchor:pageArea.bottomAnchor],
@@ -121,10 +151,14 @@ static NSMutableSet<SRLaunchSheet *> *gShown;   // a sheet keeps itself alive un
   NSButton *launch = [NSButton buttonWithTitle:_running ? @"Relaunch" : @"Launch" target:self action:@selector(launch:)];
   launch.keyEquivalent = @"\r";
   NSBox *sep[3];
-  for (int i = 0; i < 3; i++) { sep[i] = [NSBox new]; sep[i].boxType = NSBoxSeparator; }
+  for (int i = 0; i < 3; i++) {
+    sep[i] = [NSBox new];
+    sep[i].boxType = NSBoxSeparator;
+  }
 
   for (NSView *v in @[ header, tabBar, pageArea, restore, cancel, launch, sep[0], sep[1], sep[2] ]) {
-    v.translatesAutoresizingMaskIntoConstraints = NO; [root addSubview:v];
+    v.translatesAutoresizingMaskIntoConstraints = NO;
+    [root addSubview:v];
   }
   NSMutableArray *c = [NSMutableArray arrayWithArray:@[
     [root.widthAnchor constraintEqualToConstant:640],
@@ -153,9 +187,12 @@ static NSMutableSet<SRLaunchSheet *> *gShown;   // a sheet keeps itself alive un
 static NSView *Page(NSView *content) {
   NSView *document = [SRFlippedView new];
   document.translatesAutoresizingMaskIntoConstraints = NO;
-  content.translatesAutoresizingMaskIntoConstraints = NO; [document addSubview:content];
+  content.translatesAutoresizingMaskIntoConstraints = NO;
+  [document addSubview:content];
   NSScrollView *page = [NSScrollView new];
-  page.drawsBackground = NO; page.hasVerticalScroller = YES; page.autohidesScrollers = YES;
+  page.drawsBackground = NO;
+  page.hasVerticalScroller = YES;
+  page.autohidesScrollers = YES;
   page.documentView = document;
   NSClipView *clip = page.contentView;
   [NSLayoutConstraint activateConstraints:@[
@@ -170,19 +207,24 @@ static NSView *Page(NSView *content) {
 
 - (NSButton *)switchBox:(NSArray *)sw {
   NSButton *b = [NSButton checkboxWithTitle:sw[1] target:self action:@selector(switchToggled:)];
-  b.identifier = sw[0]; b.tag = [sw[2] boolValue];
+  b.identifier = sw[0];
+  b.tag = [sw[2] boolValue];
   [_switchBoxes addObject:b];
   return b;
 }
 
 - (NSView *)infoPage {
-  _runtime = [NSPopUpButton new]; _runtime.target = self; _runtime.action = @selector(runtimeChanged:);
+  _runtime = [NSPopUpButton new];
+  _runtime.target = self;
+  _runtime.action = @selector(runtimeChanged:);
   NSTextField *note = Note([_app.platform isEqualToString:SRPlatformIOS]
       ? @"SimRun's own runtime is chosen in SimRun ▸ iOS Runtime. An app on another runtime gets that runtime's system "
          "services; its data container stays the same."
       : @"A watchOS app runs on the newest installed watchOS runtime unless you choose another. Its data container stays "
          "the same on every runtime.");
-  _device = [NSPopUpButton new]; _device.target = self; _device.action = @selector(deviceChanged:);
+  _device = [NSPopUpButton new];
+  _device.target = self;
+  _device.action = @selector(deviceChanged:);
   NSTextField *deviceNote = Note(@"The device types the runtime supports. The app gets that model's screen, safe areas and "
                                   "hardware features (Dynamic Island, home button, ...).");
   NSString *dir = _app.path.stringByDeletingLastPathComponent.stringByAbbreviatingWithTildeInPath;
@@ -207,15 +249,19 @@ static NSView *Page(NSView *content) {
     @[ Label(@"Location"), Value(dir) ],
   ]];
   NSGridView *g = Form(rows, 2);
-  for (NSUInteger i = 1; i < info; i += 2) [g rowAtIndex:i].topPadding = -4;   // a note under its control
-  for (NSUInteger i = 2; i <= info; i += 2) [g rowAtIndex:i].topPadding = 12;
+  for (NSUInteger i = 1; i < info; i += 2)
+    [g rowAtIndex:i].topPadding = -4;   // a note under its control
+  for (NSUInteger i = 2; i <= info; i += 2)
+    [g rowAtIndex:i].topPadding = 12;
   [_runtime.widthAnchor constraintEqualToConstant:kFieldWidth].active = YES;
   [_device.widthAnchor constraintEqualToConstant:kFieldWidth].active = YES;
   return Page(g);
 }
 
 - (NSView *)optionsPage {
-  _locale = [NSPopUpButton new]; _locale.target = self; _locale.action = @selector(localeChanged:);
+  _locale = [NSPopUpButton new];
+  _locale.target = self;
+  _locale.action = @selector(localeChanged:);
   [_locale addItemsWithTitles:@[ @"Same as the Mac", @"Keep the Device's Settings" ]];
   [_locale.widthAnchor constraintEqualToConstant:kFieldWidth].active = YES;
   NSMutableArray *rows = [NSMutableArray arrayWithArray:@[
@@ -239,7 +285,9 @@ static NSView *Page(NSView *content) {
 // What the app records: the Mac's microphone, what the Mac plays, or an audio file (the last one chosen is kept in the
 // menu; Choose Audio File… picks another).
 - (NSPopUpButton *)microphoneMenu {
-  _microphone = [NSPopUpButton new]; _microphone.target = self; _microphone.action = @selector(microphoneChanged:);
+  _microphone = [NSPopUpButton new];
+  _microphone.target = self;
+  _microphone.action = @selector(microphoneChanged:);
   [_microphone.widthAnchor constraintEqualToConstant:kFieldWidth].active = YES;
   return _microphone;
 }
@@ -264,14 +312,21 @@ static NSView *Page(NSView *content) {
   _micLoop.enabled = file;
 }
 - (void)microphoneChanged:(NSPopUpButton *)p {
-  if (p.selectedItem.tag != 1) { _options.microphone = p.selectedItem.representedObject; [self refreshMicrophone]; return; }
+  if (p.selectedItem.tag != 1) {
+    _options.microphone = p.selectedItem.representedObject;
+    [self refreshMicrophone];
+    return;
+  }
   [self refreshMicrophone];   // back to the current choice until one is made
   NSOpenPanel *panel = [NSOpenPanel openPanel];
-  panel.allowedContentTypes = @[ UTTypeAudio ]; panel.message = @"The app records this file's sound, from its start each time it starts recording.";
+  panel.allowedContentTypes = @[ UTTypeAudio ];
+  panel.message = @"The app records this file's sound, from its start each time it starts recording.";
   NSString *mic = _options.microphone;
-  if (mic && ![mic isEqualToString:@"system"]) panel.directoryURL = [NSURL fileURLWithPath:mic.stringByDeletingLastPathComponent];
+  if (mic && ![mic isEqualToString:@"system"])
+    panel.directoryURL = [NSURL fileURLWithPath:mic.stringByDeletingLastPathComponent];
   [panel beginSheetModalForWindow:_sheet completionHandler:^(NSModalResponse r) {
-    if (r != NSModalResponseOK || !panel.URL) return;
+    if (r != NSModalResponseOK || !panel.URL)
+      return;
     self->_options.microphone = panel.URL.path;
     [self refreshMicrophone];
   }];
@@ -299,31 +354,48 @@ static NSView *Page(NSView *content) {
     [self listTitled:@"Arguments Passed On Launch" columns:@[ @"value" ] table:&_argsTable],
     [self listTitled:@"Environment Variables" columns:@[ @"name", @"value" ] table:&_envTable],
   ]];
-  s.orientation = NSUserInterfaceLayoutOrientationVertical; s.spacing = 16;
+  s.orientation = NSUserInterfaceLayoutOrientationVertical;
+  s.spacing = 16;
   return Page(s);
 }
 
 - (NSView *)listTitled:(NSString *)title columns:(NSArray<NSString *> *)columns table:(NSTableView * __strong *)out {
-  NSTextField *label = Label(title); label.font = [NSFont boldSystemFontOfSize:NSFont.systemFontSize];
+  NSTextField *label = Label(title);
+  label.font = [NSFont boldSystemFontOfSize:NSFont.systemFontSize];
   NSTableView *t = [NSTableView new];
-  NSTableColumn *on = [[NSTableColumn alloc] initWithIdentifier:@"on"]; on.width = 22; on.minWidth = on.maxWidth = 22; on.title = @"";
+  NSTableColumn *on = [[NSTableColumn alloc] initWithIdentifier:@"on"];
+  on.width = 22;
+  on.minWidth = on.maxWidth = 22;
+  on.title = @"";
   [t addTableColumn:on];
   for (NSString *ident in columns) {
     NSTableColumn *col = [[NSTableColumn alloc] initWithIdentifier:ident];
-    col.title = [ident isEqualToString:@"name"] ? @"Name" : @"Value"; col.width = 200; col.resizingMask = NSTableColumnUserResizingMask | NSTableColumnAutoresizingMask;
+    col.title = [ident isEqualToString:@"name"] ? @"Name" : @"Value";
+    col.width = 200;
+    col.resizingMask = NSTableColumnUserResizingMask | NSTableColumnAutoresizingMask;
     [t addTableColumn:col];
   }
-  if (columns.count == 1) t.headerView = nil;
-  t.style = NSTableViewStyleFullWidth; t.usesAlternatingRowBackgroundColors = YES; t.rowHeight = 22;
-  t.allowsMultipleSelection = YES; t.columnAutoresizingStyle = NSTableViewUniformColumnAutoresizingStyle;
-  t.dataSource = self; t.delegate = self;
+  if (columns.count == 1)
+    t.headerView = nil;
+  t.style = NSTableViewStyleFullWidth;
+  t.usesAlternatingRowBackgroundColors = YES;
+  t.rowHeight = 22;
+  t.allowsMultipleSelection = YES;
+  t.columnAutoresizingStyle = NSTableViewUniformColumnAutoresizingStyle;
+  t.dataSource = self;
+  t.delegate = self;
   NSScrollView *sv = [NSScrollView new];
-  sv.documentView = t; sv.hasVerticalScroller = YES; sv.borderType = NSBezelBorder;
+  sv.documentView = t;
+  sv.hasVerticalScroller = YES;
+  sv.borderType = NSBezelBorder;
   NSSegmentedControl *pm = [NSSegmentedControl segmentedControlWithImages:@[ [NSImage imageNamed:NSImageNameAddTemplate], [NSImage imageNamed:NSImageNameRemoveTemplate] ]
                                                              trackingMode:NSSegmentSwitchTrackingMomentary target:self action:@selector(addOrRemove:)];
-  pm.segmentStyle = NSSegmentStyleSmallSquare; pm.tag = columns.count;   // 1: arguments, 2: environment
+  pm.segmentStyle = NSSegmentStyleSmallSquare;
+  pm.tag = columns.count;   // 1: arguments, 2: environment
   NSStackView *s = [NSStackView stackViewWithViews:@[ label, sv, pm ]];
-  s.orientation = NSUserInterfaceLayoutOrientationVertical; s.alignment = NSLayoutAttributeLeading; s.spacing = 6;
+  s.orientation = NSUserInterfaceLayoutOrientationVertical;
+  s.alignment = NSLayoutAttributeLeading;
+  s.spacing = 6;
   [s setCustomSpacing:8 afterView:sv];
   [NSLayoutConstraint activateConstraints:@[
     [sv.widthAnchor constraintEqualToConstant:kLabelWidth + 12 + kFieldWidth], [sv.heightAnchor constraintEqualToConstant:88],
@@ -333,61 +405,90 @@ static NSView *Page(NSView *content) {
   return s;
 }
 
-- (NSMutableArray<SRLaunchItem *> *)itemsOf:(NSTableView *)t { return t == _argsTable ? _options.arguments : _options.environment; }
-- (NSTableView *)tableOf:(NSView *)v { return [v isDescendantOf:_argsTable] ? _argsTable : _envTable; }
+- (NSMutableArray<SRLaunchItem *> *)itemsOf:(NSTableView *)t {
+  return t == _argsTable ? _options.arguments : _options.environment;
+}
+- (NSTableView *)tableOf:(NSView *)v {
+  return [v isDescendantOf:_argsTable] ? _argsTable : _envTable;
+}
 
-- (NSInteger)numberOfRowsInTableView:(NSTableView *)t { return [self itemsOf:t].count; }
+- (NSInteger)numberOfRowsInTableView:(NSTableView *)t {
+  return [self itemsOf:t].count;
+}
 - (NSView *)tableView:(NSTableView *)t viewForTableColumn:(NSTableColumn *)col row:(NSInteger)row {
   SRLaunchItem *it = [self itemsOf:t][row];
   NSString *ident = col.identifier;
   NSTableCellView *cv = [t makeViewWithIdentifier:ident owner:self];
   if (!cv) {
-    cv = [NSTableCellView new]; cv.identifier = ident;
+    cv = [NSTableCellView new];
+    cv.identifier = ident;
     NSControl *ctl;
-    if ([ident isEqualToString:@"on"]) ctl = [NSButton checkboxWithTitle:@"" target:self action:@selector(itemToggled:)];
+    if ([ident isEqualToString:@"on"])
+      ctl = [NSButton checkboxWithTitle:@"" target:self action:@selector(itemToggled:)];
     else {
       NSTextField *f = [NSTextField new];
-      f.bordered = NO; f.drawsBackground = NO; f.editable = YES; f.lineBreakMode = NSLineBreakByTruncatingTail;
-      f.target = self; f.action = @selector(itemEdited:); f.cell.sendsActionOnEndEditing = YES;
-      cv.textField = f; ctl = f;
+      f.bordered = NO;
+      f.drawsBackground = NO;
+      f.editable = YES;
+      f.lineBreakMode = NSLineBreakByTruncatingTail;
+      f.target = self;
+      f.action = @selector(itemEdited:);
+      f.cell.sendsActionOnEndEditing = YES;
+      cv.textField = f;
+      ctl = f;
     }
-    ctl.translatesAutoresizingMaskIntoConstraints = NO; [cv addSubview:ctl];
+    ctl.translatesAutoresizingMaskIntoConstraints = NO;
+    [cv addSubview:ctl];
     [NSLayoutConstraint activateConstraints:@[
       [ctl.centerYAnchor constraintEqualToAnchor:cv.centerYAnchor],
       [ctl.leadingAnchor constraintEqualToAnchor:cv.leadingAnchor constant:[ident isEqualToString:@"on"] ? 3 : 2],
     ]];
-    if (cv.textField) [ctl.trailingAnchor constraintEqualToAnchor:cv.trailingAnchor constant:-2].active = YES;
+    if (cv.textField)
+      [ctl.trailingAnchor constraintEqualToAnchor:cv.trailingAnchor constant:-2].active = YES;
   }
-  if ([ident isEqualToString:@"on"]) ((NSButton *)cv.subviews.firstObject).state = it.enabled ? NSControlStateValueOn : NSControlStateValueOff;
-  else cv.textField.stringValue = ([ident isEqualToString:@"name"] ? it.name : it.value) ?: @"";
+  if ([ident isEqualToString:@"on"])
+    ((NSButton *)cv.subviews.firstObject).state = it.enabled ? NSControlStateValueOn : NSControlStateValueOff;
+  else
+    cv.textField.stringValue = ([ident isEqualToString:@"name"] ? it.name : it.value) ?: @"";
   return cv;
 }
 
 - (void)itemToggled:(NSButton *)b {
-  NSTableView *t = [self tableOf:b]; NSInteger row = [t rowForView:b];
-  if (row >= 0 && row < (NSInteger)[self itemsOf:t].count) [self itemsOf:t][row].enabled = b.state == NSControlStateValueOn;
+  NSTableView *t = [self tableOf:b];
+  NSInteger row = [t rowForView:b];
+  if (row >= 0 && row < (NSInteger)[self itemsOf:t].count)
+    [self itemsOf:t][row].enabled = b.state == NSControlStateValueOn;
 }
 - (void)itemEdited:(NSTextField *)f {
-  NSTableView *t = [self tableOf:f]; NSInteger row = [t rowForView:f], col = [t columnForView:f];
-  if (row < 0 || row >= (NSInteger)[self itemsOf:t].count || col < 0) return;
+  NSTableView *t = [self tableOf:f];
+  NSInteger row = [t rowForView:f], col = [t columnForView:f];
+  if (row < 0 || row >= (NSInteger)[self itemsOf:t].count || col < 0)
+    return;
   SRLaunchItem *it = [self itemsOf:t][row];
   NSString *v = f.stringValue;
-  if ([t.tableColumns[col].identifier isEqualToString:@"name"]) it.name = [v stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
-  else it.value = v;
+  if ([t.tableColumns[col].identifier isEqualToString:@"name"])
+    it.name = [v stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
+  else
+    it.value = v;
 }
 - (void)addOrRemove:(NSSegmentedControl *)pm {
   NSTableView *t = pm.tag == 1 ? _argsTable : _envTable;
   NSMutableArray *items = [self itemsOf:t];
   [_sheet makeFirstResponder:nil];   // commit an edit in progress
   if (pm.selectedSegment == 0) {
-    SRLaunchItem *it = [SRLaunchItem new]; it.enabled = YES; it.name = @""; it.value = @"";
+    SRLaunchItem *it = [SRLaunchItem new];
+    it.enabled = YES;
+    it.name = @"";
+    it.value = @"";
     [items addObject:it];
     [t reloadData];
     [t selectRowIndexes:[NSIndexSet indexSetWithIndex:items.count - 1] byExtendingSelection:NO];
     [t editColumn:1 row:(NSInteger)items.count - 1 withEvent:nil select:YES];
   } else {
     NSIndexSet *sel = t.selectedRowIndexes;
-    [items removeObjectsAtIndexes:[sel indexesPassingTest:^BOOL(NSUInteger i, BOOL *stop) { return i < items.count; }]];
+    [items removeObjectsAtIndexes:[sel indexesPassingTest:^BOOL(NSUInteger i, BOOL *stop) {
+      return i < items.count;
+    }]];
     [t reloadData];
   }
 }
@@ -406,19 +507,25 @@ static NSView *Page(NSView *content) {
   for (SRRuntime *r in [SREnvironment installedRuntimesForPlatform:_app.platform]) {
     NSMenuItem *it = [_runtime.menu addItemWithTitle:r.name action:nil keyEquivalent:@""];
     it.representedObject = r.build;
-    if ([r.build isEqualToString:want]) selected = it;
+    if ([r.build isEqualToString:want])
+      selected = it;
   }
   if (want && !selected) {   // saved, but no longer installed
     selected = [_runtime.menu addItemWithTitle:[NSString stringWithFormat:@"%@ (Not Installed)", want] action:nil keyEquivalent:@""];
     selected.representedObject = want;
   }
-  if (selected) [_runtime selectItem:selected]; else [_runtime selectItemAtIndex:0];
+  if (selected)
+    [_runtime selectItem:selected];
+  else
+    [_runtime selectItemAtIndex:0];
   [self refreshDevices];
   _watchApp.state = _options.runsWatchApp ? NSControlStateValueOn : NSControlStateValueOff;
   [_locale selectItemAtIndex:[_options.switches containsObject:@"LOCALE_DISABLE"] ? 1 : 0];
-  for (NSButton *b in _switchBoxes) b.state = [_options.switches containsObject:b.identifier] != (b.tag != 0) ? NSControlStateValueOn : NSControlStateValueOff;
+  for (NSButton *b in _switchBoxes)
+    b.state = [_options.switches containsObject:b.identifier] != (b.tag != 0) ? NSControlStateValueOn : NSControlStateValueOff;
   [self refreshMicrophone];
-  [_argsTable reloadData]; [_envTable reloadData];
+  [_argsTable reloadData];
+  [_envTable reloadData];
 }
 
 // The runtime the app would run on: its own, or its platform's default; nil if its own isn't installed (or is another
@@ -438,12 +545,16 @@ static NSView *Page(NSView *content) {
   NSString *want = _options.deviceType, *family = nil;
   NSMenuItem *selected = nil;
   for (SRDeviceType *d in types) {
-    if (![d.family isEqualToString:family]) { [_device.menu addItem:NSMenuItem.separatorItem]; family = d.family; }
+    if (![d.family isEqualToString:family]) {
+      [_device.menu addItem:NSMenuItem.separatorItem];
+      family = d.family;
+    }
     NSMenuItem *it = [_device.menu addItemWithTitle:d.name action:nil keyEquivalent:@""];
     it.representedObject = d.identifier;
     it.toolTip = [NSString stringWithFormat:@"%@ — %.0f×%.0f points @%gx", d.modelIdentifier ?: d.identifier,
                   d.screenWidth / d.screenScale, d.screenHeight / d.screenScale, d.screenScale];
-    if ([d.identifier isEqualToString:want]) selected = it;
+    if ([d.identifier isEqualToString:want])
+      selected = it;
   }
   if (want && !selected) {   // saved, but the runtime doesn't support it (or it is no longer installed)
     NSString *name = [want componentsSeparatedByString:@"SimDeviceType."].lastObject;
@@ -454,34 +565,56 @@ static NSView *Page(NSView *content) {
                                        action:nil keyEquivalent:@""];
     selected.representedObject = want;
   }
-  if (selected) [_device selectItem:selected]; else [_device selectItemAtIndex:0];
+  if (selected)
+    [_device selectItem:selected];
+  else
+    [_device selectItemAtIndex:0];
 }
 
 - (void)showPage:(NSInteger)index {
   _tabBar.selectedIndex = index;
-  for (NSUInteger i = 0; i < _pages.count; i++) _pages[i].hidden = (NSInteger)i != index;
+  for (NSUInteger i = 0; i < _pages.count; i++)
+    _pages[i].hidden = (NSInteger)i != index;
 }
 - (void)runtimeChanged:(NSPopUpButton *)p {
   _options.runtimeBuild = p.selectedItem.representedObject;
   // a device type the new runtime doesn't support: back to its default
-  if (_options.deviceType && ![SREnvironment deviceTypeWithIdentifier:_options.deviceType runtime:[self selectedRuntime]]) _options.deviceType = nil;
+  if (_options.deviceType && ![SREnvironment deviceTypeWithIdentifier:_options.deviceType runtime:[self selectedRuntime]])
+    _options.deviceType = nil;
   [self refreshDevices];
 }
-- (void)deviceChanged:(NSPopUpButton *)p { _options.deviceType = p.selectedItem.representedObject; }
-- (void)watchAppToggled:(NSButton *)b { _options.runsWatchApp = b.state == NSControlStateValueOn; }
+- (void)deviceChanged:(NSPopUpButton *)p {
+  _options.deviceType = p.selectedItem.representedObject;
+}
+- (void)watchAppToggled:(NSButton *)b {
+  _options.runsWatchApp = b.state == NSControlStateValueOn;
+}
 - (void)localeChanged:(NSPopUpButton *)p {
-  if (p.indexOfSelectedItem == 1) [_options.switches addObject:@"LOCALE_DISABLE"]; else [_options.switches removeObject:@"LOCALE_DISABLE"];
+  if (p.indexOfSelectedItem == 1)
+    [_options.switches addObject:@"LOCALE_DISABLE"];
+  else
+    [_options.switches removeObject:@"LOCALE_DISABLE"];
 }
 - (void)switchToggled:(NSButton *)b {
   BOOL set = (b.state == NSControlStateValueOn) != (b.tag != 0);   // tag 1: the box is checked while the variable is unset
-  if (set) [_options.switches addObject:b.identifier]; else [_options.switches removeObject:b.identifier];
+  if (set)
+    [_options.switches addObject:b.identifier];
+  else
+    [_options.switches removeObject:b.identifier];
 }
-- (void)restoreDefaults:(id)s { [_sheet makeFirstResponder:nil]; _options = [SRLaunchOptions new]; [self refresh]; }
-- (void)cancel:(id)s { [_parent endSheet:_sheet]; }
+- (void)restoreDefaults:(id)s {
+  [_sheet makeFirstResponder:nil];
+  _options = [SRLaunchOptions new];
+  [self refresh];
+}
+- (void)cancel:(id)s {
+  [_parent endSheet:_sheet];
+}
 - (void)launch:(id)s {
   [_sheet makeFirstResponder:nil];
   [_options saveForAppAtPath:_app.path profile:_profile];
   [_parent endSheet:_sheet];
-  if (_launch) _launch();
+  if (_launch)
+    _launch();
 }
 @end

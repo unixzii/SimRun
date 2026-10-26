@@ -131,8 +131,12 @@ private struct ToolbarGlass<Content: View>: View, Animatable {
   var spacing: CGFloat
   @ViewBuilder var content: Content
   var animatableData: CGFloat {
-    get { spacing }
-    set { spacing = newValue }
+    get {
+      spacing
+    }
+    set {
+      spacing = newValue
+    }
   }
   var body: some View { GlassEffectContainer(spacing: spacing) { content } }
 }

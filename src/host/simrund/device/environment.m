@@ -7,12 +7,21 @@
 extern char **environ;
 
 static NSString *ExecutableDir(void) {
-  char buf[PATH_MAX]; uint32_t n = sizeof buf; _NSGetExecutablePath(buf, &n);
-  char real[PATH_MAX]; if (!realpath(buf, real)) strlcpy(real, buf, sizeof real);
+  char buf[PATH_MAX];
+  uint32_t n = sizeof buf;
+  _NSGetExecutablePath(buf, &n);
+  char real[PATH_MAX];
+  if (!realpath(buf, real))
+    strlcpy(real, buf, sizeof real);
   return [@(real) stringByDeletingLastPathComponent];
 }
-static BOOL InAppBundle(void) { return [NSBundle.mainBundle.bundlePath.pathExtension isEqualToString:@"app"]; }
-static NSString *RealHome(void) { struct passwd *pw = getpwuid(getuid()); return pw ? @(pw->pw_dir) : NSHomeDirectory(); }
+static BOOL InAppBundle(void) {
+  return [NSBundle.mainBundle.bundlePath.pathExtension isEqualToString:@"app"];
+}
+static NSString *RealHome(void) {
+  struct passwd *pw = getpwuid(getuid());
+  return pw ? @(pw->pw_dir) : NSHomeDirectory();
+}
 
 SRPlatform const SRPlatformIOS = @"iOS";
 SRPlatform const SRPlatformWatchOS = @"watchOS";
@@ -23,22 +32,29 @@ SRPlatform const SRPlatformWatchOS = @"watchOS";
 
 @implementation SRRuntime
 + (instancetype)runtimeAtRoot:(NSString *)root {
-  if (!root.length) return nil;
+  if (!root.length)
+    return nil;
   NSDictionary *sv = [NSDictionary dictionaryWithContentsOfFile:[root stringByAppendingPathComponent:@"System/Library/CoreServices/SystemVersion.plist"]];
-  if (![sv[@"ProductVersion"] isKindOfClass:NSString.class]) return nil;
+  if (![sv[@"ProductVersion"] isKindOfClass:NSString.class])
+    return nil;
   // a runtime without a ProductName is taken for iOS's, as before platforms
   SRPlatform platform = [sv[@"ProductName"] isEqual:@"Watch OS"] ? SRPlatformWatchOS
                       : !sv[@"ProductName"] || [sv[@"ProductName"] isEqual:@"iPhone OS"] ? SRPlatformIOS : nil;
-  if (!platform) return nil;
+  if (!platform)
+    return nil;
   SRRuntime *r = [SRRuntime new];
-  r->_root = root; r->_version = sv[@"ProductVersion"]; r->_platform = platform;
+  r->_root = root;
+  r->_version = sv[@"ProductVersion"];
+  r->_platform = platform;
   r->_build = [sv[@"ProductBuildVersion"] isKindOfClass:NSString.class] ? sv[@"ProductBuildVersion"] : @"";
   r->_name = [NSString stringWithFormat:@"%@ %@ (%@)", platform, r->_version, r->_build];
   return r;
 }
 @end
 
-static double Number(id v, double fallback) { return [v isKindOfClass:NSNumber.class] ? [v doubleValue] : fallback; }
+static double Number(id v, double fallback) {
+  return [v isKindOfClass:NSNumber.class] ? [v doubleValue] : fallback;
+}
 
 @implementation SRDeviceType {
   NSDictionary<NSString *, NSString *> *_environment;   // profile.plist's
@@ -49,13 +65,17 @@ static double Number(id v, double fallback) { return [v isKindOfClass:NSNumber.c
   NSDictionary *caps = [NSDictionary dictionaryWithContentsOfFile:capsPath][@"capabilities"];
   NSDictionary *profile = [NSDictionary dictionaryWithContentsOfFile:[res stringByAppendingPathComponent:@"profile.plist"]];
   NSDictionary *info = [NSDictionary dictionaryWithContentsOfFile:[bundlePath stringByAppendingPathComponent:@"Contents/Info.plist"]];
-  if (![caps isKindOfClass:NSDictionary.class] || ![profile isKindOfClass:NSDictionary.class]) return nil;
+  if (![caps isKindOfClass:NSDictionary.class] || ![profile isKindOfClass:NSDictionary.class])
+    return nil;
   NSDictionary *screen = caps[@"ScreenDimensionsCapability"];
   NSString *family = [caps[@"idiom"] isEqual:@"phone"] ? @"iPhone" : [caps[@"idiom"] isEqual:@"pad"] ? @"iPad"
                    : [caps[@"idiom"] isEqual:@"watch"] ? @"Apple Watch" : nil;
-  if (![screen isKindOfClass:NSDictionary.class] || !family) return nil;
+  if (![screen isKindOfClass:NSDictionary.class] || !family)
+    return nil;
   SRDeviceType *d = [SRDeviceType new];
-  d->_bundlePath = bundlePath; d->_capabilitiesPath = capsPath; d->_family = family;
+  d->_bundlePath = bundlePath;
+  d->_capabilitiesPath = capsPath;
+  d->_family = family;
   d->_identifier = [info[@"CFBundleIdentifier"] isKindOfClass:NSString.class] ? info[@"CFBundleIdentifier"] : bundlePath.lastPathComponent;
   d->_name = [info[@"CFBundleName"] isKindOfClass:NSString.class] ? info[@"CFBundleName"] : bundlePath.lastPathComponent.stringByDeletingPathExtension;
   d->_modelIdentifier = [profile[@"modelIdentifier"] isKindOfClass:NSString.class] ? profile[@"modelIdentifier"] : nil;
@@ -66,11 +86,13 @@ static double Number(id v, double fallback) { return [v isKindOfClass:NSNumber.c
   d->_screenScale = Number(screen[@"main-screen-scale"], 0);
   d->_screenPitch = Number(screen[@"main-screen-pitch"], 0);
   d->_cornerRadius = Number(caps[@"DeviceCornerRadius"], 0);
-  if (!d->_screenWidth || !d->_screenHeight || d->_screenScale <= 0) return nil;
+  if (!d->_screenWidth || !d->_screenHeight || d->_screenScale <= 0)
+    return nil;
   NSMutableDictionary *env = [NSMutableDictionary dictionary];
   NSDictionary *pe = [profile[@"environment"] isKindOfClass:NSDictionary.class] ? profile[@"environment"] : @{};
   [pe enumerateKeysAndObjectsUsingBlock:^(id k, id v, BOOL *stop) {
-    if ([k isKindOfClass:NSString.class] && [v isKindOfClass:NSString.class]) env[k] = v;
+    if ([k isKindOfClass:NSString.class] && [v isKindOfClass:NSString.class])
+      env[k] = v;
   }];
   d->_environment = env;
   return d;
@@ -78,8 +100,10 @@ static double Number(id v, double fallback) { return [v isKindOfClass:NSNumber.c
 - (NSDictionary<NSString *, NSString *> *)variables {
   NSMutableDictionary *v = [_environment mutableCopy];
   v[@"SIMULATOR_CAPABILITIES"] = _capabilitiesPath;
-  if (_modelIdentifier) v[@"SIMULATOR_MODEL_IDENTIFIER"] = _modelIdentifier;
-  if (_productClass) v[@"SIMULATOR_PRODUCT_CLASS"] = _productClass;
+  if (_modelIdentifier)
+    v[@"SIMULATOR_MODEL_IDENTIFIER"] = _modelIdentifier;
+  if (_productClass)
+    v[@"SIMULATOR_PRODUCT_CLASS"] = _productClass;
   v[@"SIMULATOR_MAINSCREEN_WIDTH"] = [NSString stringWithFormat:@"%lu", (unsigned long)_screenWidth];
   v[@"SIMULATOR_MAINSCREEN_HEIGHT"] = [NSString stringWithFormat:@"%lu", (unsigned long)_screenHeight];
   v[@"SIMULATOR_MAINSCREEN_SCALE"] = [NSString stringWithFormat:@"%f", _screenScale];
@@ -103,34 +127,46 @@ static NSDictionary<NSString *, NSArray<NSString *> *> *SimctlRunning(NSString *
   // a Mac process: none of the sim environment SimRun itself may have been started with
   NSMutableDictionary *env = [NSMutableDictionary dictionary];
   [NSProcessInfo.processInfo.environment enumerateKeysAndObjectsUsingBlock:^(NSString *k, NSString *v, BOOL *stop) {
-    if (![k hasPrefix:@"DYLD_"] && ![k hasPrefix:@"SIMULATOR_"] && ![k hasPrefix:@"IPHONE_"] && ![@[ @"CFFIXED_USER_HOME", @"TMPDIR" ] containsObject:k]) env[k] = v;
+    if (![k hasPrefix:@"DYLD_"] && ![k hasPrefix:@"SIMULATOR_"] && ![k hasPrefix:@"IPHONE_"] && ![@[ @"CFFIXED_USER_HOME", @"TMPDIR" ] containsObject:k])
+      env[k] = v;
   }];
   env[@"HOME"] = RealHome();
-  if (developerDir) env[@"DEVELOPER_DIR"] = developerDir;
+  if (developerDir)
+    env[@"DEVELOPER_DIR"] = developerDir;
   t.environment = env;
   NSPipe *out = [NSPipe pipe];
-  t.standardOutput = out; t.standardError = [NSFileHandle fileHandleWithNullDevice];
-  if (![t launchAndReturnError:nil]) return nil;
+  t.standardOutput = out;
+  t.standardError = [NSFileHandle fileHandleWithNullDevice];
+  if (![t launchAndReturnError:nil])
+    return nil;
   __block NSData *data = nil;
   dispatch_semaphore_t done = dispatch_semaphore_create(0);
   dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
     data = [out.fileHandleForReading readDataToEndOfFile];
     dispatch_semaphore_signal(done);
   });
-  if (dispatch_semaphore_wait(done, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC))) { [t terminate]; return nil; }
+  if (dispatch_semaphore_wait(done, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC))) {
+    [t terminate];
+    return nil;
+  }
   [t waitUntilExit];
-  if (t.terminationStatus != 0) return nil;
+  if (t.terminationStatus != 0)
+    return nil;
   NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
   NSArray *list = [json isKindOfClass:NSDictionary.class] && [json[@"runtimes"] isKindOfClass:NSArray.class] ? json[@"runtimes"] : nil;
-  if (!list) return nil;
+  if (!list)
+    return nil;
   NSMutableDictionary *runtimes = [NSMutableDictionary dictionary];
   for (NSDictionary *r in list) {
     if (![r isKindOfClass:NSDictionary.class] || ![@[ SRPlatformIOS, SRPlatformWatchOS ] containsObject:r[@"platform"]] ||
-        ![r[@"isAvailable"] boolValue]) continue;
-    if (![r[@"runtimeRoot"] isKindOfClass:NSString.class]) continue;
+        ![r[@"isAvailable"] boolValue])
+      continue;
+    if (![r[@"runtimeRoot"] isKindOfClass:NSString.class])
+      continue;
     NSMutableArray *types = [NSMutableArray array];
     for (NSDictionary *d in [r[@"supportedDeviceTypes"] isKindOfClass:NSArray.class] ? r[@"supportedDeviceTypes"] : @[])
-      if ([d isKindOfClass:NSDictionary.class] && [d[@"bundlePath"] isKindOfClass:NSString.class]) [types addObject:d[@"bundlePath"]];
+      if ([d isKindOfClass:NSDictionary.class] && [d[@"bundlePath"] isKindOfClass:NSString.class])
+        [types addObject:d[@"bundlePath"]];
     runtimes[r[@"runtimeRoot"]] = types;
   }
   return runtimes;
@@ -139,9 +175,11 @@ static NSDictionary<NSString *, NSArray<NSString *> *> *SimctlRunning(NSString *
 // xcode-select may point at the Command Line Tools, which have no simctl: then try an installed Xcode instead.
 static NSDictionary<NSString *, NSArray<NSString *> *> *SimctlRuntimes(void) {
   NSDictionary *runtimes = SimctlRunning(nil);
-  if (runtimes || NSProcessInfo.processInfo.environment[@"DEVELOPER_DIR"].length) return runtimes;
+  if (runtimes || NSProcessInfo.processInfo.environment[@"DEVELOPER_DIR"].length)
+    return runtimes;
   for (NSURL *xcode in [NSWorkspace.sharedWorkspace URLsForApplicationsWithBundleIdentifier:@"com.apple.dt.Xcode"])
-    if ((runtimes = SimctlRunning([xcode.path stringByAppendingPathComponent:@"Contents/Developer"]))) return runtimes;
+    if ((runtimes = SimctlRunning([xcode.path stringByAppendingPathComponent:@"Contents/Developer"])))
+      return runtimes;
   return nil;
 }
 
@@ -167,47 +205,64 @@ static CFAbsoluteTime gRuntimesTime;
 
 static NSMutableDictionary<NSString *, SRDeviceType *> *gDeviceTypes;   // by bundle path
 
-+ (void)reloadInstalledRuntimes { @synchronized(self) { gRuntimes = nil; gDeviceTypes = nil; } }
++ (void)reloadInstalledRuntimes {
+  @synchronized(self) {
+    gRuntimes = nil;
+    gDeviceTypes = nil;
+  }
+}
 
-+ (NSArray<SRRuntime *> *)installedRuntimes { return [self installedRuntimesForPlatform:SRPlatformIOS]; }
++ (NSArray<SRRuntime *> *)installedRuntimes {
+  return [self installedRuntimesForPlatform:SRPlatformIOS];
+}
 + (NSArray<SRRuntime *> *)installedRuntimesForPlatform:(SRPlatform)platform {
   return [[self allInstalledRuntimes] filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"platform == %@", platform]];
 }
 // Every platform's, newest first
 + (NSArray<SRRuntime *> *)allInstalledRuntimes {
   @synchronized(self) {
-    if (gRuntimes && CFAbsoluteTimeGetCurrent() - gRuntimesTime < 30) return gRuntimes;
+    if (gRuntimes && CFAbsoluteTimeGetCurrent() - gRuntimesTime < 30)
+      return gRuntimes;
     NSDictionary<NSString *, NSArray<NSString *> *> *simctl = SimctlRuntimes();
     NSArray *roots = simctl ? simctl.allKeys : ScannedRuntimeRoots();
     NSMutableArray<SRRuntime *> *out = [NSMutableArray array];
     NSMutableSet *builds = [NSMutableSet set];
     for (NSString *root in roots) {
       SRRuntime *rt = [SRRuntime runtimeAtRoot:root];
-      if (!rt || [builds containsObject:rt.build]) continue;
+      if (!rt || [builds containsObject:rt.build])
+        continue;
       rt.deviceTypePaths = simctl[root];
-      [builds addObject:rt.build]; [out addObject:rt];
+      [builds addObject:rt.build];
+      [out addObject:rt];
     }
     [out sortUsingComparator:^NSComparisonResult(SRRuntime *a, SRRuntime *b) {
       NSComparisonResult c = [b.version compare:a.version options:NSNumericSearch];
       return c != NSOrderedSame ? c : [b.build compare:a.build options:NSNumericSearch];
     }];
-    gRuntimes = out; gRuntimesTime = CFAbsoluteTimeGetCurrent();
+    gRuntimes = out;
+    gRuntimesTime = CFAbsoluteTimeGetCurrent();
     return out;
   }
 }
 + (SRRuntime *)installedRuntimeWithBuild:(NSString *)build {
-  for (SRRuntime *r in [self allInstalledRuntimes]) if ([r.build isEqualToString:build]) return r;
+  for (SRRuntime *r in [self allInstalledRuntimes])
+    if ([r.build isEqualToString:build])
+      return r;
   return nil;
 }
-+ (SRRuntime *)runtimeMatching:(NSString *)spec { return [self runtimeMatching:spec platform:SRPlatformIOS]; }
++ (SRRuntime *)runtimeMatching:(NSString *)spec {
+  return [self runtimeMatching:spec platform:SRPlatformIOS];
+}
 + (SRRuntime *)runtimeMatching:(NSString *)spec platform:(SRPlatform)platform {
-  if (!spec.length) return nil;
+  if (!spec.length)
+    return nil;
   BOOL dir = NO;
   if ([NSFileManager.defaultManager fileExistsAtPath:spec isDirectory:&dir] && dir) {
     SRRuntime *r = [SRRuntime runtimeAtRoot:spec.stringByStandardizingPath];
     return [r.platform isEqualToString:platform] ? r : nil;
   }
-  if ([spec caseInsensitiveCompare:platform] == NSOrderedSame) return [self defaultRuntimeForPlatform:platform];
+  if ([spec caseInsensitiveCompare:platform] == NSOrderedSame)
+    return [self defaultRuntimeForPlatform:platform];
   for (SRRuntime *r in [self installedRuntimesForPlatform:platform])   // newest first
     if ([r.build caseInsensitiveCompare:spec] == NSOrderedSame || [r.name caseInsensitiveCompare:spec] == NSOrderedSame ||
         [r.version isEqualToString:spec] || [[NSString stringWithFormat:@"%@ %@", r.platform, r.version] caseInsensitiveCompare:spec] == NSOrderedSame)
@@ -220,64 +275,84 @@ static NSArray<NSString *> *ScannedDeviceTypePaths(NSString *version) {
   NSString *dir = @"/Library/Developer/CoreSimulator/Profiles/DeviceTypes";
   NSMutableArray *paths = [NSMutableArray array];
   for (NSString *d in [NSFileManager.defaultManager contentsOfDirectoryAtPath:dir error:nil]) {
-    if (![d.pathExtension isEqualToString:@"simdevicetype"]) continue;
+    if (![d.pathExtension isEqualToString:@"simdevicetype"])
+      continue;
     NSString *path = [dir stringByAppendingPathComponent:d];
     NSDictionary *p = [NSDictionary dictionaryWithContentsOfFile:[path stringByAppendingPathComponent:@"Contents/Resources/profile.plist"]];
     NSString *min = [p[@"minRuntimeVersion"] isKindOfClass:NSString.class] ? p[@"minRuntimeVersion"] : @"0";
     NSString *max = [p[@"maxRuntimeVersion"] isKindOfClass:NSString.class] ? p[@"maxRuntimeVersion"] : nil;
-    if ([min compare:version options:NSNumericSearch] == NSOrderedDescending) continue;
-    if (max && [max compare:version options:NSNumericSearch] == NSOrderedAscending) continue;
+    if ([min compare:version options:NSNumericSearch] == NSOrderedDescending)
+      continue;
+    if (max && [max compare:version options:NSNumericSearch] == NSOrderedAscending)
+      continue;
     [paths addObject:path];
   }
   return paths;
 }
 
 + (NSArray<SRDeviceType *> *)deviceTypesForRuntime:(SRRuntime *)runtime {
-  if (!runtime) return @[];
+  if (!runtime)
+    return @[];
   NSArray<NSString *> *paths = runtime.deviceTypePaths ?: [self installedRuntimeWithBuild:runtime.build].deviceTypePaths;
   BOOL scanned = !paths;
-  if (scanned) paths = ScannedDeviceTypePaths(runtime.version);
+  if (scanned)
+    paths = ScannedDeviceTypePaths(runtime.version);
   NSMutableArray<SRDeviceType *> *out = [NSMutableArray array];
   @synchronized(self) {
-    if (!gDeviceTypes) gDeviceTypes = [NSMutableDictionary dictionary];
+    if (!gDeviceTypes)
+      gDeviceTypes = [NSMutableDictionary dictionary];
     for (NSString *path in paths) {
       SRDeviceType *d = gDeviceTypes[path] ?: [SRDeviceType deviceTypeAtPath:path];
-      if (d) { gDeviceTypes[path] = d; [out addObject:d]; }
+      if (d) {
+        gDeviceTypes[path] = d;
+        [out addObject:d];
+      }
     }
   }
   // simctl lists the newest first; a scan is in directory order
-  if (scanned) [out sortUsingComparator:^NSComparisonResult(SRDeviceType *a, SRDeviceType *b) {
-    NSComparisonResult c = [b.minRuntimeVersion compare:a.minRuntimeVersion options:NSNumericSearch];
-    return c != NSOrderedSame ? c : [a.name localizedStandardCompare:b.name];
-  }];
+  if (scanned)
+    [out sortUsingComparator:^NSComparisonResult(SRDeviceType *a, SRDeviceType *b) {
+      NSComparisonResult c = [b.minRuntimeVersion compare:a.minRuntimeVersion options:NSNumericSearch];
+      return c != NSOrderedSame ? c : [a.name localizedStandardCompare:b.name];
+    }];
   NSPredicate *phone = [NSPredicate predicateWithFormat:@"family == 'iPhone'"];
   return [[out filteredArrayUsingPredicate:phone] arrayByAddingObjectsFromArray:
           [out filteredArrayUsingPredicate:[NSCompoundPredicate notPredicateWithSubpredicate:phone]]];
 }
 
 + (SRDeviceType *)deviceTypeWithIdentifier:(NSString *)identifier runtime:(SRRuntime *)runtime {
-  if (!identifier.length) return nil;
+  if (!identifier.length)
+    return nil;
   for (SRDeviceType *d in [self deviceTypesForRuntime:runtime])
-    if ([d.identifier isEqualToString:identifier] || [d.name isEqualToString:identifier]) return d;
+    if ([d.identifier isEqualToString:identifier] || [d.name isEqualToString:identifier])
+      return d;
   return nil;
 }
 
 + (SRDeviceType *)defaultDeviceTypeForRuntime:(SRRuntime *)runtime {
   SRDeviceType *d = [self deviceTypeWithIdentifier:NSProcessInfo.processInfo.environment[@"SIMRUN_DEVICE"] runtime:runtime];
-  if (d) return d;
+  if (d)
+    return d;
   NSArray<SRDeviceType *> *types = [self deviceTypesForRuntime:runtime];
   if ([runtime.platform isEqualToString:SRPlatformWatchOS]) {   // newest first
-    for (SRDeviceType *t in types) if ([t.family isEqualToString:@"Apple Watch"]) return t;
+    for (SRDeviceType *t in types)
+      if ([t.family isEqualToString:@"Apple Watch"])
+        return t;
     return types.firstObject;
   }
   SRDeviceType *best = nil;
   for (SRDeviceType *t in types) {
-    if (![t.family isEqualToString:@"iPhone"] || t.screenWidth != 1206 || t.screenHeight != 2622) continue;
+    if (![t.family isEqualToString:@"iPhone"] || t.screenWidth != 1206 || t.screenHeight != 2622)
+      continue;
     NSComparisonResult c = best ? [t.minRuntimeVersion compare:best.minRuntimeVersion options:NSNumericSearch] : NSOrderedDescending;
-    if (c == NSOrderedDescending || (c == NSOrderedSame && [t.name hasSuffix:@" Pro"] && ![best.name hasSuffix:@" Pro"])) best = t;
+    if (c == NSOrderedDescending || (c == NSOrderedSame && [t.name hasSuffix:@" Pro"] && ![best.name hasSuffix:@" Pro"]))
+      best = t;
   }
-  if (best) return best;
-  for (SRDeviceType *t in types) if ([t.family isEqualToString:@"iPhone"]) return t;
+  if (best)
+    return best;
+  for (SRDeviceType *t in types)
+    if ([t.family isEqualToString:@"iPhone"])
+      return t;
   return types.firstObject;
 }
 
@@ -286,17 +361,25 @@ static NSArray<NSString *> *ScannedDeviceTypePaths(NSString *version) {
   return b.length ? b : nil;
 }
 + (void)setPreferredRuntimeBuild:(NSString *)build {
-  if (build.length) [NSUserDefaults.standardUserDefaults setObject:build forKey:kRuntimeKey];
-  else [NSUserDefaults.standardUserDefaults removeObjectForKey:kRuntimeKey];
+  if (build.length)
+    [NSUserDefaults.standardUserDefaults setObject:build forKey:kRuntimeKey];
+  else
+    [NSUserDefaults.standardUserDefaults removeObjectForKey:kRuntimeKey];
 }
 
-+ (BOOL)runtimeRootFromEnvironment { return NSProcessInfo.processInfo.environment[@"SIMRUN_RUNTIME_ROOT"].length > 0; }
++ (BOOL)runtimeRootFromEnvironment {
+  return NSProcessInfo.processInfo.environment[@"SIMRUN_RUNTIME_ROOT"].length > 0;
+}
 
 + (NSString *)runtimeRoot {
-  static NSString *root; static dispatch_once_t once;
+  static NSString *root;
+  static dispatch_once_t once;
   dispatch_once(&once, ^{
     NSString *o = NSProcessInfo.processInfo.environment[@"SIMRUN_RUNTIME_ROOT"];
-    if (o.length) { root = o.stringByStandardizingPath; return; }
+    if (o.length) {
+      root = o.stringByStandardizingPath;
+      return;
+    }
     NSString *pref = [self preferredRuntimeBuild];
     root = (pref ? [self installedRuntimeWithBuild:pref] : nil).root ?: [self installedRuntimes].firstObject.root;
   });
@@ -304,14 +387,16 @@ static NSArray<NSString *> *ScannedDeviceTypePaths(NSString *version) {
 }
 
 + (SRRuntime *)defaultRuntimeForPlatform:(SRPlatform)platform {
-  if ([platform isEqualToString:SRPlatformIOS]) return [SRRuntime runtimeAtRoot:[self runtimeRoot]];
+  if ([platform isEqualToString:SRPlatformIOS])
+    return [SRRuntime runtimeAtRoot:[self runtimeRoot]];
   NSString *o = [platform isEqualToString:SRPlatformWatchOS] ? NSProcessInfo.processInfo.environment[@"SIMRUN_WATCH_RUNTIME_ROOT"] : nil;
   SRRuntime *r = o.length ? [SRRuntime runtimeAtRoot:o.stringByStandardizingPath] : nil;
   return [r.platform isEqualToString:platform] ? r : [self installedRuntimesForPlatform:platform].firstObject;
 }
 
 + (NSDictionary<NSString *, NSString *> *)runtimeVariablesForRoot:(NSString *)R {
-  if (!R) return @{};
+  if (!R)
+    return @{};
   SRRuntime *rt = [SRRuntime runtimeAtRoot:R];
   return @{
     @"DYLD_ROOT_PATH": R, @"IPHONE_SIMULATOR_ROOT": R, @"SIMULATOR_ROOT": R,
@@ -334,21 +419,25 @@ static NSArray<NSString *> *ScannedDeviceTypePaths(NSString *version) {
   return [platform isEqualToString:SRPlatformWatchOS] ? @"00000000-0000-0000-0000-00000000A7C4" : @"00000000-0000-0000-0000-000000000000";
 }
 
-+ (NSString *)watchAppsPath { return [[self dataDirectory] stringByAppendingPathComponent:@"Devices/WatchApps.plist"]; }
++ (NSString *)watchAppsPath {
+  return [[self dataDirectory] stringByAppendingPathComponent:@"Devices/WatchApps.plist"];
+}
 
 + (NSString *)containerIdentifierForExecutable:(NSString *)executable {
   NSString *dir = executable.stringByDeletingLastPathComponent;
   NSString *ident = nil;
   if ([dir.pathExtension isEqualToString:@"app"])
     ident = [NSDictionary dictionaryWithContentsOfFile:[dir stringByAppendingPathComponent:@"Info.plist"]][@"CFBundleIdentifier"];
-  if (![ident isKindOfClass:NSString.class] || !ident.length) ident = executable.lastPathComponent;
+  if (![ident isKindOfClass:NSString.class] || !ident.length)
+    ident = executable.lastPathComponent;
   return [ident stringByReplacingOccurrencesOfString:@"/" withString:@"_"];
 }
 + (NSString *)normalizedProfile:(NSString *)name {
   return !name.length || [name isEqualToString:@"default"] ? nil : name;
 }
 + (NSString *)problemWithProfileName:(NSString *)name {
-  if (!(name = [self normalizedProfile:name])) return nil;
+  if (!(name = [self normalizedProfile:name]))
+    return nil;
   NSCharacterSet *bad = [[NSCharacterSet characterSetWithCharactersInString:
       @"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._- "] invertedSet];
   if (name.length > 64 || [name rangeOfCharacterFromSet:bad].location != NSNotFound || [name hasPrefix:@"."] ||
@@ -375,26 +464,33 @@ static NSArray<NSString *> *ScannedDeviceTypePaths(NSString *version) {
   NSMutableSet *ids = [NSMutableSet set];
   for (NSString *sub in @[ @"Application", @"Profiles" ])
     for (NSString *d in [NSFileManager.defaultManager contentsOfDirectoryAtPath:[containers stringByAppendingPathComponent:sub] error:nil])
-      if (![d hasPrefix:@"."]) [ids addObject:d];
+      if (![d hasPrefix:@"."])
+        [ids addObject:d];
   return [ids.allObjects sortedArrayUsingSelector:@selector(compare:)];
 }
 + (NSArray<NSString *> *)profilesForIdentifier:(NSString *)identifier {
   NSFileManager *fm = NSFileManager.defaultManager;
   NSMutableArray *out = [NSMutableArray array];
   BOOL dir = NO;
-  if ([fm fileExistsAtPath:[self containerPathForIdentifier:identifier profile:nil] isDirectory:&dir] && dir) [out addObject:@"default"];
+  if ([fm fileExistsAtPath:[self containerPathForIdentifier:identifier profile:nil] isDirectory:&dir] && dir)
+    [out addObject:@"default"];
   NSString *profiles = [[[self dataDirectory] stringByAppendingPathComponent:@"Containers/Data/Profiles"] stringByAppendingPathComponent:identifier];
   for (NSString *p in [[fm contentsOfDirectoryAtPath:profiles error:nil] sortedArrayUsingSelector:@selector(localizedStandardCompare:)])
-    if (![p hasPrefix:@"."] && [fm fileExistsAtPath:[profiles stringByAppendingPathComponent:p] isDirectory:&dir] && dir) [out addObject:p];
+    if (![p hasPrefix:@"."] && [fm fileExistsAtPath:[profiles stringByAppendingPathComponent:p] isDirectory:&dir] && dir)
+      [out addObject:p];
   return out;
 }
 
-+ (NSDictionary<NSString *, NSString *> *)simulatorVariablesForRoot:(NSString *)R { return [self simulatorVariablesForRoot:R deviceType:nil]; }
++ (NSDictionary<NSString *, NSString *> *)simulatorVariablesForRoot:(NSString *)R {
+  return [self simulatorVariablesForRoot:R deviceType:nil];
+}
 + (NSDictionary<NSString *, NSString *> *)simulatorVariablesForRoot:(NSString *)R deviceType:(SRDeviceType *)device {
   NSDictionary *env = NSProcessInfo.processInfo.environment;
-  if (!R) return @{};
+  if (!R)
+    return @{};
   SRRuntime *runtime = [SRRuntime runtimeAtRoot:R];
-  if (!device) device = [self defaultDeviceTypeForRuntime:runtime];
+  if (!device)
+    device = [self defaultDeviceTypeForRuntime:runtime];
   NSString *D = [self deviceDataDirectoryForPlatform:runtime.platform ?: SRPlatformIOS];
   for (NSString *sub in @[ @"tmp", @"Library/Preferences", @"Documents" ])
     [NSFileManager.defaultManager createDirectoryAtPath:[D stringByAppendingPathComponent:sub] withIntermediateDirectories:YES attributes:nil error:nil];
@@ -417,7 +513,8 @@ static NSArray<NSString *> *ScannedDeviceTypePaths(NSString *version) {
   [vars addEntriesFromDictionary:device.variables];
   for (NSArray *o in @[ @[ @"SIMRUN_W", @"SIMULATOR_MAINSCREEN_WIDTH" ], @[ @"SIMRUN_H", @"SIMULATOR_MAINSCREEN_HEIGHT" ],
                         @[ @"SIMRUN_SCALE", @"SIMULATOR_MAINSCREEN_SCALE" ] ])
-    if ([env[o[0]] length]) vars[o[1]] = env[o[0]];
+    if ([env[o[0]] length])
+      vars[o[1]] = env[o[0]];
   [vars addEntriesFromDictionary:[self runtimeVariablesForRoot:R]];
   return vars;
 }
@@ -426,7 +523,8 @@ static NSArray<NSString *> *ScannedDeviceTypePaths(NSString *version) {
   // The Mac's language & region settings (app.dylib's locale module applies them in each app). Read from the plist: when SimRun runs
   // with a sim environment, HOME and CFFIXED_USER_HOME are the device's, and CFPreferences would read the device's instead.
   NSDictionary *g = [NSDictionary dictionaryWithContentsOfFile:[RealHome() stringByAppendingPathComponent:@"Library/Preferences/.GlobalPreferences.plist"]];
-  if (!g) return nil;
+  if (!g)
+    return nil;
   NSMutableDictionary *out = [NSMutableDictionary dictionary];
   for (NSString *k in @[ @"AppleLocale", @"AppleLanguages", @"AppleLanguagesSchemaVersion", @"AppleCollationOrder", @"AppleFirstWeekday",
                          @"AppleMeasurementUnits", @"AppleMetricUnits", @"AppleTemperatureUnit", @"AppleICUForce12HourTime",
@@ -441,7 +539,8 @@ static NSArray<NSString *> *ScannedDeviceTypePaths(NSString *version) {
 
 + (NSArray<NSString *> *)processEnvironment {
   NSMutableArray *a = [NSMutableArray array];
-  for (char **e = environ; *e; e++) [a addObject:@(*e)];
+  for (char **e = environ; *e; e++)
+    [a addObject:@(*e)];
   return a;
 }
 
@@ -449,14 +548,19 @@ static NSArray<NSString *> *ScannedDeviceTypePaths(NSString *version) {
   NSMutableArray *out = [NSMutableArray array];
   for (NSString *kv in base) {
     NSRange eq = [kv rangeOfString:@"="];
-    if (eq.location != NSNotFound && overrides[[kv substringToIndex:eq.location]]) continue;
+    if (eq.location != NSNotFound && overrides[[kv substringToIndex:eq.location]])
+      continue;
     [out addObject:kv];
   }
-  [overrides enumerateKeysAndObjectsUsingBlock:^(NSString *k, NSString *v, BOOL *stop) { [out addObject:[NSString stringWithFormat:@"%@=%@", k, v]]; }];
+  [overrides enumerateKeysAndObjectsUsingBlock:^(NSString *k, NSString *v, BOOL *stop) {
+    [out addObject:[NSString stringWithFormat:@"%@=%@", k, v]];
+  }];
   return out;
 }
 
-+ (NSString *)simnsPath { return [self simnsPathForPlatform:SRPlatformIOS]; }
++ (NSString *)simnsPath {
+  return [self simnsPathForPlatform:SRPlatformIOS];
+}
 + (NSString *)simnsPathForPlatform:(SRPlatform)platform {
   // Keep the Simulator-platform helper with the Simulator payload. Contents/Helpers
   // is treated as nested macOS code by Gatekeeper, but Apple does not issue a macOS
@@ -465,22 +569,32 @@ static NSArray<NSString *> *ScannedDeviceTypePaths(NSString *version) {
     return [[self libraryDirectoryForPlatform:platform] stringByAppendingPathComponent:@"simns"];
   return [ExecutableDir() stringByAppendingPathComponent:@"simns"];
 }
-+ (NSString *)libraryDirectory { return [self libraryDirectoryForPlatform:SRPlatformIOS]; }
++ (NSString *)libraryDirectory {
+  return [self libraryDirectoryForPlatform:SRPlatformIOS];
+}
 + (NSString *)libraryDirectoryForPlatform:(SRPlatform)platform {
   NSString *lib = InAppBundle() ? [NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"lib"]
                                 : [[ExecutableDir() stringByDeletingLastPathComponent] stringByAppendingPathComponent:@"lib"];
   return [platform isEqualToString:SRPlatformWatchOS] ? [lib stringByAppendingPathComponent:@"watchos"] : lib;
 }
-+ (NSString *)injectedLibraries { return [self injectedLibrariesWithExtra:NSProcessInfo.processInfo.environment[@"SIMAPP_EXTRA_INSERT"]]; }
-+ (NSString *)injectedLibrariesWithExtra:(NSString *)extra { return [self injectedLibrariesForPlatform:SRPlatformIOS extra:extra]; }
++ (NSString *)injectedLibraries {
+  return [self injectedLibrariesWithExtra:NSProcessInfo.processInfo.environment[@"SIMAPP_EXTRA_INSERT"]];
+}
++ (NSString *)injectedLibrariesWithExtra:(NSString *)extra {
+  return [self injectedLibrariesForPlatform:SRPlatformIOS extra:extra];
+}
 + (NSString *)injectedLibrariesForPlatform:(SRPlatform)platform extra:(NSString *)extra {
   NSString *d = [self libraryDirectoryForPlatform:platform];
   NSMutableArray *libs = [NSMutableArray array];
-  for (NSString *n in @[ @"xpcservices.dylib", @"app.dylib" ]) [libs addObject:[d stringByAppendingPathComponent:n]];
-  if (extra.length) [libs addObject:extra];
+  for (NSString *n in @[ @"xpcservices.dylib", @"app.dylib" ])
+    [libs addObject:[d stringByAppendingPathComponent:n]];
+  if (extra.length)
+    [libs addObject:extra];
   return [libs componentsJoinedByString:@":"];
 }
-+ (NSString *)framebufferFramework { return [self framebufferFrameworkForPlatform:SRPlatformIOS]; }
++ (NSString *)framebufferFramework {
+  return [self framebufferFrameworkForPlatform:SRPlatformIOS];
+}
 + (NSString *)framebufferFrameworkForPlatform:(SRPlatform)platform {
   return [[self libraryDirectoryForPlatform:platform] stringByAppendingPathComponent:@"SimFramebuffer"];
 }

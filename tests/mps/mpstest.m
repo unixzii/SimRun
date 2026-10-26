@@ -23,7 +23,8 @@ int main(void) {
     id<MTLBuffer> xim = [device newBufferWithLength:T * B * 4 options:MTLResourceStorageModeShared];
     float *p = x.contents;
     for (int t = 0; t < T; t++)
-      for (int n = 0; n < N; n++) p[t * N + n] = cosf(2 * M_PI * 2 * n / N) + t;
+      for (int n = 0; n < N; n++)
+        p[t * N + n] = cosf(2 * M_PI * 2 * n / N) + t;
 
     MPSCommandBuffer *cb = [MPSCommandBuffer commandBufferFromCommandQueue:[device newCommandQueue]];
     [g encodeToCommandBuffer:cb

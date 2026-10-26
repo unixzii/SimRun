@@ -11,7 +11,13 @@ const step = async (name, f) => {
 };
 // f must throw an error whose message matches re
 const throwsMatching = async (f, re) => {
-  try { await f(); } catch (e) { if (re.test(e.message)) return; throw e; }
+  try {
+    await f();
+  } catch (e) {
+    if (re.test(e.message))
+      return;
+    throw e;
+  }
   throw new Error(`expected an error matching ${re}`);
 };
 const back = () => app.getByTestId('BackButton').tap();
@@ -19,7 +25,8 @@ const back = () => app.getByTestId('BackButton').tap();
 await step('home page snapshot', async () => {
   await expect(app.getByRole('heading', { name: 'Showcase' })).toBeVisible();
   const s = await app.snapshot();
-  if (!/^- navigationBar:/.test(s) || !s.includes('button "Keyboard')) throw new Error(`unexpected snapshot:\n${s}`);
+  if (!/^- navigationBar:/.test(s) || !s.includes('button "Keyboard'))
+    throw new Error(`unexpected snapshot:\n${s}`);
 });
 
 await step('open a page', async () => {

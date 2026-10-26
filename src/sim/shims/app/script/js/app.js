@@ -14,24 +14,50 @@ const app = Object.freeze({
   snapshot: options => internal.snapshot(options),
 
   // input at scene points, and keys; each resolves once the UI has settled
-  tap: async (x, y) => { await internal.tapAt(x, y); await waitForIdle(); },
-  longPress: async (x, y, { duration = 800 } = {}) => { await internal.tapAt(x, y, duration); await waitForIdle(); },
-  swipe: async (x0, y0, x1, y1, { duration = 300 } = {}) => { await internal.swipe(x0, y0, x1, y1, duration); await waitForIdle(); },
-  crown: async (delta, { duration = 300 } = {}) => { await internal.crown(delta, duration); await waitForIdle(); },
-  type: async text => { await internal.type('type', text); await waitForIdle(); },
-  press: async key => { internal.press(key); await waitForIdle(); },
+  tap: async (x, y) => {
+    await internal.tapAt(x, y);
+    await waitForIdle();
+  },
+  longPress: async (x, y, { duration = 800 } = {}) => {
+    await internal.tapAt(x, y, duration);
+    await waitForIdle();
+  },
+  swipe: async (x0, y0, x1, y1, { duration = 300 } = {}) => {
+    await internal.swipe(x0, y0, x1, y1, duration);
+    await waitForIdle();
+  },
+  crown: async (delta, { duration = 300 } = {}) => {
+    await internal.crown(delta, duration);
+    await waitForIdle();
+  },
+  type: async text => {
+    await internal.type('type', text);
+    await waitForIdle();
+  },
+  press: async key => {
+    internal.press(key);
+    await waitForIdle();
+  },
 
   // waitForIdle({ quiet, timeout }): until no frame has been drawn for `quiet` ms (true), or `timeout` ms (false)
   waitForIdle: options => waitForIdle(options),
   // the screen in points: { width, height, scale }
   screen: () => native.ui.screen(),
   // how long actions, waitFor and expect wait (ms; 5000 to start with)
-  setDefaultTimeout: ms => { defaults.timeout = ms; },
+  setDefaultTimeout: ms => {
+    defaults.timeout = ms;
+  },
 
   // what's underneath: the accessibility elements as records, the raw accessibility tree, the view hierarchy
   ax: Object.freeze({
-    elements: async ({ all = false } = {}) => { await internal.ready(); return internal.collect().filter(e => all || e.visible); },
-    tree: async ({ all = false } = {}) => { await internal.ready(); return native.ax.tree(!!all); },
+    elements: async ({ all = false } = {}) => {
+      await internal.ready();
+      return internal.collect().filter(e => all || e.visible);
+    },
+    tree: async ({ all = false } = {}) => {
+      await internal.ready();
+      return native.ax.tree(!!all);
+    },
   }),
   views: () => native.ui.views(),
 });

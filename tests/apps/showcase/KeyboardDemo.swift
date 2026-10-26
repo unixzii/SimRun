@@ -34,7 +34,9 @@ struct KeyboardDemo: View {
       Panel(title: "Key presses", symbol: "command") {
         KeyCaptureArea { press in
           presses.insert(press, at: 0)
-          if presses.count > 24 { presses.removeLast() }
+          if presses.count > 24 {
+            presses.removeLast()
+          }
         }
         .frame(height: 140)
         if !presses.isEmpty {
@@ -44,9 +46,15 @@ struct KeyboardDemo: View {
 
       Panel(title: "Shortcuts", symbol: "keyboard.badge.ellipsis") {
         HStack(spacing: 10) {
-          Button { shortcutHits += 1; toast = "⌘J pressed" } label: { Label("Jump", systemImage: "arrow.up.forward") }
+          Button {
+            shortcutHits += 1
+            toast = "⌘J pressed"
+          } label: { Label("Jump", systemImage: "arrow.up.forward") }
             .keyboardShortcut("j", modifiers: .command)
-          Button { presses.removeAll(); toast = "Cleared" } label: { Label("Clear", systemImage: "xmark") }
+          Button {
+            presses.removeAll()
+            toast = "Cleared"
+          } label: { Label("Clear", systemImage: "xmark") }
             .keyboardShortcut("k", modifiers: .command)
           Spacer()
           Text("\(shortcutHits)").font(.title2.weight(.bold)).monospacedDigit().contentTransition(.numericText())
@@ -72,10 +80,18 @@ struct KeyPress: Identifiable {
 
   var label: String {
     var s = ""
-    if modifiers.contains(.control) { s += "⌃" }
-    if modifiers.contains(.alternate) { s += "⌥" }
-    if modifiers.contains(.shift) { s += "⇧" }
-    if modifiers.contains(.command) { s += "⌘" }
+    if modifiers.contains(.control) {
+      s += "⌃"
+    }
+    if modifiers.contains(.alternate) {
+      s += "⌥"
+    }
+    if modifiers.contains(.shift) {
+      s += "⇧"
+    }
+    if modifiers.contains(.command) {
+      s += "⌘"
+    }
     return s + name
   }
 
@@ -83,20 +99,34 @@ struct KeyPress: Identifiable {
     modifiers = key.modifierFlags
     code = key.keyCode.rawValue
     switch key.keyCode {
-    case .keyboardReturnOrEnter: name = "↩"
-    case .keyboardDeleteOrBackspace: name = "⌫"
-    case .keyboardTab: name = "⇥"
-    case .keyboardSpacebar: name = "Space"
-    case .keyboardEscape: name = "⎋"
-    case .keyboardLeftArrow: name = "←"
-    case .keyboardRightArrow: name = "→"
-    case .keyboardUpArrow: name = "↑"
-    case .keyboardDownArrow: name = "↓"
-    case .keyboardLeftShift, .keyboardRightShift: name = "Shift"
-    case .keyboardLeftAlt, .keyboardRightAlt: name = "Option"
-    case .keyboardLeftGUI, .keyboardRightGUI: name = "Command"
-    case .keyboardLeftControl, .keyboardRightControl: name = "Control"
-    case .keyboardCapsLock: name = "Caps Lock"
+    case .keyboardReturnOrEnter:
+      name = "↩"
+    case .keyboardDeleteOrBackspace:
+      name = "⌫"
+    case .keyboardTab:
+      name = "⇥"
+    case .keyboardSpacebar:
+      name = "Space"
+    case .keyboardEscape:
+      name = "⎋"
+    case .keyboardLeftArrow:
+      name = "←"
+    case .keyboardRightArrow:
+      name = "→"
+    case .keyboardUpArrow:
+      name = "↑"
+    case .keyboardDownArrow:
+      name = "↓"
+    case .keyboardLeftShift, .keyboardRightShift:
+      name = "Shift"
+    case .keyboardLeftAlt, .keyboardRightAlt:
+      name = "Option"
+    case .keyboardLeftGUI, .keyboardRightGUI:
+      name = "Command"
+    case .keyboardLeftControl, .keyboardRightControl:
+      name = "Control"
+    case .keyboardCapsLock:
+      name = "Caps Lock"
     default:
       let c = key.charactersIgnoringModifiers
       name = c.isEmpty ? "#\(key.keyCode.rawValue)" : c.uppercased()
@@ -123,7 +153,10 @@ private struct KeyCap: View {
 private struct FlowRow<Item: Identifiable, V: View>: View {
   let items: [Item]
   let make: (Item) -> V
-  init(_ items: [Item], @ViewBuilder make: @escaping (Item) -> V) { self.items = items; self.make = make }
+  init(_ items: [Item], @ViewBuilder make: @escaping (Item) -> V) {
+    self.items = items
+    self.make = make
+  }
   var body: some View {
     FlowLayout(spacing: 6) { ForEach(items) { make($0) } }
       .animation(.spring(duration: 0.3), value: items.map(\.id))
@@ -146,7 +179,12 @@ struct FlowLayout: Layout {
       }
     }
   }
-  private struct Row { var indices: [Int] = []; var y: CGFloat = 0; var width: CGFloat = 0; var height: CGFloat = 0 }
+  private struct Row {
+    var indices: [Int] = []
+    var y: CGFloat = 0
+    var width: CGFloat = 0
+    var height: CGFloat = 0
+  }
   private func arrange(width: CGFloat, subviews: Subviews) -> [Row] {
     var rows = [Row()]
     for (i, v) in subviews.enumerated() {
@@ -171,7 +209,9 @@ private struct KeyCaptureArea: UIViewRepresentable {
     v.onPress = onPress
     return v
   }
-  func updateUIView(_ v: KeyCaptureView, context: Context) { v.onPress = onPress }
+  func updateUIView(_ v: KeyCaptureView, context: Context) {
+    v.onPress = onPress
+  }
 }
 
 final class KeyCaptureView: UIView {
@@ -181,12 +221,18 @@ final class KeyCaptureView: UIView {
 
   override init(frame: CGRect) {
     super.init(frame: frame)
-    layer.cornerRadius = 14; layer.cornerCurve = .continuous; layer.borderWidth = 2
+    layer.cornerRadius = 14
+    layer.cornerCurve = .continuous
+    layer.borderWidth = 2
     icon.contentMode = .scaleAspectFit
     icon.preferredSymbolConfiguration = .init(pointSize: 30, weight: .regular)
-    label.font = .preferredFont(forTextStyle: .callout); label.textAlignment = .center; label.numberOfLines = 2
+    label.font = .preferredFont(forTextStyle: .callout)
+    label.textAlignment = .center
+    label.numberOfLines = 2
     let stack = UIStackView(arrangedSubviews: [icon, label])
-    stack.axis = .vertical; stack.spacing = 8; stack.alignment = .center
+    stack.axis = .vertical
+    stack.spacing = 8
+    stack.alignment = .center
     stack.translatesAutoresizingMaskIntoConstraints = false
     addSubview(stack)
     NSLayoutConstraint.activate([stack.centerXAnchor.constraint(equalTo: centerXAnchor), stack.centerYAnchor.constraint(equalTo: centerYAnchor),
@@ -194,12 +240,24 @@ final class KeyCaptureView: UIView {
     addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tapped)))
     refresh()
   }
-  required init?(coder: NSCoder) { fatalError() }
+  required init?(coder: NSCoder) {
+    fatalError()
+  }
 
-  @objc private func tapped() { _ = isFirstResponder ? resignFirstResponder() : becomeFirstResponder() }
+  @objc private func tapped() {
+    _ = isFirstResponder ? resignFirstResponder() : becomeFirstResponder()
+  }
   override var canBecomeFirstResponder: Bool { true }
-  override func becomeFirstResponder() -> Bool { let r = super.becomeFirstResponder(); refresh(); return r }
-  override func resignFirstResponder() -> Bool { let r = super.resignFirstResponder(); refresh(); return r }
+  override func becomeFirstResponder() -> Bool {
+    let r = super.becomeFirstResponder()
+    refresh()
+    return r
+  }
+  override func resignFirstResponder() -> Bool {
+    let r = super.resignFirstResponder()
+    refresh()
+    return r
+  }
 
   private func refresh() {
     let on = isFirstResponder
@@ -213,7 +271,14 @@ final class KeyCaptureView: UIView {
 
   override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
     var handled = false
-    for p in presses { if let k = p.key { onPress?(KeyPress(k)); handled = true } }
-    if !handled { super.pressesBegan(presses, with: event) }
+    for p in presses {
+      if let k = p.key {
+        onPress?(KeyPress(k))
+        handled = true
+      }
+    }
+    if !handled {
+      super.pressesBegan(presses, with: event)
+    }
   }
 }

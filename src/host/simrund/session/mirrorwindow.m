@@ -39,7 +39,10 @@ CGFloat SRDeviceCornerRadius(NSString *capabilitiesPath) {
 static CGPathRef CreateContinuousRect(CGRect r, CGFloat tl, CGFloat tr, CGFloat br, CGFloat bl, CGFloat flipH) {
   const CGFloat a = 1.52866483, b = 1.08849323, c = 0.86840689, d = 0.66993427, e = 0.06549600, f = 0.37282392, g = 0.16890344;
   CGFloat lim = MIN(r.size.width, r.size.height) / 2 / a;
-  tl = MIN(tl, lim); tr = MIN(tr, lim); br = MIN(br, lim); bl = MIN(bl, lim);
+  tl = MIN(tl, lim);
+  tr = MIN(tr, lim);
+  br = MIN(br, lim);
+  bl = MIN(bl, lim);
   CGFloat x0 = r.origin.x, y0 = r.origin.y, x1 = x0 + r.size.width, y1 = y0 + r.size.height;
   CGMutablePathRef p = CGPathCreateMutable();
   CGAffineTransform t = CGAffineTransformMake(1, 0, 0, -1, 0, flipH);   // y down -> y up
@@ -65,16 +68,24 @@ static CGPathRef CreateContinuousRect(CGRect r, CGFloat tl, CGFloat tr, CGFloat 
 }
 
 // Spring integrated per display frame. stiffness = (2π/response)², damping = 4πζ/response (mass 1).
-typedef struct { CGFloat value, velocity, target, k, d; } SRSpring;
+typedef struct {
+  CGFloat value, velocity, target, k, d;
+} SRSpring;
 static void SpringSetResponse(SRSpring *s, CGFloat response, CGFloat dampingFraction) {
-  s->k = pow(2 * M_PI / response, 2); s->d = 4 * M_PI * dampingFraction / response;
+  s->k = pow(2 * M_PI / response, 2);
+  s->d = 4 * M_PI * dampingFraction / response;
 }
 static BOOL SpringStep(SRSpring *s, CGFloat dt) {   // returns YES while moving
   for (int i = 0; i < 8; i++) {
     CGFloat h = dt / 8, acc = -s->k * (s->value - s->target) - s->d * s->velocity;
-    s->velocity += acc * h; s->value += s->velocity * h;
+    s->velocity += acc * h;
+    s->value += s->velocity * h;
   }
-  if (fabs(s->value - s->target) < 1e-4 && fabs(s->velocity) < 1e-3) { s->value = s->target; s->velocity = 0; return NO; }
+  if (fabs(s->value - s->target) < 1e-4 && fabs(s->velocity) < 1e-3) {
+    s->value = s->target;
+    s->velocity = 0;
+    return NO;
+  }
   return YES;
 }
 
@@ -87,27 +98,34 @@ static BOOL SpringStep(SRSpring *s, CGFloat dt) {   // returns YES while moving
 @end
 @implementation SRTrafficLights
 - (instancetype)initWithStyleMask:(NSWindowStyleMask)style {
-  if (!(self = [super initWithFrame:NSZeroRect])) return nil;
+  if (!(self = [super initWithFrame:NSZeroRect]))
+    return nil;
   CGFloat x = 0, h = 0;
   for (NSNumber *t in @[ @(NSWindowCloseButton), @(NSWindowMiniaturizeButton), @(NSWindowZoomButton) ]) {
     NSButton *b = [NSWindow standardWindowButton:(NSWindowButton)t.integerValue forStyleMask:style];
     [b setFrameOrigin:NSMakePoint(x, 0)];
     [self addSubview:b];
-    x += NSWidth(b.frame) + kLightsSpacing; h = MAX(h, NSHeight(b.frame));
+    x += NSWidth(b.frame) + kLightsSpacing;
+    h = MAX(h, NSHeight(b.frame));
   }
   [self setFrameSize:NSMakeSize(x - kLightsSpacing, h)];
   return self;
 }
-- (BOOL)_mouseInGroup:(NSButton *)button { return self.mouseInside; }
+- (BOOL)_mouseInGroup:(NSButton *)button {
+  return self.mouseInside;
+}
 - (void)setMouseInside:(BOOL)inside {
-  if (_mouseInside == inside) return;
+  if (_mouseInside == inside)
+    return;
   _mouseInside = inside;
   NSView *themeFrame = self.window.contentView.superview;
   SEL sel = NSSelectorFromString(inside ? @"mouseEnteredLeftButtonGroup" : @"mouseExitedLeftButtonGroup");
-  if ([themeFrame respondsToSelector:sel]) ((void (*)(id, SEL))[themeFrame methodForSelector:sel])(themeFrame, sel);
+  if ([themeFrame respondsToSelector:sel])
+    ((void (*)(id, SEL))[themeFrame methodForSelector:sel])(themeFrame, sel);
   SEL refresh = NSSelectorFromString(@"mouseEnteredOrExited");
   for (NSView *b in self.subviews) {
-    if ([b respondsToSelector:refresh]) ((void (*)(id, SEL))[b methodForSelector:refresh])(b, refresh);
+    if ([b respondsToSelector:refresh])
+      ((void (*)(id, SEL))[b methodForSelector:refresh])(b, refresh);
     b.needsDisplay = YES;
   }
 }
@@ -116,20 +134,30 @@ static BOOL SpringStep(SRSpring *s, CGFloat dt) {   // returns YES while moving
 // Title strip and margins: dragging them moves the window.
 @interface SRDragView : NSView @end
 @implementation SRDragView
-- (void)mouseDown:(NSEvent *)e { [self.window performWindowDragWithEvent:e]; }
-- (BOOL)acceptsFirstMouse:(NSEvent *)e { return YES; }
+- (void)mouseDown:(NSEvent *)e {
+  [self.window performWindowDragWithEvent:e];
+}
+- (BOOL)acceptsFirstMouse:(NSEvent *)e {
+  return YES;
+}
 @end
 
 // Phone screen hairline, shown with the chrome.
-@interface SRHairline : NSView @property CGFloat radius; @end
+@interface SRHairline : NSView @property CGFloat radius;
+@end
 @implementation SRHairline
 - (void)drawRect:(NSRect)r {
   CGPathRef p = CreateContinuousRect(NSInsetRect(self.bounds, 0.5, 0.5), _radius, _radius, _radius, _radius, NSHeight(self.bounds));
   CGContextRef ctx = NSGraphicsContext.currentContext.CGContext;
-  CGContextAddPath(ctx, p); CGContextSetStrokeColorWithColor(ctx, NSColor.quaternaryLabelColor.CGColor);
-  CGContextSetLineWidth(ctx, 1); CGContextStrokePath(ctx); CGPathRelease(p);
+  CGContextAddPath(ctx, p);
+  CGContextSetStrokeColorWithColor(ctx, NSColor.quaternaryLabelColor.CGColor);
+  CGContextSetLineWidth(ctx, 1);
+  CGContextStrokePath(ctx);
+  CGPathRelease(p);
 }
-- (NSView *)hitTest:(NSPoint)p { return nil; }
+- (NSView *)hitTest:(NSPoint)p {
+  return nil;
+}
 @end
 
 // ---------------------------------------------------------------- root view: hover tracking
@@ -151,20 +179,33 @@ typedef NS_ENUM(NSInteger, SRResizeAxis) { SRResizeAxisNone, SRResizeAxisWidth, 
 @implementation SRMirrorRootView
 - (void)updateTrackingAreas {
   [super updateTrackingAreas];
-  for (NSTrackingArea *a in self.trackingAreas) [self removeTrackingArea:a];
+  for (NSTrackingArea *a in self.trackingAreas)
+    [self removeTrackingArea:a];
   [self addTrackingArea:[[NSTrackingArea alloc] initWithRect:NSZeroRect
       options:NSTrackingMouseEnteredAndExited | NSTrackingMouseMoved | NSTrackingActiveAlways | NSTrackingInVisibleRect owner:self userInfo:nil]];
 }
-- (void)mouseEntered:(NSEvent *)e { [self.mirror hoverAt:[self convertPoint:e.locationInWindow fromView:nil]]; }
-- (void)mouseMoved:(NSEvent *)e { [self.mirror hoverAt:[self convertPoint:e.locationInWindow fromView:nil]]; }
-- (void)mouseExited:(NSEvent *)e { [self.mirror hoverExited]; }
+- (void)mouseEntered:(NSEvent *)e {
+  [self.mirror hoverAt:[self convertPoint:e.locationInWindow fromView:nil]];
+}
+- (void)mouseMoved:(NSEvent *)e {
+  [self.mirror hoverAt:[self convertPoint:e.locationInWindow fromView:nil]];
+}
+- (void)mouseExited:(NSEvent *)e {
+  [self.mirror hoverExited];
+}
 - (void)resizeSubviewsWithOldSize:(NSSize)old {   // window resized: scale the screen
   [super resizeSubviewsWithOldSize:old];
   [self.mirror layoutViews];
   [self.mirror applyState];
 }
-- (void)viewWillStartLiveResize { [super viewWillStartLiveResize]; [self.mirror resetResizeAxis]; }
-- (void)viewDidEndLiveResize { [super viewDidEndLiveResize]; [self.mirror resetWindowShape]; }
+- (void)viewWillStartLiveResize {
+  [super viewWillStartLiveResize];
+  [self.mirror resetResizeAxis];
+}
+- (void)viewDidEndLiveResize {
+  [super viewDidEndLiveResize];
+  [self.mirror resetWindowShape];
+}
 - (NSView *)hitTest:(NSPoint)p {
   NSView *v = [super hitTest:p];
   return [v isKindOfClass:NSVisualEffectView.class] ? self : v;   // the material is a drag surface
@@ -184,15 +225,18 @@ typedef NS_ENUM(NSInteger, SRResizeAxis) { SRResizeAxisNone, SRResizeAxisWidth, 
   SRSpring _shape, _stripAlpha;
   SRHover _hover;
   SRResizeAxis _resizeAxis;   // what drives the size during this live resize
-  CADisplayLink *_link; CFTimeInterval _lastTick;
+  CADisplayLink *_link;
+  CFTimeInterval _lastTick;
 }
 
 - (instancetype)initWithScreenView:(NSView *)screenView size:(NSSize)size cornerRadius:(CGFloat)cornerRadius {
   NSWindowStyleMask style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable |
                             NSWindowStyleMaskResizable | NSWindowStyleMaskFullSizeContentView;
   NSRect frame = NSMakeRect(0, 0, size.width + 2 * kMargin, size.height + kStrip + kMargin);
-  if (!(self = [super initWithContentRect:frame styleMask:style backing:NSBackingStoreBuffered defer:NO])) return nil;
-  _size = size; _radius = cornerRadius;
+  if (!(self = [super initWithContentRect:frame styleMask:style backing:NSBackingStoreBuffered defer:NO]))
+    return nil;
+  _size = size;
+  _radius = cornerRadius;
   self.titlebarAppearsTransparent = YES;
   self.titleVisibility = NSWindowTitleHidden;
   self.opaque = NO;
@@ -204,7 +248,8 @@ typedef NS_ENUM(NSInteger, SRResizeAxis) { SRResizeAxisNone, SRResizeAxisWidth, 
   [self standardWindowButton:NSWindowCloseButton].superview.superview.hidden = YES;
 
   _root = [[SRMirrorRootView alloc] initWithFrame:frame];
-  _root.mirror = self; _root.wantsLayer = YES;
+  _root.mirror = self;
+  _root.wantsLayer = YES;
   _material = [[NSVisualEffectView alloc] initWithFrame:frame];   // the chrome background (SwiftUI .ultraThinMaterial)
   _material.material = NSVisualEffectMaterialUnderWindowBackground;
   _material.blendingMode = NSVisualEffectBlendingModeBehindWindow;
@@ -212,12 +257,16 @@ typedef NS_ENUM(NSInteger, SRResizeAxis) { SRResizeAxisNone, SRResizeAxisWidth, 
   _material.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
   _screen = screenView;
   _screen.wantsLayer = YES;
-  _screen.layer.cornerRadius = _radius; _screen.layer.cornerCurve = kCACornerCurveContinuous; _screen.layer.masksToBounds = YES;
-  _hairline = [[SRHairline alloc] initWithFrame:NSZeroRect]; _hairline.radius = _radius;
+  _screen.layer.cornerRadius = _radius;
+  _screen.layer.cornerCurve = kCACornerCurveContinuous;
+  _screen.layer.masksToBounds = YES;
+  _hairline = [[SRHairline alloc] initWithFrame:NSZeroRect];
+  _hairline.radius = _radius;
   _strip = [[SRDragView alloc] initWithFrame:NSZeroRect];
   _lights = [[SRTrafficLights alloc] initWithStyleMask:style];
   [_strip addSubview:_lights];
-  for (NSView *v in @[ _material, _screen, _hairline, _strip ]) [_root addSubview:v];
+  for (NSView *v in @[ _material, _screen, _hairline, _strip ])
+    [_root addSubview:v];
   self.contentView = _root;
 
   SpringSetResponse(&_shape, 0.28, 1);
@@ -229,31 +278,48 @@ typedef NS_ENUM(NSInteger, SRResizeAxis) { SRResizeAxisNone, SRResizeAxisWidth, 
   if (demo > 0) {
     __weak SRMirrorWindow *weakSelf = self;
     [NSTimer scheduledTimerWithTimeInterval:demo repeats:YES block:^(NSTimer *t) {
-      SRMirrorWindow *w = weakSelf; if (!w) { [t invalidate]; return; }
+      SRMirrorWindow *w = weakSelf;
+      if (!w) {
+        [t invalidate];
+        return;
+      }
       [w setChromeVisible:!w.isExpanded];
     }];
   }
   return self;
 }
 
-- (void)dealloc { [_link invalidate]; }
-- (BOOL)canBecomeKeyWindow { return YES; }
-- (BOOL)canBecomeMainWindow { return YES; }
+- (void)dealloc {
+  [_link invalidate];
+}
+- (BOOL)canBecomeKeyWindow {
+  return YES;
+}
+- (BOOL)canBecomeMainWindow {
+  return YES;
+}
 
 // ---------------------------------------------------------------- geometry
 // The frame is always the scaled screen plus the chrome around it.
 static NSSize FrameSize(NSSize screen, CGFloat scale) {
   return NSMakeSize(screen.width * scale + 2 * kMargin, screen.height * scale + kStrip + kMargin);
 }
-- (CGFloat)scale { return (NSWidth(self.frame) - 2 * kMargin) / _size.width; }
+- (CGFloat)scale {
+  return (NSWidth(self.frame) - 2 * kMargin) / _size.width;
+}
 - (NSRect)screenFrame {
   return NSMakeRect(NSMinX(self.frame) + kMargin, NSMinY(self.frame) + kMargin,
                     NSWidth(self.frame) - 2 * kMargin, NSHeight(self.frame) - kStrip - kMargin);
 }
-- (BOOL)isExpanded { return _shape.target > 0.5; }
-- (NSSize)screenSize { return _size; }
+- (BOOL)isExpanded {
+  return _shape.target > 0.5;
+}
+- (NSSize)screenSize {
+  return _size;
+}
 - (void)setScreenSize:(NSSize)size {   // keeps the current scale
-  if (NSEqualSizes(size, _size)) return;
+  if (NSEqualSizes(size, _size))
+    return;
   CGFloat scale = self.scale;
   NSPoint topLeft = NSMakePoint(NSMinX(self.frame), NSMaxY(self.frame));   // keep the screen's top-left
   _size = size;
@@ -262,12 +328,16 @@ static NSSize FrameSize(NSSize screen, CGFloat scale) {
   [self layoutViews];
   [self applyState];
 }
-- (void)setScreenTopLeft:(NSPoint)topLeft { [self setFrameTopLeftPoint:NSMakePoint(topLeft.x - kMargin, topLeft.y + kStrip)]; }
+- (void)setScreenTopLeft:(NSPoint)topLeft {
+  [self setFrameTopLeftPoint:NSMakePoint(topLeft.x - kMargin, topLeft.y + kStrip)];
+}
 
 - (CGFloat)maxScaleIn:(NSRect)area {
   return MIN((NSWidth(area) - 2 * kMargin) / _size.width, (NSHeight(area) - kStrip - kMargin) / _size.height);
 }
-- (void)resetResizeAxis { _resizeAxis = SRResizeAxisNone; }
+- (void)resetResizeAxis {
+  _resizeAxis = SRResizeAxisNone;
+}
 - (NSSize)constrainFrameSize:(NSSize)proposed {
   // A side edge proposes the current size on the other axis: follow the axis it moves. A corner proposes both from
   // the pointer; follow the point on the aspect-ratio line nearest the pointer. Decided once per live resize —
@@ -277,7 +347,8 @@ static NSSize FrameSize(NSSize screen, CGFloat scale) {
   if (axis == SRResizeAxisNone) {
     BOOL w = proposed.width != cur.width, h = proposed.height != cur.height;
     axis = w && h ? SRResizeAxisBoth : h ? SRResizeAxisHeight : SRResizeAxisWidth;
-    if (self.inLiveResize && (w || h)) _resizeAxis = axis;
+    if (self.inLiveResize && (w || h))
+      _resizeAxis = axis;
   }
   CGFloat W = _size.width, H = _size.height, pw = proposed.width - 2 * kMargin, ph = proposed.height - kStrip - kMargin;
   CGFloat s = axis == SRResizeAxisWidth ? pw / W : axis == SRResizeAxisHeight ? ph / H : (W * pw + H * ph) / (W * W + H * H);
@@ -299,15 +370,22 @@ static NSSize FrameSize(NSSize screen, CGFloat scale) {
   _screen.frame = NSMakeRect(kMargin, kMargin, NSWidth(b) - 2 * kMargin, NSHeight(b) - kStrip - kMargin);
   _screen.layer.cornerRadius = radius;
   _hairline.frame = _screen.frame;
-  if (_hairline.radius != radius) { _hairline.radius = radius; _hairline.needsDisplay = YES; }
+  if (_hairline.radius != radius) {
+    _hairline.radius = radius;
+    _hairline.needsDisplay = YES;
+  }
   NSSize ls = _lights.frame.size;
   [_lights setFrameOrigin:NSMakePoint(kLightsInset, (kStrip - ls.height) / 2)];
   [_strip setFrameSize:NSMakeSize(NSWidth(_root.bounds), kStrip)];
 }
 
-- (CGFloat)screenRadius { return _radius * (NSWidth(_root.bounds) - 2 * kMargin) / _size.width; }
+- (CGFloat)screenRadius {
+  return _radius * (NSWidth(_root.bounds) - 2 * kMargin) / _size.width;
+}
 
-static CGFloat Lerp(CGFloat a, CGFloat b, CGFloat t) { return a + (b - a) * t; }
+static CGFloat Lerp(CGFloat a, CGFloat b, CGFloat t) {
+  return a + (b - a) * t;
+}
 
 // Shape, strip and hairline for the current spring values.
 - (void)applyState {
@@ -318,7 +396,8 @@ static CGFloat Lerp(CGFloat a, CGFloat b, CGFloat t) { return a + (b - a) * t; }
   CGFloat r = self.screenRadius, rTop = Lerp(r, kTopRadius, p), rBottom = Lerp(r, r + kMargin, p);
   CGRect shape = CGRectMake(side, top, NSWidth(b) - 2 * side, NSHeight(b) - top - side);   // top-left origin
   CGPathRef path = CreateContinuousRect(shape, rTop, rTop, rBottom, rBottom, NSHeight(b));
-  if ([self respondsToSelector:@selector(_setCornerPath:)]) [self _setCornerPath:path];
+  if ([self respondsToSelector:@selector(_setCornerPath:)])
+    [self _setCornerPath:path];
   CGPathRelease(path);
   // the strip slides down by its height while hidden (it then sits, invisible, over the top of the screen)
   [_strip setFrameOrigin:NSMakePoint(0, NSHeight(b) - kStrip - kStrip * (1 - p))];
@@ -330,8 +409,10 @@ static CGFloat Lerp(CGFloat a, CGFloat b, CGFloat t) { return a + (b - a) * t; }
 // ---------------------------------------------------------------- animation
 - (void)setChromeVisible:(BOOL)visible {
   CGFloat target = visible ? 1 : 0;
-  if (_shape.target == target) return;
-  _shape.target = target; _stripAlpha.target = target;
+  if (_shape.target == target)
+    return;
+  _shape.target = target;
+  _stripAlpha.target = target;
   SpringSetResponse(&_stripAlpha, visible ? 0.7 : 0.14, 1);
   if (!_link) {
     _link = [_root displayLinkWithTarget:self selector:@selector(tick:)];
@@ -341,43 +422,58 @@ static CGFloat Lerp(CGFloat a, CGFloat b, CGFloat t) { return a + (b - a) * t; }
 }
 - (void)tick:(CADisplayLink *)link {
   CFTimeInterval now = CACurrentMediaTime();
-  CGFloat dt = MIN(0.05, MAX(0.001, now - _lastTick)); _lastTick = now;
+  CGFloat dt = MIN(0.05, MAX(0.001, now - _lastTick));
+  _lastTick = now;
   BOOL a = SpringStep(&_shape, dt), b = SpringStep(&_stripAlpha, dt);
   [self applyState];
   if (!a && !b) {
-    [_link invalidate]; _link = nil;
+    [_link invalidate];
+    _link = nil;
     [self resetWindowShape];
   }
 }
 - (void)resetWindowShape {
-  if ([self respondsToSelector:@selector(_setNeedsToResetDragMargins:)]) [self _setNeedsToResetDragMargins:YES];
+  if ([self respondsToSelector:@selector(_setNeedsToResetDragMargins:)])
+    [self _setNeedsToResetDragMargins:YES];
   [self invalidateShadow];
 }
 
 // ---------------------------------------------------------------- hover
 - (SRHover)hoverForPoint:(NSPoint)p {
   NSRect r = _screen.frame;
-  if (!NSPointInRect(p, _root.bounds)) return SRHoverNone;
-  if (p.y >= NSMaxY(r)) return SRHoverTitleBar;
-  if (NSPointInRect(p, r)) return p.y >= NSMaxY(r) - kStatusBarZone ? SRHoverStatusBar : SRHoverContent;
+  if (!NSPointInRect(p, _root.bounds))
+    return SRHoverNone;
+  if (p.y >= NSMaxY(r))
+    return SRHoverTitleBar;
+  if (NSPointInRect(p, r))
+    return p.y >= NSMaxY(r) - kStatusBarZone ? SRHoverStatusBar : SRHoverContent;
   return SRHoverChrome;
 }
 - (void)hoverAt:(NSPoint)p {
   _lights.mouseInside = !_strip.hidden && NSPointInRect([_strip convertPoint:p fromView:_root], NSInsetRect(_lights.frame, -2, -2));
-  if (NSEvent.pressedMouseButtons) return;   // a drag on the screen is a touch, not hover
+  if (NSEvent.pressedMouseButtons)
+    return;   // a drag on the screen is a touch, not hover
   SRHover h = [self hoverForPoint:p], prev = _hover;
   _hover = h;
   switch (h) {
-    case SRHoverTitleBar: case SRHoverStatusBar: [self setChromeVisible:YES]; break;
-    case SRHoverContent: case SRHoverNone: [self setChromeVisible:NO]; break;
+    case SRHoverTitleBar:
+      case SRHoverStatusBar:
+        [self setChromeVisible:YES];
+        break;
+    case SRHoverContent:
+      case SRHoverNone:
+        [self setChromeVisible:NO];
+        break;
     case SRHoverChrome:   // the margins keep the chrome only if the pointer came from it or from the top
-      if (prev != SRHoverTitleBar && prev != SRHoverStatusBar && prev != SRHoverChrome) [self setChromeVisible:NO];
+      if (prev != SRHoverTitleBar && prev != SRHoverStatusBar && prev != SRHoverChrome)
+        [self setChromeVisible:NO];
       break;
   }
 }
 - (void)hoverExited {
   _lights.mouseInside = NO;
   _hover = SRHoverNone;
-  if (!NSEvent.pressedMouseButtons) [self setChromeVisible:NO];
+  if (!NSEvent.pressedMouseButtons)
+    [self setChromeVisible:NO];
 }
 @end

@@ -24,7 +24,8 @@ static const int kConverterVersion = 1;
 static BOOL IsMachO(NSString *path) {
   uint32_t magic = 0;
   FILE *f = fopen(path.fileSystemRepresentation, "rb");
-  if (!f) return NO;
+  if (!f)
+    return NO;
   size_t n = fread(&magic, sizeof magic, 1, f);
   fclose(f);
   return n == 1 && (magic == MH_MAGIC_64 || magic == MH_MAGIC || magic == FAT_CIGAM || magic == FAT_CIGAM_64);
@@ -34,17 +35,20 @@ static BOOL IsMachO(NSString *path) {
 static NSData *Arm64Slice(NSData *d) {
   const uint8_t *p = d.bytes;
   uint32_t magic = *(const uint32_t *)p;
-  if (magic != FAT_CIGAM && magic != FAT_CIGAM_64) return d;
+  if (magic != FAT_CIGAM && magic != FAT_CIGAM_64)
+    return d;
   BOOL is64 = magic == FAT_CIGAM_64;
   uint32_t n = OSSwapBigToHostInt32(((const struct fat_header *)p)->nfat_arch);
   size_t entry = is64 ? sizeof(struct fat_arch_64) : sizeof(struct fat_arch);
   for (uint32_t i = 0; i < n; i++) {
     const uint8_t *a = p + sizeof(struct fat_header) + i * entry;
-    if (a + entry > p + d.length) return nil;
+    if (a + entry > p + d.length)
+      return nil;
     cpu_type_t cpu = (cpu_type_t)OSSwapBigToHostInt32(*(const uint32_t *)a);
     uint64_t off = is64 ? OSSwapBigToHostInt64(((const struct fat_arch_64 *)a)->offset) : OSSwapBigToHostInt32(((const struct fat_arch *)a)->offset);
     uint64_t size = is64 ? OSSwapBigToHostInt64(((const struct fat_arch_64 *)a)->size) : OSSwapBigToHostInt32(((const struct fat_arch *)a)->size);
-    if (cpu == CPU_TYPE_ARM64 && off + size <= d.length) return [d subdataWithRange:NSMakeRange(off, size)];
+    if (cpu == CPU_TYPE_ARM64 && off + size <= d.length)
+      return [d subdataWithRange:NSMakeRange(off, size)];
   }
   return nil;
 }
@@ -53,13 +57,16 @@ static NSData *Arm64Slice(NSData *d) {
 // *error if it can't.
 static BOOL ConvertMachO(NSString *path, NSString **error) {
   NSData *file = [NSData dataWithContentsOfFile:path];
-  if (file.length < sizeof(struct mach_header_64)) return YES;
+  if (file.length < sizeof(struct mach_header_64))
+    return YES;
   NSData *slice = Arm64Slice(file);
-  if (slice.length < sizeof(struct mach_header_64)) return YES;
+  if (slice.length < sizeof(struct mach_header_64))
+    return YES;
   NSMutableData *d = [slice mutableCopy];
   BOOL changed = slice != file;
   struct mach_header_64 *mh = d.mutableBytes;
-  if (mh->magic != MH_MAGIC_64 || mh->cputype != CPU_TYPE_ARM64 || sizeof *mh + mh->sizeofcmds > d.length) return YES;
+  if (mh->magic != MH_MAGIC_64 || mh->cputype != CPU_TYPE_ARM64 || sizeof *mh + mh->sizeofcmds > d.length)
+    return YES;
 
   uint8_t *lcs = (uint8_t *)(mh + 1);
   uint64_t firstSection = d.length;   // the load commands may grow up to here (the header padding)
@@ -79,18 +86,27 @@ static BOOL ConvertMachO(NSString *path, NSString **error) {
     }
     if (c->cmd == LC_BUILD_VERSION) {
       struct build_version_command *bv = (void *)c;
-      if (bv->platform != PLATFORM_IOS) return YES;   // already a simulator's, or another platform's
-      bv->platform = PLATFORM_IOSSIMULATOR; buildVersion = changed = YES;
+      if (bv->platform != PLATFORM_IOS)
+        return YES;   // already a simulator's, or another platform's
+      bv->platform = PLATFORM_IOSSIMULATOR;
+      buildVersion = changed = YES;
     }
-    if (c->cmd == LC_VERSION_MIN_IPHONEOS) versionMin = (void *)c;
+    if (c->cmd == LC_VERSION_MIN_IPHONEOS)
+      versionMin = (void *)c;
     if (c->cmd == LC_SEGMENT_64) {
       struct segment_command_64 *seg = (void *)c;
-      if (!strncmp(seg->segname, "__RESTRICT", sizeof seg->segname)) { memcpy(seg->segname, "__RSTRICT_", 10); changed = YES; }
+      if (!strncmp(seg->segname, "__RESTRICT", sizeof seg->segname)) {
+        memcpy(seg->segname, "__RSTRICT_", 10);
+        changed = YES;
+      }
       struct section_64 *s = (void *)(seg + 1);
       for (uint32_t k = 0; k < seg->nsects && (uint8_t *)(s + k + 1) <= (uint8_t *)c + c->cmdsize; k++) {
-        if (s[k].offset) firstSection = MIN(firstSection, s[k].offset);
-        if (!strncmp(s[k].segname, "__RESTRICT", sizeof s[k].segname)) memcpy(s[k].segname, "__RSTRICT_", 10);
-        if (!strncmp(s[k].sectname, "__restrict", sizeof s[k].sectname)) memcpy(s[k].sectname, "__rstrict_", 10);
+        if (s[k].offset)
+          firstSection = MIN(firstSection, s[k].offset);
+        if (!strncmp(s[k].segname, "__RESTRICT", sizeof s[k].segname))
+          memcpy(s[k].segname, "__RSTRICT_", 10);
+        if (!strncmp(s[k].sectname, "__restrict", sizeof s[k].sectname))
+          memcpy(s[k].sectname, "__rstrict_", 10);
       }
     }
     at += c->cmdsize;
@@ -110,7 +126,8 @@ static BOOL ConvertMachO(NSString *path, NSString **error) {
   } else if (!buildVersion) {
     return YES;   // no platform: not something dyld checks
   }
-  if (!changed) return YES;
+  if (!changed)
+    return YES;
 
   struct stat st;
   mode_t mode = stat(path.fileSystemRepresentation, &st) == 0 ? st.st_mode & 07777 : 0755;
@@ -128,16 +145,25 @@ static void ConvertInfoPlist(NSString *path) {
   NSPropertyListFormat format;
   NSMutableDictionary *p = data ? [NSPropertyListSerialization propertyListWithData:data options:NSPropertyListMutableContainers
                                                                               format:&format error:NULL] : nil;
-  if (![p isKindOfClass:NSMutableDictionary.class]) return;
+  if (![p isKindOfClass:NSMutableDictionary.class])
+    return;
   BOOL changed = NO;
   id platforms = p[@"CFBundleSupportedPlatforms"];
-  if ([platforms isKindOfClass:NSArray.class] && [platforms containsObject:@"iPhoneOS"]) { p[@"CFBundleSupportedPlatforms"] = @[ @"iPhoneSimulator" ]; changed = YES; }
-  if ([p[@"DTPlatformName"] isEqual:@"iphoneos"]) { p[@"DTPlatformName"] = @"iphonesimulator"; changed = YES; }
+  if ([platforms isKindOfClass:NSArray.class] && [platforms containsObject:@"iPhoneOS"]) {
+    p[@"CFBundleSupportedPlatforms"] = @[ @"iPhoneSimulator" ];
+    changed = YES;
+  }
+  if ([p[@"DTPlatformName"] isEqual:@"iphoneos"]) {
+    p[@"DTPlatformName"] = @"iphonesimulator";
+    changed = YES;
+  }
   NSString *sdk = p[@"DTSDKName"];
   if ([sdk isKindOfClass:NSString.class] && [sdk hasPrefix:@"iphoneos"]) {
-    p[@"DTSDKName"] = [@"iphonesimulator" stringByAppendingString:[sdk substringFromIndex:8]]; changed = YES;
+    p[@"DTSDKName"] = [@"iphonesimulator" stringByAppendingString:[sdk substringFromIndex:8]];
+    changed = YES;
   }
-  if (changed) [[NSPropertyListSerialization dataWithPropertyList:p format:format options:0 error:NULL] writeToFile:path atomically:YES];
+  if (changed)
+    [[NSPropertyListSerialization dataWithPropertyList:p format:format options:0 error:NULL] writeToFile:path atomically:YES];
 }
 
 // ---------------------------------------------------------------- signing
@@ -147,12 +173,15 @@ static NSString *Sign(NSString *path) {
   t.executableURL = [NSURL fileURLWithPath:@"/usr/bin/codesign"];
   t.arguments = @[ @"--force", @"--sign", @"-", @"--timestamp=none", path ];
   NSPipe *err = [NSPipe pipe];
-  t.standardOutput = NSFileHandle.fileHandleWithNullDevice; t.standardError = err;
+  t.standardOutput = NSFileHandle.fileHandleWithNullDevice;
+  t.standardError = err;
   NSError *e;
-  if (![t launchAndReturnError:&e]) return e.localizedDescription;
+  if (![t launchAndReturnError:&e])
+    return e.localizedDescription;
   NSData *msg = [err.fileHandleForReading readDataToEndOfFile];
   [t waitUntilExit];
-  if (t.terminationStatus == 0) return nil;
+  if (t.terminationStatus == 0)
+    return nil;
   NSString *s = [[NSString alloc] initWithData:msg encoding:NSUTF8StringEncoding];
   return [s stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] ?: @"codesign failed";
 }
@@ -194,21 +223,27 @@ static NSString *CacheDirectory(NSString *app) {
 
 + (NSString *)simulatorCopyOfApp:(NSString *)appPath error:(NSString **)error {
   // one at a time: a second request for the same app finds the first one's copy
-  static dispatch_queue_t queue; static dispatch_once_t once;
-  dispatch_once(&once, ^{ queue = dispatch_queue_create("SimRun.devicebuild", DISPATCH_QUEUE_SERIAL); });
+  static dispatch_queue_t queue;
+  static dispatch_once_t once;
+  dispatch_once(&once, ^{
+    queue = dispatch_queue_create("SimRun.devicebuild", DISPATCH_QUEUE_SERIAL);
+  });
   __block NSString *copy, *err;
   appPath = appPath.stringByStandardizingPath;
   dispatch_sync(queue, ^{
     copy = [self convert:appPath error:&err];
-    if (!copy) [NSFileManager.defaultManager removeItemAtPath:[CacheDirectory(appPath) stringByAppendingPathComponent:@"new"] error:nil];
+    if (!copy)
+      [NSFileManager.defaultManager removeItemAtPath:[CacheDirectory(appPath) stringByAppendingPathComponent:@"new"] error:nil];
   });
-  if (!copy && error) *error = [NSString stringWithFormat:@"Couldn't convert this device build for the Simulator: %@", err];
+  if (!copy && error)
+    *error = [NSString stringWithFormat:@"Couldn't convert this device build for the Simulator: %@", err];
   return copy;
 }
 
 + (NSString *)convert:(NSString *)app error:(NSString **)error {
   NSString *current = [self currentCopyOfApp:app];
-  if (current) return current;
+  if (current)
+    return current;
   NSFileManager *fm = NSFileManager.defaultManager;
   NSString *dir = CacheDirectory(app), *copy = [dir stringByAppendingPathComponent:app.lastPathComponent];
   NSString *stampPath = [dir stringByAppendingPathComponent:@"stamp"], *stamp = Stamp(app);
@@ -234,15 +269,28 @@ static NSString *CacheDirectory(NSString *app) {
     NSString *path = [out stringByAppendingPathComponent:rel], *name = rel.lastPathComponent;
     removexattr(path.fileSystemRepresentation, "com.apple.quarantine", XATTR_NOFOLLOW);
     if ([e.fileAttributes.fileType isEqualToString:NSFileTypeDirectory]) {
-      if ([name isEqualToString:@"_CodeSignature"]) { [e skipDescendants]; [fm removeItemAtPath:path error:nil]; }
-      else if ([@[ @"app", @"appex", @"framework", @"xpc" ] containsObject:name.pathExtension]) [bundles addObject:path];
+      if ([name isEqualToString:@"_CodeSignature"]) {
+        [e skipDescendants];
+        [fm removeItemAtPath:path error:nil];
+      }
+      else if ([@[ @"app", @"appex", @"framework", @"xpc" ] containsObject:name.pathExtension])
+        [bundles addObject:path];
       continue;
     }
-    if (![e.fileAttributes.fileType isEqualToString:NSFileTypeRegular]) continue;
-    if ([name isEqualToString:@"embedded.mobileprovision"]) { [fm removeItemAtPath:path error:nil]; continue; }
-    if ([name isEqualToString:@"Info.plist"]) { ConvertInfoPlist(path); continue; }
-    if (!IsMachO(path)) continue;
-    if (!ConvertMachO(path, error)) return nil;
+    if (![e.fileAttributes.fileType isEqualToString:NSFileTypeRegular])
+      continue;
+    if ([name isEqualToString:@"embedded.mobileprovision"]) {
+      [fm removeItemAtPath:path error:nil];
+      continue;
+    }
+    if ([name isEqualToString:@"Info.plist"]) {
+      ConvertInfoPlist(path);
+      continue;
+    }
+    if (!IsMachO(path))
+      continue;
+    if (!ConvertMachO(path, error))
+      return nil;
     [machOs addObject:path];
   }
   removexattr(out.fileSystemRepresentation, "com.apple.quarantine", XATTR_NOFOLLOW);
@@ -252,32 +300,47 @@ static NSString *CacheDirectory(NSString *app) {
   NSMutableSet<NSString *> *executables = [NSMutableSet set];
   for (NSString *b in bundles) {
     id exe = [NSDictionary dictionaryWithContentsOfFile:[b stringByAppendingPathComponent:@"Info.plist"]][@"CFBundleExecutable"];
-    if ([exe isKindOfClass:NSString.class]) [executables addObject:[b stringByAppendingPathComponent:exe]];
+    if ([exe isKindOfClass:NSString.class])
+      [executables addObject:[b stringByAppendingPathComponent:exe]];
   }
   NSMutableArray<NSArray<NSString *> *> *levels = [NSMutableArray array];
-  [levels addObject:[machOs filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(NSString *p, id b) { return ![executables containsObject:p]; }]]];
+  [levels addObject:[machOs filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(NSString *p, id b) {
+    return ![executables containsObject:p];
+  }]]];
   NSMutableDictionary<NSNumber *, NSMutableArray *> *byDepth = [NSMutableDictionary dictionary];
   for (NSString *b in bundles) {
     NSNumber *depth = @(b.pathComponents.count);
-    if (!byDepth[depth]) byDepth[depth] = [NSMutableArray array];
+    if (!byDepth[depth])
+      byDepth[depth] = [NSMutableArray array];
     [byDepth[depth] addObject:b];
   }
-  for (NSNumber *depth in [byDepth.allKeys sortedArrayUsingSelector:@selector(compare:)].reverseObjectEnumerator) [levels addObject:byDepth[depth]];
+  for (NSNumber *depth in [byDepth.allKeys sortedArrayUsingSelector:@selector(compare:)].reverseObjectEnumerator)
+    [levels addObject:byDepth[depth]];
   for (NSArray<NSString *> *level in levels) {
     NSMutableArray *failures = [NSMutableArray array];
     dispatch_apply(level.count, DISPATCH_APPLY_AUTO, ^(size_t i) {
       NSString *why = Sign(level[i]);
-      if (why) @synchronized (failures) { [failures addObject:[NSString stringWithFormat:@"%@: %@", [level[i] substringFromIndex:work.length + 1], why]]; }
+      if (why)
+        @synchronized (failures) {
+          [failures addObject:[NSString stringWithFormat:@"%@: %@", [level[i] substringFromIndex:work.length + 1], why]];
+        }
     });
-    if (failures.count) { *error = [@"codesign failed for " stringByAppendingString:[failures componentsJoinedByString:@"; "]]; return nil; }
+    if (failures.count) {
+      *error = [@"codesign failed for " stringByAppendingString:[failures componentsJoinedByString:@"; "]];
+      return nil;
+    }
   }
 
   // swap it in. A running instance of the old copy keeps its files (they are only unlinked).
   NSString *old = [dir stringByAppendingPathComponent:@"old"];
   [fm removeItemAtPath:old error:nil];
   [fm removeItemAtPath:stampPath error:nil];
-  if ([fm fileExistsAtPath:copy] && ![fm moveItemAtPath:copy toPath:old error:nil]) [fm removeItemAtPath:copy error:nil];
-  if (![fm moveItemAtPath:out toPath:copy error:nil]) { *error = [NSString stringWithFormat:@"can't move it to %@", copy]; return nil; }
+  if ([fm fileExistsAtPath:copy] && ![fm moveItemAtPath:copy toPath:old error:nil])
+    [fm removeItemAtPath:copy error:nil];
+  if (![fm moveItemAtPath:out toPath:copy error:nil]) {
+    *error = [NSString stringWithFormat:@"can't move it to %@", copy];
+    return nil;
+  }
   [stamp writeToFile:stampPath atomically:YES encoding:NSUTF8StringEncoding error:nil];
   [fm removeItemAtPath:old error:nil];
   [fm removeItemAtPath:work error:nil];

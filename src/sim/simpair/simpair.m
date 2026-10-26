@@ -33,7 +33,10 @@ typedef void (*SRIDSResume)(SRPairCompletion completion, dispatch_queue_t queue)
 static NSError *Wait(const char *what, BOOL (^finished)(void), void (^call)(SRPairCompletion)) {
   __block NSError *result = nil;
   __block BOOL done = NO;
-  call(^(NSError *error) { result = error; done = YES; });
+  call(^(NSError *error) {
+    result = error;
+    done = YES;
+  });
   for (NSDate *end = [NSDate dateWithTimeIntervalSinceNow:60]; !done && !(finished && finished()); ) {
     if ([end timeIntervalSinceNow] <= 0) {
       LOG("%s: no answer in 60 s", what);
@@ -41,14 +44,18 @@ static NSError *Wait(const char *what, BOOL (^finished)(void), void (^call)(SRPa
     }
     [NSRunLoop.currentRunLoop runMode:NSDefaultRunLoopMode beforeDate:[NSDate dateWithTimeIntervalSinceNow:0.1]];
   }
-  if (result) LOG("%s: %s", what, result.description.UTF8String);
+  if (result)
+    LOG("%s: %s", what, result.description.UTF8String);
   return result;
 }
 
 int main(int argc, char **argv) {
   @autoreleasepool {
     NSUUID *peer = argc == 2 ? [[NSUUID alloc] initWithUUIDString:@(argv[1])] : nil;
-    if (!peer) { fprintf(stderr, "usage: simpair <peer UDID>\n"); return 2; }
+    if (!peer) {
+      fprintf(stderr, "usage: simpair <peer UDID>\n");
+      return 2;
+    }
     void *ids = dlopen("/System/Library/PrivateFrameworks/IDSSimulatorSupport.framework/IDSSimulatorSupport", RTLD_NOW);
     dlopen("/System/Library/PrivateFrameworks/NanoRegistry.framework/NanoRegistry", RTLD_NOW);
     SRIDSWithPeer connect = ids ? (SRIDSWithPeer)dlsym(ids, "IDSSimulatorLocalPairingTransportConnect") : NULL;
@@ -56,14 +63,22 @@ int main(int argc, char **argv) {
     Class registryClass = NSClassFromString(@"NRPairedDeviceRegistry");
     NSString *__strong *pairingIDKey = (NSString *__strong *)dlsym(RTLD_DEFAULT, "NRDevicePropertyPairingID");
     NSString *pairingID = pairingIDKey ? *pairingIDKey : @"pairingID";
-    if (!connect || !resume || !registryClass) { LOG("no IDSSimulatorSupport or NanoRegistry in this runtime"); return 1; }
+    if (!connect || !resume || !registryClass) {
+      LOG("no IDSSimulatorSupport or NanoRegistry in this runtime");
+      return 1;
+    }
     dispatch_queue_t q = dispatch_queue_create("dev.simrun.simpair", DISPATCH_QUEUE_SERIAL);
 
     LOG("connecting the IDS relay to %s", peer.UUIDString.UTF8String);
-    if (Wait("IDSSimulatorLocalPairingTransportConnect", nil, ^(SRPairCompletion c) { connect(peer, c, q); })) return 1;
+    if (Wait("IDSSimulatorLocalPairingTransportConnect", nil, ^(SRPairCompletion c) {
+      connect(peer, c, q);
+    }))
+      return 1;
     // as CoreSimulatorBridge does, on to NanoRegistry whatever this says (a relay that was never suspended answers EALREADY)
     Wait("IDSSimulatorLocalPairingTransportResume", nil, ^(SRPairCompletion c) {
-      resume(^(NSError *error) { c([error.domain isEqual:NSPOSIXErrorDomain] && error.code == EALREADY ? nil : error); }, q);
+      resume(^(NSError *error) {
+        c([error.domain isEqual:NSPOSIXErrorDomain] && error.code == EALREADY ? nil : error);
+      }, q);
     });
 
     id registry = [registryClass sharedInstance];
@@ -73,13 +88,21 @@ int main(int argc, char **argv) {
       id active = [registry getActivePairedDevice];
       return [[active valueForProperty:pairingID] isEqual:peer] && [[active valueForProperty:@"isPaired"] boolValue];
     };
-    if (paired()) { LOG("paired with %s", peer.UUIDString.UTF8String); return 0; }
+    if (paired()) {
+      LOG("paired with %s", peer.UUIDString.UTF8String);
+      return 0;
+    }
     BOOL before = NO;
-    for (id device in [registry getPairedDevices]) before |= [[device valueForProperty:pairingID] isEqual:peer];
+    for (id device in [registry getPairedDevices])
+      before |= [[device valueForProperty:pairingID] isEqual:peer];
     LOG("%s %s", before ? "switching to" : "pairing with", peer.UUIDString.UTF8String);
-    NSError *e = before ? Wait("switchToSimulator", paired, ^(SRPairCompletion c) { [registry switchToSimulator:peer withQueue:q withCompletion:c]; })
-                        : Wait("pairWithSimulator", paired, ^(SRPairCompletion c) { [registry pairWithSimulator:peer withQueue:q withCompletion:c]; });
-    if (e) return 1;
+    NSError *e = before ? Wait("switchToSimulator", paired, ^(SRPairCompletion c) {
+      [registry switchToSimulator:peer withQueue:q withCompletion:c];
+    }) : Wait("pairWithSimulator", paired, ^(SRPairCompletion c) {
+      [registry pairWithSimulator:peer withQueue:q withCompletion:c];
+    });
+    if (e)
+      return 1;
     LOG("paired with %s", peer.UUIDString.UTF8String);
     return 0;
   }

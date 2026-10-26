@@ -8,7 +8,9 @@ struct NetworkDemo: View {
     let symbol: String
     let url: URL
     var state = State.idle
-    enum State { case idle, running, done(status: Int, ms: Double, bytes: Int, summary: [(String, String)]), failed(String) }
+    enum State {
+      case idle, running, done(status: Int, ms: Double, bytes: Int, summary: [(String, String)]), failed(String)
+    }
   }
 
   @State private var probes: [Probe] = [
@@ -46,7 +48,9 @@ struct NetworkDemo: View {
             VStack(spacing: 6) { ForEach(summary, id: \.0) { InfoRow(label: $0.0, value: $0.1, mono: true) } }
               .transition(.opacity)
           }
-          if case let .failed(msg) = p.state { Text(msg).font(.footnote).foregroundStyle(.red) }
+          if case let .failed(msg) = p.state {
+            Text(msg).font(.footnote).foregroundStyle(.red)
+          }
         }
       }
       Hint(text: "Tap a row to run it again. Requests go out from the app process itself: no proxy, no Simulator networking.",
@@ -57,25 +61,36 @@ struct NetworkDemo: View {
 
   @ViewBuilder private func stateView(_ s: Probe.State) -> some View {
     switch s {
-    case .idle: Image(systemName: "play.circle").font(.title2).foregroundStyle(.secondary)
-    case .running: ProgressView()
+    case .idle:
+      Image(systemName: "play.circle").font(.title2).foregroundStyle(.secondary)
+    case .running:
+      ProgressView()
     case let .done(status, ms, bytes, _):
       VStack(alignment: .trailing, spacing: 2) {
         StatusBadge(text: "\(status)", symbol: (200..<400).contains(status) ? "checkmark.circle.fill" : "exclamationmark.triangle.fill",
                     color: (200..<400).contains(status) ? .green : .orange)
         Text("\(Int(ms)) ms · \(byteString(bytes))").font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
       }
-    case .failed: Image(systemName: "xmark.octagon.fill").font(.title2).foregroundStyle(.red)
+    case .failed:
+      Image(systemName: "xmark.octagon.fill").font(.title2).foregroundStyle(.red)
     }
   }
 
   private func runAll() async {
-    await withTaskGroup(of: Void.self) { g in for p in probes { g.addTask { await run(p.id) } } }
+    await withTaskGroup(of: Void.self) { g in
+      for p in probes {
+        g.addTask { await run(p.id) }
+      }
+    }
   }
 
   @MainActor private func run(_ id: String) async {
-    guard let i = probes.firstIndex(where: { $0.id == id }) else { return }
-    if case .running = probes[i].state { return }
+    guard let i = probes.firstIndex(where: { $0.id == id }) else {
+      return
+    }
+    if case .running = probes[i].state {
+      return
+    }
     withAnimation(.snappy) { probes[i].state = .running }
     var req = URLRequest(url: probes[i].url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 15)
     req.setValue("SimRun-Showcase/1.0", forHTTPHeaderField: "User-Agent")
@@ -97,7 +112,8 @@ struct NetworkDemo: View {
     switch id {
     case "trace":
       let kv = Dictionary(text.split(separator: "\n").compactMap { l -> (String, String)? in
-        let p = l.split(separator: "=", maxSplits: 1); return p.count == 2 ? (String(p[0]), String(p[1])) : nil
+        let p = l.split(separator: "=", maxSplits: 1)
+        return p.count == 2 ? (String(p[0]), String(p[1])) : nil
       }, uniquingKeysWith: { a, _ in a })
       return [("IP", kv["ip"]), ("Location", kv["loc"]), ("Edge", kv["colo"]), ("TLS", kv["tls"]), ("HTTP", kv["http"])]
         .compactMap { k, v in v.map { (k, $0) } }

@@ -12,12 +12,20 @@
 #define SERVICE @"dev.simrun.kctest"
 
 static int gFail;
-static void check(BOOL ok, NSString *what) { printf("%s %s\n", ok ? "ok  " : "FAIL", what.UTF8String); if (!ok) gFail++; }
+static void check(BOOL ok, NSString *what) {
+  printf("%s %s\n", ok ? "ok  " : "FAIL", what.UTF8String);
+  if (!ok)
+    gFail++;
+}
 static void check_status(OSStatus got, OSStatus want, NSString *what) {
   check(got == want, got == want ? what : [NSString stringWithFormat:@"%@ (status %d, want %d)", what, (int)got, (int)want]);
 }
-static NSData *utf8(NSString *s) { return [s dataUsingEncoding:NSUTF8StringEncoding]; }
-static NSString *str(id d) { return [d isKindOfClass:NSData.class] ? [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding] : nil; }
+static NSData *utf8(NSString *s) {
+  return [s dataUsingEncoding:NSUTF8StringEncoding];
+}
+static NSString *str(id d) {
+  return [d isKindOfClass:NSData.class] ? [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding] : nil;
+}
 
 static NSMutableDictionary *genp(NSString *account) {
   return [@{ (id)kSecClass: (id)kSecClassGenericPassword, (id)kSecAttrService: SERVICE, (id)kSecAttrAccount: account } mutableCopy];
@@ -60,7 +68,8 @@ static void passwords(void) {
         [a[(id)kSecAttrCreationDate] isKindOfClass:NSDate.class] && [a[(id)kSecAttrAccessGroup] length] && !a[(id)kSecValueData],
         [NSString stringWithFormat:@"attributes (group %@)", a[(id)kSecAttrAccessGroup]]);
 
-  q[(id)kSecReturnData] = @YES; q[(id)kSecReturnPersistentRef] = @YES;
+  q[(id)kSecReturnData] = @YES;
+  q[(id)kSecReturnPersistentRef] = @YES;
   a = copy_matching(q, &st);
   check([str(a[(id)kSecValueData]) isEqual:@"hunter2"] && [a[(id)kSecValuePersistentRef] isKindOfClass:NSData.class], @"attributes + data + persistent ref");
   NSData *pref = a[(id)kSecValuePersistentRef];
@@ -68,10 +77,12 @@ static void passwords(void) {
 
   NSMutableDictionary *upd = genp(@"alice");
   check_status(SecItemUpdate((__bridge CFDictionaryRef)upd, (__bridge CFDictionaryRef)@{ (id)kSecValueData: utf8(@"s3cret") }), errSecSuccess, @"update password");
-  q = genp(@"alice"); q[(id)kSecReturnData] = @YES;
+  q = genp(@"alice");
+  q[(id)kSecReturnData] = @YES;
   check([str(copy_matching(q, &st)) isEqual:@"s3cret"], @"read updated password");
 
-  add = genp(@"bob"); add[(id)kSecValueData] = utf8(@"b0b");
+  add = genp(@"bob");
+  add[(id)kSecValueData] = utf8(@"b0b");
   check_status(SecItemAdd((__bridge CFDictionaryRef)add, NULL), errSecSuccess, @"add second account");
   check_status(SecItemUpdate((__bridge CFDictionaryRef)genp(@"bob"), (__bridge CFDictionaryRef)@{ (id)kSecAttrAccount: @"alice" }), errSecDuplicateItem,
                @"rename onto an existing account -> duplicate");
@@ -81,17 +92,23 @@ static void passwords(void) {
   check_status(SecItemCopyMatching((__bridge CFDictionaryRef)genp(@"carol"), NULL), errSecItemNotFound, @"missing account -> not found");
 
   // synchronizable items only show up when asked for
-  add = genp(@"synced"); add[(id)kSecValueData] = utf8(@"x"); add[(id)kSecAttrSynchronizable] = @YES;
+  add = genp(@"synced");
+  add[(id)kSecValueData] = utf8(@"x");
+  add[(id)kSecAttrSynchronizable] = @YES;
   check_status(SecItemAdd((__bridge CFDictionaryRef)add, NULL), errSecSuccess, @"add synchronizable item");
   check_status(SecItemCopyMatching((__bridge CFDictionaryRef)genp(@"synced"), NULL), errSecItemNotFound, @"hidden from plain queries");
-  q = genp(@"synced"); q[(id)kSecAttrSynchronizable] = (id)kSecAttrSynchronizableAny;
+  q = genp(@"synced");
+  q[(id)kSecAttrSynchronizable] = (id)kSecAttrSynchronizableAny;
   check_status(SecItemCopyMatching((__bridge CFDictionaryRef)q, NULL), errSecSuccess, @"found with kSecAttrSynchronizableAny");
 
   // a group the app isn't entitled to: allowed (no checks), but only queries that name it see the item
-  add = genp(@"grouped"); add[(id)kSecValueData] = utf8(@"g"); add[(id)kSecAttrAccessGroup] = @"dev.simrun.kctest.other";
+  add = genp(@"grouped");
+  add[(id)kSecValueData] = utf8(@"g");
+  add[(id)kSecAttrAccessGroup] = @"dev.simrun.kctest.other";
   check_status(SecItemAdd((__bridge CFDictionaryRef)add, NULL), errSecSuccess, @"add to another access group");
   check_status(SecItemCopyMatching((__bridge CFDictionaryRef)genp(@"grouped"), NULL), errSecItemNotFound, @"not in the default groups");
-  q = genp(@"grouped"); q[(id)kSecAttrAccessGroup] = @"dev.simrun.kctest.other";
+  q = genp(@"grouped");
+  q[(id)kSecAttrAccessGroup] = @"dev.simrun.kctest.other";
   check_status(SecItemCopyMatching((__bridge CFDictionaryRef)q, NULL), errSecSuccess, @"found when the query names the group");
 
   NSDictionary *inet = @{ (id)kSecClass: (id)kSecClassInternetPassword, (id)kSecAttrServer: @"kctest.example.com", (id)kSecAttrAccount: @"alice",
@@ -118,11 +135,15 @@ static void keys(void) {
     (id)kSecAttrKeyType: (id)kSecAttrKeyTypeECSECPrimeRandom, (id)kSecAttrKeySizeInBits: @256, (id)kSecAttrLabel: @"kctest key",
     (id)kSecPrivateKeyAttrs: @{ (id)kSecAttrIsPermanent: @YES, (id)kSecAttrApplicationTag: tag } }, &e);
   check(priv != NULL, [NSString stringWithFormat:@"permanent key generated%@", e ? [(__bridge id)e description] : @""]);
-  if (!priv) return;
+  if (!priv)
+    return;
   SecKeyRef found = (__bridge_retained SecKeyRef)copy_matching(@{ (id)kSecClass: (id)kSecClassKey, (id)kSecAttrApplicationTag: tag,
     (id)kSecAttrKeyClass: (id)kSecAttrKeyClassPrivate, (id)kSecReturnRef: @YES }, &st);
   check_status(st, errSecSuccess, @"find the key by tag");
-  if (!found) { CFRelease(priv); return; }
+  if (!found) {
+    CFRelease(priv);
+    return;
+  }
   NSData *msg = utf8(@"sign me");
   NSData *sig = CFBridgingRelease(SecKeyCreateSignature(found, kSecKeyAlgorithmECDSASignatureMessageX962SHA256, (__bridge CFDataRef)msg, NULL));
   SecKeyRef pub = SecKeyCopyPublicKey(priv);
@@ -130,7 +151,9 @@ static void keys(void) {
         @"the stored key signs like the generated one");
   NSDictionary *a = copy_matching(@{ (id)kSecClass: (id)kSecClassKey, (id)kSecAttrApplicationTag: tag, (id)kSecReturnAttributes: @YES }, &st);
   check([a[(id)kSecAttrLabel] isEqual:@"kctest key"] && [a[(id)kSecAttrKeySizeInBits] intValue] == 256, @"key attributes (label, size)");
-  CFRelease(pub); CFRelease(found); CFRelease(priv);
+  CFRelease(pub);
+  CFRelease(found);
+  CFRelease(priv);
 }
 
 static void identities(void) {
@@ -140,7 +163,8 @@ static void identities(void) {
   SecKeyRef key = SecKeyCreateWithData((__bridge CFDataRef)[[NSData alloc] initWithBase64EncodedString:kKey options:0],
     (__bridge CFDictionaryRef)@{ (id)kSecAttrKeyType: (id)kSecAttrKeyTypeECSECPrimeRandom, (id)kSecAttrKeyClass: (id)kSecAttrKeyClassPrivate }, NULL);
   check(cert && key, @"test certificate and key");
-  if (!cert || !key) return;
+  if (!cert || !key)
+    return;
   check_status(SecItemAdd((__bridge CFDictionaryRef)@{ (id)kSecValueRef: (__bridge id)cert }, NULL), errSecSuccess, @"add certificate (class from the ref)");
   NSDictionary *a = copy_matching(@{ (id)kSecClass: (id)kSecClassCertificate, (id)kSecAttrLabel: @"kctest", (id)kSecReturnAttributes: @YES }, &st);
   check_status(st, errSecSuccess, @"find certificate by its subject summary");
@@ -152,14 +176,16 @@ static void identities(void) {
   SecIdentityRef ident = (__bridge_retained SecIdentityRef)copy_matching(@{ (id)kSecClass: (id)kSecClassIdentity, (id)kSecAttrLabel: @"kctest", (id)kSecReturnRef: @YES }, &st);
   check(st == errSecSuccess && ident && CFGetTypeID(ident) == SecIdentityGetTypeID(), @"identity = certificate + key");
   if (ident) {
-    SecCertificateRef c = NULL; SecIdentityCopyCertificate(ident, &c);
+    SecCertificateRef c = NULL;
+    SecIdentityCopyCertificate(ident, &c);
     check(c && [CFBridgingRelease(SecCertificateCopyData(c)) isEqual:der], @"identity's certificate");
     CFRelease(ident);
   }
   check_status(SecItemDelete((__bridge CFDictionaryRef)@{ (id)kSecClass: (id)kSecClassIdentity, (id)kSecAttrLabel: @"kctest" }), errSecSuccess, @"delete identity");
   check_status(SecItemCopyMatching((__bridge CFDictionaryRef)@{ (id)kSecClass: (id)kSecClassCertificate, (id)kSecAttrLabel: @"kctest" }, NULL), errSecItemNotFound,
                @"its certificate is gone");
-  CFRelease(cert); CFRelease(key);
+  CFRelease(cert);
+  CFRelease(key);
 }
 
 static void selftest(void) {
@@ -179,7 +205,10 @@ int main(int argc, char **argv) {
   @autoreleasepool {
     NSString *cmd = argc > 1 ? @(argv[1]) : nil;
     OSStatus st;
-    if (!cmd) { selftest(); return gFail ? 1 : 0; }
+    if (!cmd) {
+      selftest();
+      return gFail ? 1 : 0;
+    }
     if ([cmd isEqual:@"list"]) {
       for (id cls in @[ (id)kSecClassGenericPassword, (id)kSecClassInternetPassword ]) {
         NSArray *all = copy_matching(@{ (id)kSecClass: cls, (id)kSecMatchLimit: (id)kSecMatchLimitAll, (id)kSecReturnAttributes: @YES, (id)kSecReturnData: @YES,
@@ -193,14 +222,21 @@ int main(int argc, char **argv) {
     if ([cmd isEqual:@"set"] && argc > 3) {
       NSMutableDictionary *q = genp(@(argv[2]));
       st = SecItemUpdate((__bridge CFDictionaryRef)q, (__bridge CFDictionaryRef)@{ (id)kSecValueData: utf8(@(argv[3])) });
-      if (st == errSecItemNotFound) { q[(id)kSecValueData] = utf8(@(argv[3])); st = SecItemAdd((__bridge CFDictionaryRef)q, NULL); }
+      if (st == errSecItemNotFound) {
+        q[(id)kSecValueData] = utf8(@(argv[3]));
+        st = SecItemAdd((__bridge CFDictionaryRef)q, NULL);
+      }
       printf("status %d\n", (int)st);
       return st != errSecSuccess;
     }
     if ([cmd isEqual:@"get"] && argc > 2) {
-      NSMutableDictionary *q = genp(@(argv[2])); q[(id)kSecReturnData] = @YES;
+      NSMutableDictionary *q = genp(@(argv[2]));
+      q[(id)kSecReturnData] = @YES;
       NSData *d = copy_matching(q, &st);
-      if (st) printf("status %d\n", (int)st); else printf("%s\n", str(d).UTF8String);
+      if (st)
+        printf("status %d\n", (int)st);
+      else
+        printf("%s\n", str(d).UTF8String);
       return st != errSecSuccess;
     }
     if ([cmd isEqual:@"rm"] && argc > 2) {

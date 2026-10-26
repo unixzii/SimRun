@@ -61,7 +61,10 @@ struct KeychainDemo: View {
            symbol: "exclamationmark.lock.fill", tint: .orange)
     }
     .toast($toast)
-    .onAppear { reload(); key = Self.findKey() }
+    .onAppear {
+      reload()
+      key = Self.findKey()
+    }
   }
 
   private var signingPanel: some View {
@@ -101,7 +104,9 @@ struct KeychainDemo: View {
   private func field(_ title: String, text: Binding<String>, symbol: String, secure: Bool = false) -> some View {
     HStack(spacing: 10) {
       Image(systemName: symbol).foregroundStyle(.secondary).frame(width: 20)
-      if secure { SecureField(title, text: text) } else {
+      if secure {
+        SecureField(title, text: text)
+      } else {
         TextField(title, text: text).textInputAutocapitalization(.never).autocorrectionDisabled()
       }
     }
@@ -109,7 +114,13 @@ struct KeychainDemo: View {
     .background(Color(uiColor: .tertiarySystemGroupedBackground), in: .rect(cornerRadius: 12, style: .continuous))
   }
 
-  private func toggle(_ a: String) { if revealed.contains(a) { revealed.remove(a) } else { revealed.insert(a) } }
+  private func toggle(_ a: String) {
+    if revealed.contains(a) {
+      revealed.remove(a)
+    } else {
+      revealed.insert(a)
+    }
+  }
 
   // MARK: SecItem
 
@@ -123,13 +134,18 @@ struct KeychainDemo: View {
       verb = "Updated"
     }
     toast = st == errSecSuccess ? "\(verb) “\(account)”" : "Error \(st)"
-    if st == errSecSuccess { account = ""; password = "" }
+    if st == errSecSuccess {
+      account = ""
+      password = ""
+    }
     withAnimation(.snappy) { reload() }
   }
 
   private func delete(_ item: KeychainItem) {
     let st = SecItemDelete([kSecClass: kSecClassGenericPassword, kSecAttrService: service, kSecAttrAccount: item.account] as CFDictionary)
-    if st != errSecSuccess { toast = "Error \(st)" }
+    if st != errSecSuccess {
+      toast = "Error \(st)"
+    }
     withAnimation(.snappy) { reload() }
   }
 
@@ -137,9 +153,14 @@ struct KeychainDemo: View {
     let q: [CFString: Any] = [kSecClass: kSecClassGenericPassword, kSecAttrService: service, kSecMatchLimit: kSecMatchLimitAll,
                               kSecReturnAttributes: true, kSecReturnData: true]
     var out: CFTypeRef?
-    guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let rows = out as? [[CFString: Any]] else { items = []; return }
+    guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let rows = out as? [[CFString: Any]] else {
+      items = []
+      return
+    }
     items = rows.compactMap { r in
-      guard let a = r[kSecAttrAccount] as? String else { return nil }
+      guard let a = r[kSecAttrAccount] as? String else {
+        return nil
+      }
       let pw = (r[kSecValueData] as? Data).flatMap { String(data: $0, encoding: .utf8) } ?? "<binary>"
       return KeychainItem(account: a, password: pw, created: r[kSecAttrCreationDate] as? Date)
     }
@@ -163,20 +184,27 @@ struct KeychainDemo: View {
       kSecPrivateKeyAttrs: [kSecAttrIsPermanent: true, kSecAttrApplicationTag: keyTag] as [CFString: Any],
     ]
     var err: Unmanaged<CFError>?
-    if let k = SecKeyCreateRandomKey(attrs as CFDictionary, &err) { key = k; toast = "Key generated" }
-    else { toast = (err?.takeRetainedValue() as Error?)?.localizedDescription ?? "Failed" }
+    if let k = SecKeyCreateRandomKey(attrs as CFDictionary, &err) {
+      key = k
+      toast = "Key generated"
+    }
+    else {
+      toast = (err?.takeRetainedValue() as Error?)?.localizedDescription ?? "Failed"
+    }
   }
 
   private func deleteKey() {
     SecItemDelete([kSecClass: kSecClassKey, kSecAttrApplicationTag: keyTag] as CFDictionary)
-    key = nil; signature = nil
+    key = nil
+    signature = nil
   }
 
   private func sign(with key: SecKey) {
     let data = Data(message.utf8), alg = SecKeyAlgorithm.ecdsaSignatureMessageX962SHA256
     var err: Unmanaged<CFError>?
     guard let sig = SecKeyCreateSignature(key, alg, data as CFData, &err) as Data?, let pub = SecKeyCopyPublicKey(key) else {
-      toast = (err?.takeRetainedValue() as Error?)?.localizedDescription ?? "Signing failed"; return
+      toast = (err?.takeRetainedValue() as Error?)?.localizedDescription ?? "Signing failed"
+      return
     }
     signature = (sig, SecKeyVerifySignature(pub, alg, data as CFData, sig as CFData, nil))
   }

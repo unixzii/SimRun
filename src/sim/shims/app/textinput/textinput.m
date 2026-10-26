@@ -26,21 +26,28 @@ static int gVerbose;
 - (id)firstResponder;
 @end
 
-static id SRKeyboard(void) { return [NSClassFromString(@"UIKeyboardImpl") activeInstance]; }
+static id SRKeyboard(void) {
+  return [NSClassFromString(@"UIKeyboardImpl") activeInstance];
+}
 // What the keyboard types into: its input delegate, or else the key window's first responder.
 static id<UIKeyInput> SRTextFocused(void) {
   id kb = SRKeyboard();
   id d = [kb respondsToSelector:@selector(inputDelegate)] ? [kb inputDelegate] : nil;
-  if ([d conformsToProtocol:@protocol(UIKeyInput)]) return d;
+  if ([d conformsToProtocol:@protocol(UIKeyInput)])
+    return d;
   for (UIScene *s in UIApplication.sharedApplication.connectedScenes) {
-    if (![s isKindOfClass:UIWindowScene.class] || s.activationState != UISceneActivationStateForegroundActive) continue;
+    if (![s isKindOfClass:UIWindowScene.class] || s.activationState != UISceneActivationStateForegroundActive)
+      continue;
     id fr = [((UIWindowScene *)s).keyWindow firstResponder];
-    if ([fr conformsToProtocol:@protocol(UIKeyInput)]) return fr;
+    if ([fr conformsToProtocol:@protocol(UIKeyInput)])
+      return fr;
   }
   return nil;
 }
 
-bool SRTextHasFocus(void) { return SRTextFocused() != nil; }
+bool SRTextHasFocus(void) {
+  return SRTextFocused() != nil;
+}
 
 // The edit `change` makes to `t`, with the keyboard told before and after.
 static void SRTextEdit(id<UIKeyInput> t, void (^change)(void)) {
@@ -52,106 +59,158 @@ static void SRTextEdit(id<UIKeyInput> t, void (^change)(void)) {
 // Whether `t` takes `text` in place of its selection, as the keyboard asks it (yes when the keyboard isn't attached to it).
 static BOOL SRTextShouldInsert(id<UIKeyInput> t, NSString *text) {
   id kb = SRKeyboard();
-  if (![kb respondsToSelector:@selector(callShouldInsertText:)] || [kb inputDelegate] != t) return YES;
+  if (![kb respondsToSelector:@selector(callShouldInsertText:)] || [kb inputDelegate] != t)
+    return YES;
   BOOL ok = [kb callShouldInsertText:text];
-  if (!ok) VLOG("%s refused \"%s\"", class_getName([t class]), text.UTF8String);
+  if (!ok)
+    VLOG("%s refused \"%s\"", class_getName([t class]), text.UTF8String);
   return ok;
 }
 
 bool SRTextInsert(NSString *text) {
   id<UIKeyInput> t = SRTextFocused();
-  if (!t) { VLOG("\"%s\" dropped: no text input has focus", text.UTF8String); return false; }
-  if (SRTextShouldInsert(t, text)) SRTextEdit(t, ^{ [t insertText:text]; });
+  if (!t) {
+    VLOG("\"%s\" dropped: no text input has focus", text.UTF8String);
+    return false;
+  }
+  if (SRTextShouldInsert(t, text))
+    SRTextEdit(t, ^{
+      [t insertText:text];
+    });
   return true;
 }
 
 bool SRTextReplaceAll(NSString *text) {
   id<UIKeyInput> t = SRTextFocused();
-  if (!t) { VLOG("\"%s\" dropped: no text input has focus", text.UTF8String); return false; }
+  if (!t) {
+    VLOG("\"%s\" dropped: no text input has focus", text.UTF8String);
+    return false;
+  }
   if (![t conformsToProtocol:@protocol(UITextInput)]) {   // no way to select: clear it a character at a time
-    for (int n = 0; t.hasText && n < 100000; n++) SRTextEdit(t, ^{ [t deleteBackward]; });
-    if (text.length) SRTextEdit(t, ^{ [t insertText:text]; });
+    for (int n = 0; t.hasText && n < 100000; n++)
+      SRTextEdit(t, ^{
+        [t deleteBackward];
+      });
+    if (text.length)
+      SRTextEdit(t, ^{
+        [t insertText:text];
+      });
     return true;
   }
   id<UITextInput> ti = (id<UITextInput>)t;
   UITextRange *all = [ti textRangeFromPosition:ti.beginningOfDocument toPosition:ti.endOfDocument];
-  if (all.isEmpty && !text.length) return true;
-  SRTextEdit(t, ^{ ti.selectedTextRange = all; });
-  if (SRTextShouldInsert(t, text)) SRTextEdit(t, ^{ [ti insertText:text]; });   // "" over the selection deletes it
+  if (all.isEmpty && !text.length)
+    return true;
+  SRTextEdit(t, ^{
+    ti.selectedTextRange = all;
+  });
+  if (SRTextShouldInsert(t, text))
+    SRTextEdit(t, ^{
+      [ti insertText:text];
+    });   // "" over the selection deletes it
   return true;
 }
 
 bool SRTextSetMarked(NSString *text, NSRange selected) {
   id<UIKeyInput> t = SRTextFocused();
-  if (![t conformsToProtocol:@protocol(UITextInput)]) { VLOG("marked \"%s\" dropped: no text input has focus", text.UTF8String); return false; }
+  if (![t conformsToProtocol:@protocol(UITextInput)]) {
+    VLOG("marked \"%s\" dropped: no text input has focus", text.UTF8String);
+    return false;
+  }
   id<UITextInput> ti = (id<UITextInput>)t;
-  if (!text.length && !ti.markedTextRange) return true;
+  if (!text.length && !ti.markedTextRange)
+    return true;
   NSUInteger at = MIN(selected.location, text.length);   // NSNotFound: at the end
   selected = NSMakeRange(at, MIN(selected.length, text.length - at));
   SRTextEdit(t, ^{
     if ([ti respondsToSelector:@selector(setAttributedMarkedText:selectedRange:)])   // underlined throughout, as the keyboard marks it
       [ti setAttributedMarkedText:[[NSAttributedString alloc] initWithString:text attributes:@{ NSUnderlineStyleAttributeName: @(NSUnderlineStyleSingle) }]
                     selectedRange:selected];
-    else [ti setMarkedText:text selectedRange:selected];
-    if (!text.length) [ti unmarkText];   // "" leaves an empty marked range behind
+    else
+      [ti setMarkedText:text selectedRange:selected];
+    if (!text.length)
+      [ti unmarkText];   // "" leaves an empty marked range behind
   });
   return true;
 }
 
 bool SRTextUnmark(void) {
   id<UIKeyInput> t = SRTextFocused();
-  if (![t conformsToProtocol:@protocol(UITextInput)]) return false;
+  if (![t conformsToProtocol:@protocol(UITextInput)])
+    return false;
   id<UITextInput> ti = (id<UITextInput>)t;
-  if (ti.markedTextRange) SRTextEdit(t, ^{ [ti unmarkText]; });
+  if (ti.markedTextRange)
+    SRTextEdit(t, ^{
+      [ti unmarkText];
+    });
   return true;
 }
 
 void SRTextFromWindow(uint32_t kind, NSString *text, NSRange selected) {
   switch (kind) {
-    case SR_TEXT_INSERT: SRTextInsert(text); break;
-    case SR_TEXT_MARK: SRTextSetMarked(text, selected); break;
-    case SR_TEXT_UNMARK: SRTextUnmark(); break;
-    default: VLOG("unknown text kind %u", kind);
+    case SR_TEXT_INSERT:
+      SRTextInsert(text);
+      break;
+    case SR_TEXT_MARK:
+      SRTextSetMarked(text, selected);
+      break;
+    case SR_TEXT_UNMARK:
+      SRTextUnmark();
+      break;
+    default:
+      VLOG("unknown text kind %u", kind);
   }
 }
 
 // ---------------------------------------------------------------- the focused text input, for the window
 // Where the marked text is (its first line), or else the caret: scene points, CGRectNull if not known.
 static CGRect SRTextCaretRect(id<UIKeyInput> t) {
-  if (![t conformsToProtocol:@protocol(UITextInput)]) return CGRectNull;
+  if (![t conformsToProtocol:@protocol(UITextInput)])
+    return CGRectNull;
   id<UITextInput> ti = (id<UITextInput>)t;
   UITextRange *marked = ti.markedTextRange, *sel = ti.selectedTextRange;
   CGRect r = marked && !marked.isEmpty ? [ti firstRectForRange:marked] : sel ? [ti caretRectForPosition:sel.end] : CGRectNull;
   UIView *v = ti.textInputView;
   UIWindow *w = v.window;
-  if (!w || CGRectIsNull(r) || CGRectIsInfinite(r) || !isfinite(r.origin.x) || !isfinite(r.origin.y)) return CGRectNull;
+  if (!w || CGRectIsNull(r) || CGRectIsInfinite(r) || !isfinite(r.origin.x) || !isfinite(r.origin.y))
+    return CGRectNull;
   return [w convertRect:[v convertRect:r toView:nil] toCoordinateSpace:w.windowScene.coordinateSpace];
 }
 static void SRTextReportState(void) {
   static bool sent, lastFocused;
   static CGRect lastRect;
   mach_port_t host = SRSessionPort();
-  if (!host || !UIApplication.sharedApplication) return;
+  if (!host || !UIApplication.sharedApplication)
+    return;
   id<UIKeyInput> t = SRTextFocused();
   bool focused = t != nil;
   CGRect r = focused ? SRTextCaretRect(t) : CGRectNull;
-  if (CGRectIsNull(r)) r = CGRectZero;
+  if (CGRectIsNull(r))
+    r = CGRectZero;
   r = CGRectIntegral(r);
-  if (sent && focused == lastFocused && CGRectEqualToRect(r, lastRect)) return;
-  sent = true; lastFocused = focused; lastRect = r;
+  if (sent && focused == lastFocused && CGRectEqualToRect(r, lastRect))
+    return;
+  sent = true;
+  lastFocused = focused;
+  lastRect = r;
   sr_text_state_msg_t m = { .focused = focused, .x = r.origin.x, .y = r.origin.y, .width = r.size.width, .height = r.size.height };
-  m.h.msgh_bits = MACH_MSGH_BITS(MACH_MSG_TYPE_COPY_SEND, 0); m.h.msgh_size = sizeof m;
-  m.h.msgh_remote_port = host; m.h.msgh_id = SR_MSG_TEXT_STATE;
+  m.h.msgh_bits = MACH_MSGH_BITS(MACH_MSG_TYPE_COPY_SEND, 0);
+  m.h.msgh_size = sizeof m;
+  m.h.msgh_remote_port = host;
+  m.h.msgh_id = SR_MSG_TEXT_STATE;
   kern_return_t kr = mach_msg(&m.h, MACH_SEND_MSG | MACH_SEND_TIMEOUT, sizeof m, 0, MACH_PORT_NULL, 100, MACH_PORT_NULL);
   VLOG("state: %s (%.0f,%.0f %.0fx%.0f) kr=0x%x", focused ? "focused" : "no focus", r.origin.x, r.origin.y, r.size.width, r.size.height, kr);
 }
 
 void SRTextInputStart(void) {
   gVerbose = getenv("TEXTINPUT_VERBOSE") != NULL;
-  if (!SRSessionPort()) return;
+  if (!SRSessionPort())
+    return;
   // after Core Animation's commit (order 2000000), so the caret is where the frame shows it
   CFRunLoopObserverRef o = CFRunLoopObserverCreateWithHandler(kCFAllocatorDefault, kCFRunLoopBeforeWaiting, true, 2000001,
-                                                              ^(CFRunLoopObserverRef obs, CFRunLoopActivity a) { SRTextReportState(); });
+                                                              ^(CFRunLoopObserverRef obs, CFRunLoopActivity a) {
+    SRTextReportState();
+  });
   CFRunLoopAddObserver(CFRunLoopGetMain(), o, kCFRunLoopCommonModes);
   CFRelease(o);
 }

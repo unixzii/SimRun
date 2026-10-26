@@ -15,7 +15,10 @@ struct TouchPage: View {
             taps += 1
             let r = Ripple(point: p)
             ripples.append(r)
-            Task { try? await Task.sleep(for: .seconds(0.8)); ripples.removeAll { $0.id == r.id } }
+            Task {
+              try? await Task.sleep(for: .seconds(0.8))
+              ripples.removeAll { $0.id == r.id }
+            }
           }
         ForEach(ripples) { RippleView(point: $0.point) }
         Circle().fill(Page.touch.gradient)   // grown by scaling: animating its frame left it a rounded square
@@ -24,7 +27,12 @@ struct TouchPage: View {
           .shadow(color: Page.touch.colors[1].opacity(0.6), radius: dragging ? 10 : 4)
           .position(ball ?? CGPoint(x: g.size.width / 2, y: g.size.height / 2))
           .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .named("pad"))
-            .onChanged { v in ball = v.location; if !dragging { withAnimation(.snappy) { dragging = true } } }
+            .onChanged { v in
+              ball = v.location
+              if !dragging {
+                withAnimation(.snappy) { dragging = true }
+              }
+            }
             .onEnded { _ in withAnimation(.snappy) { dragging = false } })
       }
       .coordinateSpace(name: "pad")

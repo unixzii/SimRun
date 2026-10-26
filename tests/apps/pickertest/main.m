@@ -13,23 +13,32 @@
 @end
 
 @implementation VC
-static NSArray<NSString *> *Modes(void) { return @[ @"import", @"open", @"multiple", @"folder", @"export", @"move", @"legacy", @"dismiss" ]; }
+static NSArray<NSString *> *Modes(void) {
+  return @[ @"import", @"open", @"multiple", @"folder", @"export", @"move", @"legacy", @"dismiss" ];
+}
 
 - (void)viewDidLoad {
   [super viewDidLoad];
   self.view.backgroundColor = UIColor.systemBackgroundColor;
   UIStackView *buttons = [UIStackView new];
-  buttons.axis = UILayoutConstraintAxisVertical; buttons.spacing = 6;
+  buttons.axis = UILayoutConstraintAxisVertical;
+  buttons.spacing = 6;
   for (NSString *m in Modes()) {
     UIButtonConfiguration *c = UIButtonConfiguration.borderedButtonConfiguration;
     c.title = m;
-    UIButton *b = [UIButton buttonWithConfiguration:c primaryAction:[UIAction actionWithHandler:^(UIAction *a) { [self present:m]; }]];
+    UIButton *b = [UIButton buttonWithConfiguration:c primaryAction:[UIAction actionWithHandler:^(UIAction *a) {
+      [self present:m];
+    }]];
     [buttons addArrangedSubview:b];
   }
   self.log = [UITextView new];
-  self.log.editable = NO; self.log.font = [UIFont monospacedSystemFontOfSize:11 weight:UIFontWeightRegular];
+  self.log.editable = NO;
+  self.log.font = [UIFont monospacedSystemFontOfSize:11 weight:UIFontWeightRegular];
   self.log.backgroundColor = UIColor.secondarySystemBackgroundColor;
-  for (UIView *v in @[ buttons, self.log ]) { v.translatesAutoresizingMaskIntoConstraints = NO; [self.view addSubview:v]; }
+  for (UIView *v in @[ buttons, self.log ]) {
+    v.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.view addSubview:v];
+  }
   UILayoutGuide *g = self.view.safeAreaLayoutGuide;
   [NSLayoutConstraint activateConstraints:@[
     [buttons.topAnchor constraintEqualToAnchor:g.topAnchor constant:12],
@@ -45,7 +54,10 @@ static NSArray<NSString *> *Modes(void) { return @[ @"import", @"open", @"multip
 - (void)viewDidAppear:(BOOL)animated {
   [super viewDidAppear:animated];
   static BOOL once;
-  if (!once && getenv("PICKERTEST")) { once = YES; [self present:@(getenv("PICKERTEST"))]; }
+  if (!once && getenv("PICKERTEST")) {
+    once = YES;
+    [self present:@(getenv("PICKERTEST"))];
+  }
 }
 
 - (void)note:(NSString *)s {
@@ -62,22 +74,37 @@ static NSArray<NSString *> *Modes(void) { return @[ @"import", @"open", @"multip
 
 - (void)present:(NSString *)mode {
   UIDocumentPickerViewController *p;
-  if ([mode isEqual:@"import"]) p = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[ UTTypeItem ] asCopy:YES];
-  else if ([mode isEqual:@"open"]) p = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[ UTTypePlainText, UTTypeImage, UTTypePDF ]];
-  else if ([mode isEqual:@"multiple"]) { p = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[ UTTypeItem ]]; p.allowsMultipleSelection = YES; }
-  else if ([mode isEqual:@"folder"]) p = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[ UTTypeFolder ]];
-  else if ([mode isEqual:@"export"]) p = [[UIDocumentPickerViewController alloc] initForExportingURLs:@[ [self exportFile] ] asCopy:YES];
-  else if ([mode isEqual:@"move"]) p = [[UIDocumentPickerViewController alloc] initForExportingURLs:@[ [self exportFile] ]];
-  else if ([mode isEqual:@"dismiss"]) p = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[ UTTypeItem ] asCopy:YES];
-  else if ([mode isEqual:@"legacy"]) p = [[UIDocumentPickerViewController alloc] initWithDocumentTypes:@[ @"public.text" ] inMode:UIDocumentPickerModeImport];
-  else { [self note:[@"unknown mode " stringByAppendingString:mode]]; return; }
+  if ([mode isEqual:@"import"])
+    p = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[ UTTypeItem ] asCopy:YES];
+  else if ([mode isEqual:@"open"])
+    p = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[ UTTypePlainText, UTTypeImage, UTTypePDF ]];
+  else if ([mode isEqual:@"multiple"]) {
+    p = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[ UTTypeItem ]];
+    p.allowsMultipleSelection = YES;
+  }
+  else if ([mode isEqual:@"folder"])
+    p = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[ UTTypeFolder ]];
+  else if ([mode isEqual:@"export"])
+    p = [[UIDocumentPickerViewController alloc] initForExportingURLs:@[ [self exportFile] ] asCopy:YES];
+  else if ([mode isEqual:@"move"])
+    p = [[UIDocumentPickerViewController alloc] initForExportingURLs:@[ [self exportFile] ]];
+  else if ([mode isEqual:@"dismiss"])
+    p = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[ UTTypeItem ] asCopy:YES];
+  else if ([mode isEqual:@"legacy"])
+    p = [[UIDocumentPickerViewController alloc] initWithDocumentTypes:@[ @"public.text" ] inMode:UIDocumentPickerModeImport];
+  else {
+    [self note:[@"unknown mode " stringByAppendingString:mode]];
+    return;
+  }
   p.delegate = self;
   p.directoryURL = [NSURL fileURLWithPath:NSHomeDirectory()];
   [self note:[NSString stringWithFormat:@"— %@ (picker mode %lu)", mode, (unsigned long)p.documentPickerMode]];
   [self presentViewController:p animated:YES completion:nil];
   if ([mode isEqual:@"dismiss"])
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-      [p dismissViewControllerAnimated:YES completion:^{ [self note:@"dismissed by the app"]; }];
+      [p dismissViewControllerAnimated:YES completion:^{
+        [self note:@"dismissed by the app"];
+      }];
     });
 }
 
@@ -89,7 +116,8 @@ static NSArray<NSString *> *Modes(void) { return @[ @"import", @"open", @"multip
     NSString *what = dir ? [NSString stringWithFormat:@"%lu entries", (unsigned long)[NSFileManager.defaultManager contentsOfDirectoryAtPath:u.path error:NULL].count]
                          : [NSString stringWithFormat:@"%lu bytes", (unsigned long)[NSData dataWithContentsOfURL:u].length];
     [self note:[NSString stringWithFormat:@"  %@\n    exists %d, scoped %d, %@", u.path, exists, scoped, what]];
-    if (scoped) [u stopAccessingSecurityScopedResource];
+    if (scoped)
+      [u stopAccessingSecurityScopedResource];
   }
 }
 
@@ -117,4 +145,8 @@ static NSArray<NSString *> *Modes(void) { return @[ @"import", @"open", @"multip
   return c;
 }
 @end
-int main(int argc, char *argv[]) { @autoreleasepool { return UIApplicationMain(argc, argv, nil, NSStringFromClass(AD.class)); } }
+int main(int argc, char *argv[]) {
+  @autoreleasepool {
+    return UIApplicationMain(argc, argv, nil, NSStringFromClass(AD.class));
+  }
+}

@@ -20,7 +20,11 @@ struct WatchDemo: View {
           ForEach(Accent.allCases) { a in
             Button { withAnimation(.snappy) { link.setAccent(a) } } label: {
               Circle().fill(a.gradient).frame(width: 44, height: 44)
-                .overlay { if a == link.accent { Image(systemName: "checkmark").font(.headline.bold()).foregroundStyle(.white) } }
+                .overlay {
+                  if a == link.accent {
+                    Image(systemName: "checkmark").font(.headline.bold()).foregroundStyle(.white)
+                  }
+                }
                 .overlay(Circle().strokeBorder(.white.opacity(a == link.accent ? 0.9 : 0), lineWidth: 3))
                 .frame(maxWidth: .infinity)
             }
@@ -72,7 +76,11 @@ struct WatchDemo: View {
     HStack {
       Text(label).font(.callout)
       Spacer()
-      if on { StatusBadge(text: "Yes") } else { StatusBadge(text: off, symbol: "circle.dashed", color: .secondary) }
+      if on {
+        StatusBadge(text: "Yes")
+      } else {
+        StatusBadge(text: off, symbol: "circle.dashed", color: .secondary)
+      }
     }
   }
 }

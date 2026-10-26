@@ -59,7 +59,10 @@ struct PasteboardDemo: View {
             Button {
               let r = ImageRenderer(content: StickerCard().frame(width: 300, height: 200))
               r.scale = 3
-              if let img = r.uiImage { UIPasteboard.general.image = img; toast = "Image copied — try Preview ▸ New from Clipboard" }
+              if let img = r.uiImage {
+                UIPasteboard.general.image = img
+                toast = "Image copied — try Preview ▸ New from Clipboard"
+              }
               refresh()
             } label: { Label("Copy Image", systemImage: "photo.on.rectangle.angled") }
               .buttonStyle(.glass)
@@ -72,8 +75,16 @@ struct PasteboardDemo: View {
     }
     .toast($toast)
     .onAppear(perform: refresh)
-    .onReceive(poll) { _ in if UIPasteboard.general.changeCount != lastChange { refresh() } }
-    .onChange(of: phase) { if phase == .active { refresh() } }
+    .onReceive(poll) { _ in
+      if UIPasteboard.general.changeCount != lastChange {
+        refresh()
+      }
+    }
+    .onChange(of: phase) {
+      if phase == .active {
+        refresh()
+      }
+    }
   }
 
   private func refresh() {
@@ -94,9 +105,15 @@ struct ClipSnapshot {
   init(_ pb: UIPasteboard) {
     changeCount = pb.changeCount
     types = pb.types
-    if pb.hasImages { image = pb.image }
-    if pb.hasURLs { url = pb.url }
-    if pb.hasStrings { string = pb.string }
+    if pb.hasImages {
+      image = pb.image
+    }
+    if pb.hasURLs {
+      url = pb.url
+    }
+    if pb.hasStrings {
+      string = pb.string
+    }
   }
 }
 

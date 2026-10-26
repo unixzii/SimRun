@@ -13,11 +13,16 @@ enum Accent: String, CaseIterable, Identifiable {
   var id: Self { self }
   var colors: [Color] {
     switch self {
-    case .coral: [Color(red: 1.00, green: 0.42, blue: 0.36), Color(red: 0.96, green: 0.20, blue: 0.44)]
-    case .violet: [Color(red: 0.70, green: 0.45, blue: 1.00), Color(red: 0.48, green: 0.24, blue: 0.90)]
-    case .mint: [Color(red: 0.30, green: 0.80, blue: 0.62), Color(red: 0.10, green: 0.60, blue: 0.50)]
-    case .sky: [Color(red: 0.25, green: 0.70, blue: 1.00), Color(red: 0.10, green: 0.45, blue: 0.95)]
-    case .amber: [Color(red: 0.98, green: 0.70, blue: 0.20), Color(red: 0.95, green: 0.48, blue: 0.10)]
+    case .coral:
+      [Color(red: 1.00, green: 0.42, blue: 0.36), Color(red: 0.96, green: 0.20, blue: 0.44)]
+    case .violet:
+      [Color(red: 0.70, green: 0.45, blue: 1.00), Color(red: 0.48, green: 0.24, blue: 0.90)]
+    case .mint:
+      [Color(red: 0.30, green: 0.80, blue: 0.62), Color(red: 0.10, green: 0.60, blue: 0.50)]
+    case .sky:
+      [Color(red: 0.25, green: 0.70, blue: 1.00), Color(red: 0.10, green: 0.45, blue: 0.95)]
+    case .amber:
+      [Color(red: 0.98, green: 0.70, blue: 0.20), Color(red: 0.95, green: 0.48, blue: 0.10)]
     }
   }
   var color: Color { colors[1] }
@@ -25,18 +30,25 @@ enum Accent: String, CaseIterable, Identifiable {
 }
 
 struct Delivery: Identifiable {
-  enum Kind: String { case message = "Message", reply = "Reply", context = "Context", userInfo = "User Info", failed = "Failed" }
+  enum Kind: String {
+    case message = "Message", reply = "Reply", context = "Context", userInfo = "User Info", failed = "Failed"
+  }
   let id = UUID()
   let kind: Kind
   let text: String
   let date = Date()
   var symbol: String {
     switch kind {
-    case .message: "bubble.left.fill"
-    case .reply: "arrowshape.turn.up.left.fill"
-    case .context: "paintpalette.fill"
-    case .userInfo: "tray.and.arrow.down.fill"
-    case .failed: "exclamationmark.triangle.fill"
+    case .message:
+      "bubble.left.fill"
+    case .reply:
+      "arrowshape.turn.up.left.fill"
+    case .context:
+      "paintpalette.fill"
+    case .userInfo:
+      "tray.and.arrow.down.fill"
+    case .failed:
+      "exclamationmark.triangle.fill"
     }
   }
 }
@@ -62,7 +74,9 @@ final class WatchLink: NSObject, ObservableObject, WCSessionDelegate {
   }
 
   func activate() {
-    guard WCSession.isSupported(), WCSession.default.delegate == nil else { return }
+    guard WCSession.isSupported(), WCSession.default.delegate == nil else {
+      return
+    }
     WCSession.default.delegate = self
     WCSession.default.activate()
   }
@@ -86,8 +100,14 @@ final class WatchLink: NSObject, ObservableObject, WCSessionDelegate {
   }
   private func pushAccent() {   // once there is a watch with Showcase on it: before, it is an error
     let s = WCSession.default
-    guard s.activationState == .activated, s.isPaired, s.isWatchAppInstalled else { return }
-    do { try WCSession.default.updateApplicationContext(["accent": accent.rawValue]) } catch { log("updateApplicationContext failed: \(error)") }
+    guard s.activationState == .activated, s.isPaired, s.isWatchAppInstalled else {
+      return
+    }
+    do {
+      try WCSession.default.updateApplicationContext(["accent": accent.rawValue])
+    } catch {
+      log("updateApplicationContext failed: \(error)")
+    }
   }
   #else
   func sendCrown(_ value: Double) {
@@ -96,11 +116,15 @@ final class WatchLink: NSObject, ObservableObject, WCSessionDelegate {
   }
   #endif
 
-  private func log(_ s: String) { FileHandle.standardError.write("[showcase wc] \(s)\n".data(using: .utf8)!) }
+  private func log(_ s: String) {
+    FileHandle.standardError.write("[showcase wc] \(s)\n".data(using: .utf8)!)
+  }
 
   private func add(_ kind: Delivery.Kind, _ text: String) {
     inbox.insert(Delivery(kind: kind, text: text), at: 0)
-    if inbox.count > 20 { inbox.removeLast() }
+    if inbox.count > 20 {
+      inbox.removeLast()
+    }
   }
 
   private func got(_ kind: Delivery.Kind, _ payload: [String: Any]) {
@@ -137,25 +161,40 @@ final class WatchLink: NSObject, ObservableObject, WCSessionDelegate {
     #if os(iOS)
     DispatchQueue.main.async { self.pushAccent() }
     #else
-    if !s.receivedApplicationContext.isEmpty { got(.context, s.receivedApplicationContext) }   // the theme set while the watch app wasn't running
+    if !s.receivedApplicationContext.isEmpty {   // the theme set while the watch app wasn't running
+      got(.context, s.receivedApplicationContext)
+    }
     #endif
   }
-  func sessionReachabilityDidChange(_ s: WCSession) { log("reachable \(s.isReachable)"); refresh(s) }
+  func sessionReachabilityDidChange(_ s: WCSession) {
+    log("reachable \(s.isReachable)")
+    refresh(s)
+  }
   func session(_ s: WCSession, didReceiveMessage message: [String: Any], replyHandler: @escaping ([String: Any]) -> Void) {
     got(.message, message)
     replyHandler(["text": "Hi back from \(Self.device)"])
   }
-  func session(_ s: WCSession, didReceiveApplicationContext context: [String: Any]) { got(.context, context) }
-  func session(_ s: WCSession, didReceiveUserInfo info: [String: Any] = [:]) { got(.userInfo, info) }
+  func session(_ s: WCSession, didReceiveApplicationContext context: [String: Any]) {
+    got(.context, context)
+  }
+  func session(_ s: WCSession, didReceiveUserInfo info: [String: Any] = [:]) {
+    got(.userInfo, info)
+  }
   #if os(iOS)
-  func sessionDidBecomeInactive(_ s: WCSession) { refresh(s) }
-  func sessionDidDeactivate(_ s: WCSession) { s.activate() }
+  func sessionDidBecomeInactive(_ s: WCSession) {
+    refresh(s)
+  }
+  func sessionDidDeactivate(_ s: WCSession) {
+    s.activate()
+  }
   func sessionWatchStateDidChange(_ s: WCSession) {
     log("watch paired \(s.isPaired) installed \(s.isWatchAppInstalled)")
     refresh(s)
     DispatchQueue.main.async { self.pushAccent() }
   }
   #else
-  func sessionCompanionAppInstalledDidChange(_ s: WCSession) { refresh(s) }
+  func sessionCompanionAppInstalledDidChange(_ s: WCSession) {
+    refresh(s)
+  }
   #endif
 }

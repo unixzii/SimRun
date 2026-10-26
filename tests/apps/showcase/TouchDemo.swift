@@ -4,7 +4,9 @@ import SwiftUI
 import UIKit
 
 struct TouchDemo: View {
-  enum Mode: String, CaseIterable { case paint = "Paint", transform = "Transform" }
+  enum Mode: String, CaseIterable {
+    case paint = "Paint", transform = "Transform"
+  }
   @State private var mode = Mode.paint
 
   var body: some View {
@@ -14,8 +16,10 @@ struct TouchDemo: View {
       }
       .pickerStyle(.segmented)
       switch mode {
-      case .paint: PaintPanel()
-      case .transform: TransformPanel()
+      case .paint:
+        PaintPanel()
+      case .transform:
+        TransformPanel()
       }
     }
   }
@@ -31,7 +35,10 @@ private struct PaintPanel: View {
   var body: some View {
     VStack(spacing: 12) {
       ZStack(alignment: .topLeading) {
-        TouchCanvas(clearToken: clearToken) { f, s in fingers = f; strokes = s }
+        TouchCanvas(clearToken: clearToken) { f, s in
+          fingers = f
+          strokes = s
+        }
           .clipShape(.rect(cornerRadius: 24, style: .continuous))
         if strokes == 0 && fingers == 0 {
           VStack(spacing: 8) {
@@ -67,12 +74,18 @@ private struct TouchCanvas: UIViewRepresentable {
   }
   func updateUIView(_ v: TouchCanvasView, context: Context) {
     v.onChange = onChange
-    if v.clearToken != clearToken { v.clearToken = clearToken; v.clear() }
+    if v.clearToken != clearToken {
+      v.clearToken = clearToken
+      v.clear()
+    }
   }
 }
 
 final class TouchCanvasView: UIView {
-  struct Stroke { var points: [CGPoint]; var color: UIColor }
+  struct Stroke {
+    var points: [CGPoint]
+    var color: UIColor
+  }
   var onChange: ((Int, Int) -> Void)?
   var clearToken = 0
   private var done: [Stroke] = []
@@ -91,10 +104,18 @@ final class TouchCanvasView: UIView {
     backgroundColor = UIColor(red: 0.09, green: 0.09, blue: 0.13, alpha: 1)
     contentMode = .redraw
   }
-  required init?(coder: NSCoder) { fatalError() }
+  required init?(coder: NSCoder) {
+    fatalError()
+  }
 
-  func clear() { done.removeAll(); setNeedsDisplay(); report() }
-  private func report() { onChange?(liveTouches.count, done.count + live.count) }
+  func clear() {
+    done.removeAll()
+    setNeedsDisplay()
+    report()
+  }
+  private func report() {
+    onChange?(liveTouches.count, done.count + live.count)
+  }
 
   override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
     for t in touches {
@@ -103,59 +124,87 @@ final class TouchCanvasView: UIView {
       liveTouches[id] = p
       colorIndex += 1
     }
-    setNeedsDisplay(); report()
+    setNeedsDisplay()
+    report()
   }
   override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
     for t in touches {
       let id = ObjectIdentifier(t)
-      for c in event?.coalescedTouches(for: t) ?? [t] { live[id]?.points.append(c.location(in: self)) }
+      for c in event?.coalescedTouches(for: t) ?? [t] {
+        live[id]?.points.append(c.location(in: self))
+      }
       liveTouches[id] = t.location(in: self)
     }
     setNeedsDisplay()
   }
-  override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) { finish(touches) }
-  override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) { finish(touches) }
+  override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+    finish(touches)
+  }
+  override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+    finish(touches)
+  }
   private func finish(_ touches: Set<UITouch>) {
     for t in touches {
       let id = ObjectIdentifier(t)
-      if let s = live.removeValue(forKey: id) { done.append(s) }
+      if let s = live.removeValue(forKey: id) {
+        done.append(s)
+      }
       liveTouches[id] = nil
     }
-    setNeedsDisplay(); report()
+    setNeedsDisplay()
+    report()
   }
 
   override func draw(_ rect: CGRect) {
-    guard let ctx = UIGraphicsGetCurrentContext() else { return }
+    guard let ctx = UIGraphicsGetCurrentContext() else {
+      return
+    }
     // a faint dot grid
     UIColor.white.withAlphaComponent(0.07).setFill()
     for x in stride(from: CGFloat(12), to: bounds.width, by: 24) {
-      for y in stride(from: CGFloat(12), to: bounds.height, by: 24) { ctx.fillEllipse(in: CGRect(x: x - 1, y: y - 1, width: 2, height: 2)) }
+      for y in stride(from: CGFloat(12), to: bounds.height, by: 24) {
+        ctx.fillEllipse(in: CGRect(x: x - 1, y: y - 1, width: 2, height: 2))
+      }
     }
-    for s in done + Array(live.values) { draw(s, in: ctx) }
+    for s in done + Array(live.values) {
+      draw(s, in: ctx)
+    }
     // a ring under each finger
     for (id, p) in liveTouches {
       let color = live[id]?.color ?? .white
       let ring = UIBezierPath(ovalIn: CGRect(x: p.x - 30, y: p.y - 30, width: 60, height: 60))
-      color.withAlphaComponent(0.22).setFill(); ring.fill()
-      color.setStroke(); ring.lineWidth = 2.5; ring.stroke()
+      color.withAlphaComponent(0.22).setFill()
+      ring.fill()
+      color.setStroke()
+      ring.lineWidth = 2.5
+      ring.stroke()
     }
   }
 
   private func draw(_ s: Stroke, in ctx: CGContext) {
-    guard let first = s.points.first else { return }
+    guard let first = s.points.first else {
+      return
+    }
     let path = UIBezierPath()
-    path.lineWidth = 7; path.lineCapStyle = .round; path.lineJoinStyle = .round
+    path.lineWidth = 7
+    path.lineCapStyle = .round
+    path.lineJoinStyle = .round
     path.move(to: first)
-    if s.points.count == 1 { path.addLine(to: first) }
+    if s.points.count == 1 {
+      path.addLine(to: first)
+    }
     // quadratic curves through the midpoints: smooth even with sparse samples
     for i in 1..<max(s.points.count, 1) {
       let a = s.points[i - 1], b = s.points[i]
       path.addQuadCurve(to: CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2), controlPoint: a)
     }
-    if let last = s.points.last, s.points.count > 1 { path.addLine(to: last) }
+    if let last = s.points.last, s.points.count > 1 {
+      path.addLine(to: last)
+    }
     ctx.saveGState()
     ctx.setShadow(offset: .zero, blur: 12, color: s.color.withAlphaComponent(0.8).cgColor)
-    s.color.setStroke(); path.stroke()
+    s.color.setStroke()
+    path.stroke()
     ctx.restoreGState()
   }
 }
@@ -185,7 +234,10 @@ private struct TransformPanel: View {
       .gesture(
         DragGesture()
           .updating($drag) { v, s, _ in s = v.translation }
-          .onEnded { v in offset.width += v.translation.width; offset.height += v.translation.height }
+          .onEnded { v in
+            offset.width += v.translation.width
+            offset.height += v.translation.height
+          }
           .simultaneously(with: MagnifyGesture().updating($pinch) { v, s, _ in s = v.magnification }
             .onEnded { v in scale = min(max(scale * v.magnification, 0.4), 3) })
           .simultaneously(with: RotateGesture().updating($twist) { v, s, _ in s = v.rotation }
@@ -205,7 +257,11 @@ private struct TransformPanel: View {
     }
   }
 
-  private func reset() { offset = .zero; scale = 1; angle = .zero }
+  private func reset() {
+    offset = .zero
+    scale = 1
+    angle = .zero
+  }
 
   private var card: some View {
     VStack(spacing: 10) {

@@ -15,7 +15,10 @@ static int my_sandbox_container_path_for_pid(pid_t pid, char *buf, size_t size) 
   const char *home = getenv("HOME");
   if (SRModuleOn(SRModuleContainer) && (pid == 0 || pid == getpid()) && home && *home) {
     size_t n = strlen(home);
-    if (!buf || n >= size) { errno = ERANGE; return -1; }
+    if (!buf || n >= size) {
+      errno = ERANGE;
+      return -1;
+    }
     memcpy(buf, home, n + 1);
     LOG("sandbox_container_path_for_pid(%d) -> %s\n", pid, home);
     return 0;
@@ -23,7 +26,9 @@ static int my_sandbox_container_path_for_pid(pid_t pid, char *buf, size_t size) 
   return sandbox_container_path_for_pid(pid, buf, size);
 }
 
-__attribute__((used, section("__DATA,__interpose"))) static struct { const void *n, *o; } interposers[] = {
+__attribute__((used, section("__DATA,__interpose"))) static struct {
+  const void *n, *o;
+} interposers[] = {
   { (const void *)my_sandbox_container_path_for_pid, (const void *)sandbox_container_path_for_pid },
 };
 
