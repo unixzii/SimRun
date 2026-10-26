@@ -18,7 +18,12 @@
 
 #define EXPORT __attribute__((visibility("default")))
 static int gLog;
-#define LOG(...) do { if (gLog) fprintf(stderr, "[simfb] " __VA_ARGS__); } while (0)
+#define LOG(...) \
+  do { \
+    if (gLog) { \
+      fprintf(stderr, "[simfb] " __VA_ARGS__); \
+    } \
+  } while (0)
 
 // ---- wire structs (packed, from the ObjC type encoding of _SimFramebufferMessageData in the real framework) ----
 #pragma pack(push, 1)
@@ -128,8 +133,9 @@ static void ack_init(void) {
 static void viewer_init(void) {
   mach_port_array_t ports = NULL;
   mach_msg_type_number_t n = 0;
-  if (mach_ports_lookup(mach_task_self(), &ports, &n) == KERN_SUCCESS && n > SR_PORT_SLOT_HOST)
+  if (mach_ports_lookup(mach_task_self(), &ports, &n) == KERN_SUCCESS && n > SR_PORT_SLOT_HOST) {
     gViewer = ports[SR_PORT_SLOT_HOST];
+  }
   if (gViewer) {
     ack_init();
     LOG("viewer sink: port %#x\n", gViewer);
@@ -137,8 +143,9 @@ static void viewer_init(void) {
 }
 static uint64_t now_ms(void) {
   static mach_timebase_info_data_t tb;
-  if (!tb.denom)
+  if (!tb.denom) {
     mach_timebase_info(&tb);
+  }
   return mach_absolute_time() * tb.numer / tb.denom / 1000000;
 }
 // A display buffer the host can no longer be showing, (re)allocated to match `src`; -1 if none is free.
@@ -147,19 +154,23 @@ static int take_display_buffer(IOSurfaceRef src) {
   size_t w = IOSurfaceGetWidth(src), h = IOSurfaceGetHeight(src);
   int pick = -1;
   for (int i = 0; i < kDisplayBuffers; i++) {
-    if (i == gLastSent)
+    if (i == gLastSent) {
       continue;                                          // newest frame: on screen or about to be
+    }
     SRDisplayBuffer *b = &gDB[i];
     BOOL free = !b->surf || b->seq < onScreen || now - b->sentAt > 250;   // 250 ms: a lost ack must not stall us
-    if (free && (pick < 0 || b->seq < gDB[pick].seq))
+    if (free && (pick < 0 || b->seq < gDB[pick].seq)) {
       pick = i;
+    }
   }
-  if (pick < 0)
+  if (pick < 0) {
     return -1;
+  }
   SRDisplayBuffer *b = &gDB[pick];
   if (b->surf && (IOSurfaceGetWidth(b->surf) != w || IOSurfaceGetHeight(b->surf) != h)) {
-    if (b->port)
+    if (b->port) {
       mach_port_deallocate(mach_task_self(), b->port);
+    }
     CFRelease(b->surf);
     b->surf = NULL;
     b->port = MACH_PORT_NULL;
@@ -168,8 +179,9 @@ static int take_display_buffer(IOSurfaceRef src) {
     b->surf = IOSurfaceCreate((__bridge CFDictionaryRef)@{
       (id)kIOSurfaceWidth: @(w), (id)kIOSurfaceHeight: @(h), (id)kIOSurfaceBytesPerElement: @4,
       (id)kIOSurfaceBytesPerRow: @(IOSurfaceGetBytesPerRow(src)), (id)kIOSurfacePixelFormat: @(IOSurfaceGetPixelFormat(src)) });
-    if (!b->surf)
+    if (!b->surf) {
       return -1;
+    }
     b->port = IOSurfaceCreateMachPort(b->surf);
     LOG("viewer: display buffer %d = surface %u (%zux%zu)\n", pick, IOSurfaceGetID(b->surf), w, h);
   }
@@ -180,20 +192,24 @@ static int take_display_buffer(IOSurfaceRef src) {
 // cached per surface. SIMFB_CPU_COPY=1 forces the CPU path.
 static id<MTLTexture> surface_texture(id<MTLDevice> dev, IOSurfaceRef s) {
   static NSMutableDictionary<NSNumber *, id<MTLTexture>> *byID;
-  if (!byID)
+  if (!byID) {
     byID = [NSMutableDictionary dictionary];
+  }
   NSNumber *key = @(IOSurfaceGetID(s));
   id<MTLTexture> t = byID[key];
-  if (t && t.iosurface == s && t.width == IOSurfaceGetWidth(s) && t.height == IOSurfaceGetHeight(s))
+  if (t && t.iosurface == s && t.width == IOSurfaceGetWidth(s) && t.height == IOSurfaceGetHeight(s)) {
     return t;
+  }
   MTLTextureDescriptor *d = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
                                                                               width:IOSurfaceGetWidth(s) height:IOSurfaceGetHeight(s) mipmapped:NO];
   d.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
   t = [dev newTextureWithDescriptor:d iosurface:s plane:0];
-  if (byID.count > 16)
+  if (byID.count > 16) {
     [byID removeAllObjects];
-  if (t)
+  }
+  if (t) {
     byID[key] = t;
+  }
   return t;
 }
 static BOOL copy_surface_gpu(IOSurfaceRef dst, IOSurfaceRef src, void (^done)(void)) {
@@ -206,11 +222,13 @@ static BOOL copy_surface_gpu(IOSurfaceRef dst, IOSurfaceRef src, void (^done)(vo
       queue = [dev newCommandQueue];
     }
   });
-  if (!queue || IOSurfaceGetPixelFormat(src) != 'BGRA')
+  if (!queue || IOSurfaceGetPixelFormat(src) != 'BGRA') {
     return NO;
+  }
   id<MTLTexture> s = surface_texture(dev, src), d = surface_texture(dev, dst);
-  if (!s || !d)
+  if (!s || !d) {
     return NO;
+  }
   id<MTLCommandBuffer> cb = [queue commandBuffer];
   id<MTLBlitCommandEncoder> enc = [cb blitCommandEncoder];
   [enc copyFromTexture:s toTexture:d];
@@ -225,29 +243,34 @@ static BOOL copy_surface_gpu(IOSurfaceRef dst, IOSurfaceRef src, void (^done)(vo
   return YES;
 }
 static void copy_surface(IOSurfaceRef dst, IOSurfaceRef src, void (^done)(void)) {
-  if (copy_surface_gpu(dst, src, done))
+  if (copy_surface_gpu(dst, src, done)) {
     return;
+  }
   IOSurfaceLock(src, kIOSurfaceLockReadOnly, NULL);
   IOSurfaceLock(dst, 0, NULL);
   size_t sb = IOSurfaceGetBytesPerRow(src), db = IOSurfaceGetBytesPerRow(dst), h = IOSurfaceGetHeight(src);
   const uint8_t *s = IOSurfaceGetBaseAddress(src);
   uint8_t *d = IOSurfaceGetBaseAddress(dst);
-  if (sb == db)
+  if (sb == db) {
     memcpy(d, s, sb * h);
-  else
-    for (size_t y = 0; y < h; y++)
+  } else {
+    for (size_t y = 0; y < h; y++) {
       memcpy(d + y * db, s + y * sb, MIN(sb, db));
+    }
+  }
   IOSurfaceUnlock(dst, 0, NULL);
   IOSurfaceUnlock(src, kIOSurfaceLockReadOnly, NULL);
   done();
 }
 static void viewer_present(IOSurfaceRef surf, uint64_t seq, SFBDisp *d) {
-  if (!gViewer)
+  if (!gViewer) {
     return;
+  }
   int i = take_display_buffer(surf);
   if (i < 0) {
-    if (++gDropped % 30 == 1)
+    if (++gDropped % 30 == 1) {
       LOG("viewer: host behind, dropped %llu frames\n", gDropped);
+    }
     return;
   }
   SRDisplayBuffer *b = &gDB[i];
@@ -261,17 +284,20 @@ static void viewer_present(IOSurfaceRef surf, uint64_t seq, SFBDisp *d) {
   copy_surface(dst, surf, ^{   // runs once `dst` holds the frame (GPU completion, or right away for the CPU path)
     if (gLog) {
       static mach_timebase_info_data_t tb;
-      if (!tb.denom)
+      if (!tb.denom) {
         mach_timebase_info(&tb);
+      }
       static double total, worst;
       static uint64_t n;
       double ms = (mach_absolute_time() - c0) * tb.numer / tb.denom / 1e6;
       total += ms;
       n++;
-      if (ms > worst)
+      if (ms > worst) {
         worst = ms;
-      if (n % 120 == 0)
+      }
+      if (n % 120 == 0) {
         LOG("copy: avg %.2f ms, worst %.2f ms (present -> frame ready) over %llu frames\n", total / n, worst, n);
+      }
     }
     BOOL sent = NO;
     if (IOSurfaceGetID(dst) != gViewerSurfaceID) {
@@ -291,18 +317,21 @@ static void viewer_present(IOSurfaceRef surf, uint64_t seq, SFBDisp *d) {
     }
     if (gViewerSurfaceID == IOSurfaceGetID(dst)) {
       static int check = -1;
-      if (check < 0)
+      if (check < 0) {
         check = getenv("SIMFB_CHECK") != NULL;
+      }
       sr_frame_msg_t f = { .h = { .msgh_bits = MACH_MSGH_BITS(MACH_MSG_TYPE_COPY_SEND, MACH_MSG_TYPE_MAKE_SEND_ONCE), .msgh_size = sizeof f,
                                   .msgh_remote_port = gViewer, .msgh_local_port = gAckPort, .msgh_id = SR_MSG_FRAME },
                            .seq = (uint32_t)seq, .surface_id = IOSurfaceGetID(dst),
                            .checksum = check ? sr_surface_checksum(dst) : 0, .present_time = mach_absolute_time() };
       sent = mach_msg(&f.h, MACH_SEND_MSG | MACH_SEND_TIMEOUT, sizeof f, 0, 0, 0, 0) == KERN_SUCCESS;
-      if (!sent)
+      if (!sent) {
         mach_msg_destroy(&f.h);   // host queue full: this frame isn't shown
+      }
     }
-    if (!sent)
+    if (!sent) {
       b->seq = 0;                 // never reached the host: free again
+    }
     CFRelease(dst);
   });
 }
@@ -417,8 +446,9 @@ EXPORT uint64_t SFBDisplayGetModeCount(CFTypeRef d) {
   return 1;
 }
 EXPORT bool SFBDisplayGetMode(CFTypeRef d, int64_t i, SimDisplayMode *out) {
-  if (i != 0)
+  if (i != 0) {
     return false;
+  }
   *out = D->mode;
   return true;
 }
@@ -553,8 +583,9 @@ EXPORT bool SFBSwapchainSwapBegin(CFTypeRef s, uint64_t host_time, CFErrorRef *e
 // SwapAddSurface(sc, surface, a3, a4, err, src x,y,w,h, dst x,y,w,h)  (CA passes 0,0 and src==dst == dirty bounds)
 EXPORT bool SFBSwapchainSwapAddSurface(CFTypeRef s, IOSurfaceRef surf, uint64_t a3, uint64_t a4, CFErrorRef *err,
                                         double sx, double sy, double sw, double sh, double dx, double dy, double dw, double dh) {
-  if (!SC->pending)
+  if (!SC->pending) {
     return false;
+  }
   [SC->surfaces addObject:(__bridge id)surf];
   CGRect r = CGRectMake(sx, sy, sw, sh);
   [SC->rects addObject:[NSValue valueWithBytes:&r objCType:@encode(CGRect)]];
@@ -572,10 +603,12 @@ EXPORT void SFBSwapchainSwapSetCallback(CFTypeRef s, void *ctx, dispatch_queue_t
 // each partial present's rect where the presented surface disagrees with it (= stale content if shown as-is).
 static void check_present(IOSurfaceRef surf, CGRect r) {
   static int on = -1;
-  if (on < 0)
+  if (on < 0) {
     on = getenv("SIMFB_CHECK") != NULL;
-  if (!on)
+  }
+  if (!on) {
     return;
+  }
   static uint8_t *ref;
   static size_t refW, refH, refBPR;
   static uint64_t presents, partial, staleFrames;
@@ -593,22 +626,27 @@ static void check_present(IOSurfaceRef surf, CGRect r) {
     full = YES;
   }
   if (full) {
-    for (size_t y = 0; y < h; y++)
+    for (size_t y = 0; y < h; y++) {
       memcpy(ref + y * refBPR, px + y * bpr, w * 4);
+    }
   }
   else {
     partial++;
     size_t x0 = MAX(0, (long)r.origin.x), y0 = MAX(0, (long)r.origin.y), x1 = MIN(w, (size_t)CGRectGetMaxX(r)), y1 = MIN(h, (size_t)CGRectGetMaxY(r));
     uint64_t stale = 0;
-    for (size_t y = 0; y < h; y += 2)              // every other row, whole width, outside the rect
+    for (size_t y = 0; y < h; y += 2) {              // every other row, whole width, outside the rect
       for (size_t x = 0; x < w; x += 2) {
-        if (y >= y0 && y < y1 && x >= x0 && x < x1)
+        if (y >= y0 && y < y1 && x >= x0 && x < x1) {
           continue;
-        if (*(const uint32_t *)(px + y * bpr + x * 4) != *(const uint32_t *)(ref + y * refBPR + x * 4))
+        }
+        if (*(const uint32_t *)(px + y * bpr + x * 4) != *(const uint32_t *)(ref + y * refBPR + x * 4)) {
           stale++;
+        }
       }
-    for (size_t y = y0; y < y1; y++)
+    }
+    for (size_t y = y0; y < y1; y++) {
       memcpy(ref + y * refBPR + x0 * 4, px + y * bpr + x0 * 4, (x1 - x0) * 4);
+    }
     if (stale) {
       staleFrames++;
       fprintf(stderr, "[simfb-check] surface %u partial (%zu,%zu %zux%zu): %llu stale samples outside the rect\n",
@@ -616,18 +654,21 @@ static void check_present(IOSurfaceRef surf, CGRect r) {
     }
   }
   IOSurfaceUnlock(surf, kIOSurfaceLockReadOnly, NULL);
-  if (presents % 60 == 0)
+  if (presents % 60 == 0) {
     fprintf(stderr, "[simfb-check] %llu presents, %llu partial, %llu partial with stale pixels\n", presents, partial, staleFrames);
+  }
 }
 
 EXPORT bool SFBSwapchainSwapSubmit(CFTypeRef s, CFErrorRef *err) {
   SFBSwap *sc = SC;
-  if (!sc->pending)
+  if (!sc->pending) {
     return false;
+  }
   sc->pending = NO;
   uint64_t seq = sc->seq;
-  if (sc->surfaces.count > 1 && getenv("SIMFB_CHECK"))
+  if (sc->surfaces.count > 1 && getenv("SIMFB_CHECK")) {
     fprintf(stderr, "[simfb-check] swap with %lu surfaces\n", (unsigned long)sc->surfaces.count);
+  }
   for (NSUInteger i = 0; i < sc->surfaces.count; i++) {
     IOSurfaceRef surf = (__bridge IOSurfaceRef)sc->surfaces[i];
     CGRect rect;

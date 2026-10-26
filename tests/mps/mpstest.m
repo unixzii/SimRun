@@ -22,9 +22,11 @@ int main(void) {
     id<MTLBuffer> xre = [device newBufferWithLength:T * B * 4 options:MTLResourceStorageModeShared];
     id<MTLBuffer> xim = [device newBufferWithLength:T * B * 4 options:MTLResourceStorageModeShared];
     float *p = x.contents;
-    for (int t = 0; t < T; t++)
-      for (int n = 0; n < N; n++)
+    for (int t = 0; t < T; t++) {
+      for (int n = 0; n < N; n++) {
         p[t * N + n] = cosf(2 * M_PI * 2 * n / N) + t;
+      }
+    }
 
     MPSCommandBuffer *cb = [MPSCommandBuffer commandBufferFromCommandQueue:[device newCommandQueue]];
     [g encodeToCommandBuffer:cb
@@ -40,7 +42,7 @@ int main(void) {
       return 1;
     }
     const float *r = xre.contents, *i = xim.contents;
-    for (int t = 0; t < T; t++)
+    for (int t = 0; t < T; t++) {
       for (int k = 0; k < B; k++) {
         float want = k == 0 ? N * t : k == 2 ? N / 2 : 0;
         if (fabsf(r[t * B + k] - want) > 1e-3f || fabsf(i[t * B + k]) > 1e-3f) {
@@ -48,6 +50,7 @@ int main(void) {
           return 1;
         }
       }
+    }
     printf("PASS: %d×%d real FFT on %s\n", T, N, device.name.UTF8String);
   }
   return 0;

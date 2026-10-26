@@ -45,22 +45,26 @@ extern int posix_spawn_file_actions_addchdir_np(posix_spawn_file_actions_t *, co
 // see ⌘V's V go up, and UIKit ignores a key down for a key it thinks is still held, so every ⌘ shortcut would work only
 // once. A local monitor sees those key ups as they come off the queue: pass them on.
 - (void)viewDidMoveToWindow {
-  if (_keyUpMonitor)
+  if (_keyUpMonitor) {
     [NSEvent removeMonitor:_keyUpMonitor];
+  }
   _keyUpMonitor = nil;
-  if (!self.window)
+  if (!self.window) {
     return;
+  }
   __weak SRView *weakSelf = self;
   _keyUpMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyUp handler:^NSEvent *(NSEvent *e) {
     SRView *v = weakSelf;
-    if (v && e.window == v.window && v.window.firstResponder == v && (e.modifierFlags & NSEventModifierFlagCommand))
+    if (v && e.window == v.window && v.window.firstResponder == v && (e.modifierFlags & NSEventModifierFlagCommand)) {
       [v keyUp:e];
+    }
     return e;
   }];
 }
 - (void)dealloc {
-  if (_keyUpMonitor)
+  if (_keyUpMonitor) {
     [NSEvent removeMonitor:_keyUpMonitor];
+  }
 }
 - (BOOL)acceptsFirstMouse:(NSEvent *)e {
   return YES;
@@ -69,8 +73,9 @@ extern int posix_spawn_file_actions_addchdir_np(posix_spawn_file_actions_t *, co
   return YES;
 }
 - (void)post:(sr_input_msg_t *)m {
-  if (!self.inputPort)
+  if (!self.inputPort) {
     return;
+  }
   m->h.msgh_bits = MACH_MSGH_BITS(MACH_MSG_TYPE_COPY_SEND, 0);
   m->h.msgh_size = sizeof *m;
   m->h.msgh_remote_port = self.inputPort;
@@ -146,8 +151,9 @@ extern int posix_spawn_file_actions_addchdir_np(posix_spawn_file_actions_t *, co
   [self send:SR_IN_SMART_MAGNIFY event:e];
 }
 - (void)sendKeyDown:(NSEvent *)e {
-  if (!_keysDown)
+  if (!_keysDown) {
     _keysDown = [NSMutableIndexSet indexSet];
+  }
   [_keysDown addIndex:e.keyCode];
   [self send:SR_IN_KEY_DOWN event:e];
 }
@@ -159,13 +165,15 @@ extern int posix_spawn_file_actions_addchdir_np(posix_spawn_file_actions_t *, co
   _keyEvent = e;
   _keyUsed = NO;
   [self.inputContext handleEvent:e];
-  if (!_keyUsed)
+  if (!_keyUsed) {
     [self sendKeyDown:e];   // the input context did nothing with it
+  }
   _keyEvent = nil;
 }
 - (void)keyUp:(NSEvent *)e {
-  if (![_keysDown containsIndex:e.keyCode])
+  if (![_keysDown containsIndex:e.keyCode]) {
     return;   // it typed text: the app saw no key down
+  }
   [_keysDown removeIndex:e.keyCode];
   [self send:SR_IN_KEY_UP event:e];
 }
@@ -173,8 +181,9 @@ extern int posix_spawn_file_actions_addchdir_np(posix_spawn_file_actions_t *, co
 // ---------------------------------------------------------------- the Mac's input methods (NSTextInputClient)
 // The view keeps no text: it knows only the marked text, as if that were the whole document.
 - (void)sendText:(uint32_t)kind text:(NSString *)text selection:(NSRange)sel {
-  if (!self.inputPort)
+  if (!self.inputPort) {
     return;
+  }
   sr_text_msg_t m = {0};
   m.kind = kind;
   m.sel_location = (uint32_t)sel.location;
@@ -203,12 +212,14 @@ static NSString *SRPlainString(id s) {
   };
   [s enumerateSubstringsInRange:NSMakeRange(0, s.length) options:NSStringEnumerationByComposedCharacterSequences
                      usingBlock:^(NSString *ch, NSRange r, NSRange er, BOOL *stop) {
-    if (strlen(piece.UTF8String) + strlen(ch.UTF8String) >= sizeof(((sr_text_msg_t *)0)->text))
+    if (strlen(piece.UTF8String) + strlen(ch.UTF8String) >= sizeof(((sr_text_msg_t *)0)->text)) {
       flush();
+    }
     [piece appendString:ch];
   }];
-  if (piece.length || !sent)
+  if (piece.length || !sent) {
     flush();   // "" too: it removes the marked text
+  }
 }
 - (void)setMarkedText:(id)string selectedRange:(NSRange)selectedRange replacementRange:(NSRange)replacementRange {
   NSString *s = SRPlainString(string);
@@ -219,14 +230,16 @@ static NSString *SRPlainString(id s) {
 }
 - (void)unmarkText {
   _keyUsed = YES;
-  if (!_marked)
+  if (!_marked) {
     return;
+  }
   _marked = nil;
   [self sendText:SR_TEXT_UNMARK text:@"" selection:NSMakeRange(0, 0)];
 }
 - (void)doCommandBySelector:(SEL)selector {   // a key the input method doesn't type with: the app gets the key
-  if (!_keyEvent || _keyUsed)
+  if (!_keyEvent || _keyUsed) {
     return;
+  }
   _keyUsed = YES;
   [self sendKeyDown:_keyEvent];
 }
@@ -243,19 +256,22 @@ static NSString *SRPlainString(id s) {
   return @[];
 }
 - (NSAttributedString *)attributedSubstringForProposedRange:(NSRange)range actualRange:(NSRangePointer)actual {
-  if (!_marked)
+  if (!_marked) {
     return nil;
+  }
   NSRange r = NSIntersectionRange(range, NSMakeRange(0, _marked.length));
-  if (actual)
+  if (actual) {
     *actual = r;
+  }
   return [[NSAttributedString alloc] initWithString:[_marked substringWithRange:r]];
 }
 - (NSUInteger)characterIndexForPoint:(NSPoint)point {
   return NSNotFound;
 }
 - (NSRect)firstRectForCharacterRange:(NSRange)range actualRange:(NSRangePointer)actual {   // for the candidate window
-  if (actual)
+  if (actual) {
     *actual = range;
+  }
   CGFloat s = self.scale;   // not known: the screen's top-left corner
   NSRect r = NSMakeRect(_caret.origin.x * s, _caret.origin.y * s, _caret.size.width * s, _caret.size.height * s);
   return [self.window convertRectToScreen:[self convertRect:r toView:nil]];
@@ -270,8 +286,9 @@ static NSString *SRPlainString(id s) {
       [self.inputContext discardMarkedText];
     }
   }
-  if (moved)
+  if (moved) {
     [self.inputContext invalidateCharacterCoordinates];
+  }
 }
 
 // Edit menu: its key equivalents (⌘C, ⌘V, ⌘Z…) are matched before -keyDown:, so forward them to the app as typed; a
@@ -344,8 +361,9 @@ static NSString *SRPlainString(id s) {
 }
 
 - (instancetype)initWithTitle:(NSString *)title screenSize:(NSSize)screenSize cornerRadius:(CGFloat)cornerRadius {
-  if (!(self = [super init]))
+  if (!(self = [super init])) {
     return nil;
+  }
   _title = [title copy];
   _surfaces = [NSMutableDictionary dictionary];
   _frameObservers = [NSMutableArray array];
@@ -387,50 +405,61 @@ static NSString *SRPlainString(id s) {
   CGFloat maxX = 0, top = 0;
   int n = 0;
   for (NSDictionary *w in infos) {
-    if (![owners containsObject:w[(id)kCGWindowOwnerName]] || [w[(id)kCGWindowLayer] intValue] != 0)
+    if (![owners containsObject:w[(id)kCGWindowOwnerName]] || [w[(id)kCGWindowLayer] intValue] != 0) {
       continue;
-    if ([w[(id)kCGWindowNumber] integerValue] == _window.windowNumber)
+    }
+    if ([w[(id)kCGWindowNumber] integerValue] == _window.windowNumber) {
       continue;
+    }
     CGRect b;
-    if (!CGRectMakeWithDictionaryRepresentation((__bridge CFDictionaryRef)w[(id)kCGWindowBounds], &b) || b.size.height < 100)
+    if (!CGRectMakeWithDictionaryRepresentation((__bridge CFDictionaryRef)w[(id)kCGWindowBounds], &b) || b.size.height < 100) {
       continue;
+    }
     if (CGRectGetMaxX(b) > maxX) {
       maxX = CGRectGetMaxX(b);
       top = b.origin.y;
     }
     n++;
   }
-  if (!n)
+  if (!n) {
     return;
+  }
   NSRect screen = NSScreen.mainScreen.visibleFrame, full = NSScreen.mainScreen.frame;
   NSPoint topLeft = NSMakePoint(maxX + 16, NSMaxY(full) - top);   // CG window bounds are top-left based
-  if (topLeft.x + _window.frame.size.width > NSMaxX(screen))
+  if (topLeft.x + _window.frame.size.width > NSMaxX(screen)) {
     topLeft = NSMakePoint(NSMinX(screen) + 24 * n, NSMaxY(screen) - 24 * n);
+  }
   [_window setScreenTopLeft:topLeft];
 }
 
 - (BOOL)spawnArgv:(NSArray<NSString *> *)argv env:(NSArray<NSString *> *)env cwd:(NSString *)cwd
         bootstrap:(mach_port_t)bootstrap fds:(const int[3])fds error:(NSString **)error {
   char **cargv = calloc(argv.count + 1, sizeof(char *)), **cenv = calloc(env.count + 1, sizeof(char *));
-  for (NSUInteger i = 0; i < argv.count; i++)
+  for (NSUInteger i = 0; i < argv.count; i++) {
     cargv[i] = (char *)argv[i].UTF8String;
-  for (NSUInteger i = 0; i < env.count; i++)
+  }
+  for (NSUInteger i = 0; i < env.count; i++) {
     cenv[i] = (char *)env[i].UTF8String;
+  }
   // the app gets its stdio and nothing else of ours (sockets, the log, clients' connections)
   posix_spawnattr_t attr;
   posix_spawnattr_init(&attr);
   posix_spawnattr_setflags(&attr, POSIX_SPAWN_CLOEXEC_DEFAULT);
-  if (bootstrap)
+  if (bootstrap) {
     posix_spawnattr_setspecialport_np(&attr, bootstrap, TASK_BOOTSTRAP_PORT);
+  }
   posix_spawn_file_actions_t fa;
   posix_spawn_file_actions_init(&fa);
-  for (int i = 0; i < 3; i++)
-    if (fds[i] >= 0)
+  for (int i = 0; i < 3; i++) {
+    if (fds[i] >= 0) {
       posix_spawn_file_actions_adddup2(&fa, fds[i], i);
-    else
+    } else {
       posix_spawn_file_actions_addinherit_np(&fa, i);
-  if (cwd.length)
+    }
+  }
+  if (cwd.length) {
     posix_spawn_file_actions_addchdir_np(&fa, cwd.UTF8String);
+  }
   // The app's components find this session's port in mach_ports_lookup()[0]; registered ports are inherited by
   // posix_spawn children. Process-wide, so spawns are serialized on the main thread.
   mach_port_t reg[1] = { _port };
@@ -443,8 +472,9 @@ static NSString *SRPlainString(id s) {
   free(cargv);
   free(cenv);
   if (r) {
-    if (error)
+    if (error) {
       *error = [NSString stringWithFormat:@"spawn %@: %s", argv.firstObject, strerror(r)];
+    }
     return NO;
   }
   _pid = pid;
@@ -464,35 +494,42 @@ static NSString *SRPlainString(id s) {
 }
 
 - (void)reap {
-  if (_exited)
+  if (_exited) {
     return;
+  }
   int st = 0;
-  if (waitpid(_pid, &st, 0) < 0)
+  if (waitpid(_pid, &st, 0) < 0) {
     st = 0;
+  }
   _exited = YES;
   dispatch_source_cancel(_procSource);
   dispatch_source_cancel(_portSource);
   mach_port_mod_refs(mach_task_self(), _port, MACH_PORT_RIGHT_RECEIVE, -1);
   mach_port_deallocate(mach_task_self(), _port);
-  if (_view.inputPort)
+  if (_view.inputPort) {
     mach_port_deallocate(mach_task_self(), _view.inputPort);
-  if (_scriptPort)
+  }
+  if (_scriptPort) {
     mach_port_deallocate(mach_task_self(), _scriptPort);
+  }
   _scriptPort = MACH_PORT_NULL;
   NSArray *observers = [_layerObservers copy];
   SRLayerMirror *mirror = _mirror;
   [_layerObservers removeAllObjects];
   [self stopInspecting];
-  for (void (^o)(SRLayerMirror *, NSDictionary *) in observers)
+  for (void (^o)(SRLayerMirror *, NSDictionary *) in observers) {
     o(mirror, nil);
+  }
   [_frameObservers removeAllObjects];
   [_textObservers removeAllObjects];
   _window.delegate = nil;
   [_window close];
-  if (_logWindow)
+  if (_logWindow) {
     _logWindow.title = [NSString stringWithFormat:@"%@ — Log (exited)", _title];
-  if (self.onExit)
+  }
+  if (self.onExit) {
     self.onExit(self, st);
+  }
 }
 
 // UIKit apps ignore SIGTERM (termination normally comes through FrontBoard/RunningBoard), so escalate to SIGKILL.
@@ -500,8 +537,9 @@ static NSString *SRPlainString(id s) {
   return _window;
 }
 - (void)bringToFront {
-  if (!_ready || _exited)
+  if (!_ready || _exited) {
     return;
+  }
   if (_headless) {
     _headless = NO;
     [self showWindow];
@@ -512,22 +550,27 @@ static NSString *SRPlainString(id s) {
 }
 
 - (void)becomeReady {
-  if (_ready || _exited)
+  if (_ready || _exited) {
     return;
+  }
   _ready = YES;
-  if (!_headless)
+  if (!_headless) {
     [self showWindow];
-  if (self.onReady)
+  }
+  if (self.onReady) {
     self.onReady(self);
+  }
 }
 
 - (void)showWindow {
   // a headless session leaves its window's layer alone (no frame is ever composited); catch up with the app
-  if (_surface)
+  if (_surface) {
     _surfaceLayer.contents = (__bridge id)_surface;
+  }
   // SimRun started for headless apps only stays out of the Dock (main()); a window brings it in
-  if (NSApp.activationPolicy != NSApplicationActivationPolicyRegular)
+  if (NSApp.activationPolicy != NSApplicationActivationPolicyRegular) {
     NSApp.activationPolicy = NSApplicationActivationPolicyRegular;
+  }
   [self placeWindow];
   [_window makeKeyAndOrderFront:nil];
   [NSApp activateIgnoringOtherApps:YES];
@@ -547,10 +590,12 @@ static NSString *SRPlainString(id s) {
   dispatch_source_set_event_handler(src, ^{
     char buf[16384];
     ssize_t n;
-    while ((n = read(fd, buf, sizeof buf)) > 0)
+    while ((n = read(fd, buf, sizeof buf)) > 0) {
       [weakSelf appendOutput:[NSData dataWithBytes:buf length:n]];
-    if (n == 0 || !weakSelf)
+    }
+    if (n == 0 || !weakSelf) {
       dispatch_source_cancel(src);   // EOF: the app (and anything it spawned) closed its output
+    }
   });
   dispatch_source_set_cancel_handler(src, ^{
     close(fd);
@@ -561,17 +606,20 @@ static NSString *SRPlainString(id s) {
 - (void)appendOutput:(NSData *)d {
   [_logFile writeData:d];
   NSString *s = [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding] ?: [[NSString alloc] initWithData:d encoding:NSISOLatin1StringEncoding];
-  if (!s)
+  if (!s) {
     return;
+  }
   [_log appendString:s];
-  if (_log.length > 2000000)
+  if (_log.length > 2000000) {
     [_log deleteCharactersInRange:NSMakeRange(0, _log.length - 1500000)];   // keep the tail
+  }
   if (_logView) {
     BOOL atEnd = NSMaxY(_logView.visibleRect) >= NSMaxY(_logView.bounds) - 20;
     [_logView.textStorage appendAttributedString:[[NSAttributedString alloc] initWithString:s attributes:@{
       NSFontAttributeName: [NSFont monospacedSystemFontOfSize:11 weight:NSFontWeightRegular], NSForegroundColorAttributeName: NSColor.textColor }]];
-    if (atEnd)
+    if (atEnd) {
       [_logView scrollToEndOfDocument:nil];
+    }
   }
 }
 - (void)showLog {
@@ -599,15 +647,17 @@ static NSString *SRPlainString(id s) {
 }
 
 - (void)terminate {
-  if (_pid <= 0 || _exited)
+  if (_pid <= 0 || _exited) {
     return;
+  }
   kill(_pid, SIGTERM);
   pid_t pid = _pid;
   __weak SRSession *weakSelf = self;
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
     SRSession *s = weakSelf;
-    if (s && !s->_exited && s->_pid == pid)
+    if (s && !s->_exited && s->_pid == pid) {
       kill(pid, SIGKILL);
+    }
   });
 }
 - (void)windowWillClose:(NSNotification *)n {
@@ -624,16 +674,18 @@ static NSString *SRPlainString(id s) {
 // composites a committed layer change at the next refresh — every older display buffer is off screen; tell the
 // sim side so it can reuse them. Frame observers may still be reading one of them: then it waits for them too.
 - (void)acknowledgeFrame:(uint32_t)seq replyPort:(mach_port_t)reply bits:(mach_msg_bits_t)bits {
-  if (!reply || MACH_MSGH_BITS_REMOTE(bits) != MACH_MSG_TYPE_PORT_SEND_ONCE)
+  if (!reply || MACH_MSGH_BITS_REMOTE(bits) != MACH_MSG_TYPE_PORT_SEND_ONCE) {
     return;
+  }
   NSInteger fps = _window.screen.maximumFramesPerSecond ?: 60;
   dispatch_group_t readers = _readers;
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 / fps * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
     dispatch_group_notify(readers, dispatch_get_main_queue(), ^{
       sr_frame_ack_msg_t a = { .h = { .msgh_bits = MACH_MSGH_BITS(MACH_MSG_TYPE_MOVE_SEND_ONCE, 0), .msgh_size = sizeof a,
                                       .msgh_remote_port = reply, .msgh_id = SR_MSG_FRAME_ACK }, .on_screen_seq = seq };
-      if (mach_msg(&a.h, MACH_SEND_MSG | MACH_SEND_TIMEOUT, sizeof a, 0, 0, 0, 0) != KERN_SUCCESS)
+      if (mach_msg(&a.h, MACH_SEND_MSG | MACH_SEND_TIMEOUT, sizeof a, 0, 0, 0, 0) != KERN_SUCCESS) {
         mach_port_deallocate(mach_task_self(), reply);
+      }
     });
   });
 }
@@ -654,8 +706,9 @@ static NSString *SRPlainString(id s) {
   dispatch_group_enter(readers);
   __block BOOL called = NO;
   observer(s, px, ^{
-    if (called)
+    if (called) {
       return;
+    }
     called = YES;
     CFRelease(s);
     dispatch_group_leave(readers);
@@ -664,16 +717,19 @@ static NSString *SRPlainString(id s) {
 - (id)addFrameObserver:(void (^)(IOSurfaceRef, CGSize, dispatch_block_t))observer {
   id token = [observer copy];
   [_frameObservers addObject:token];
-  if (_sawFrame && _surface && !_exited)   // the newest frame: its buffer stays as it is until a newer one is acknowledged
+  if (_sawFrame && _surface && !_exited) {   // the newest frame: its buffer stays as it is until a newer one is acknowledged
     dispatch_async(dispatch_get_main_queue(), ^{
-      if ([self->_frameObservers indexOfObjectIdenticalTo:token] != NSNotFound && self->_surface)
+      if ([self->_frameObservers indexOfObjectIdenticalTo:token] != NSNotFound && self->_surface) {
         [self notifyFrameObserver:token];
+      }
     });
+  }
   return token;
 }
 - (void)removeFrameObserver:(id)token {
-  if (token)
+  if (token) {
     [_frameObservers removeObjectIdenticalTo:token];
+  }
 }
 - (id)addTextStateObserver:(void (^)(BOOL, NSRect))observer {
   id token = [observer copy];
@@ -682,16 +738,19 @@ static NSString *SRPlainString(id s) {
   return token;
 }
 - (void)removeTextStateObserver:(id)token {
-  if (token)
+  if (token) {
     [_textObservers removeObjectIdenticalTo:token];
+  }
 }
 - (void)sendInput:(sr_input_msg_t *)m {
-  if (!_exited)
+  if (!_exited) {
     [_view post:m];
+  }
 }
 - (void)sendText:(uint32_t)kind text:(NSString *)text selection:(NSRange)selection {
-  if (!_exited)
+  if (!_exited) {
     [_view sendText:kind text:text selection:selection];
+  }
 }
 
 // SIMFB_CHECK=1 (diagnostic): the sim side sends each frame's checksum at present time. Just before the window moves
@@ -699,13 +758,16 @@ static NSString *SRPlainString(id s) {
 // buffer while it was still on screen (tearing/flicker).
 - (void)checkDisplayedFrame:(const sr_frame_msg_t *)f {
   static int on = -1;
-  if (on < 0)
+  if (on < 0) {
     on = getenv("SIMFB_CHECK") != NULL;
-  if (!on || f->h.msgh_size < sizeof *f || !f->checksum)
+  }
+  if (!on || f->h.msgh_size < sizeof *f || !f->checksum) {
     return;
+  }
   static mach_timebase_info_data_t tb;
-  if (!tb.denom)
+  if (!tb.denom) {
     mach_timebase_info(&tb);
+  }
   static uint64_t frames, overwritten;
   if (_shownChecksum && _surfaces[@(_shownSurfaceID)]) {
     IOSurfaceRef shown = (__bridge IOSurfaceRef)_surfaces[@(_shownSurfaceID)];
@@ -717,8 +779,9 @@ static NSString *SRPlainString(id s) {
       fprintf(stderr, "[frame-check] surface %u changed while on screen (shown %.1f ms, next frame is surface %u)\n",
               _shownSurfaceID, onScreenMs, f->surface_id);
     }
-    if (frames % 60 == 0)
+    if (frames % 60 == 0) {
       fprintf(stderr, "[frame-check] %llu frames, %llu overwritten while on screen\n", frames, overwritten);
+    }
   }
   _shownSurfaceID = f->surface_id;
   _shownChecksum = f->checksum;
@@ -726,8 +789,9 @@ static NSString *SRPlainString(id s) {
 }
 
 - (NSData *)screenshotPNG {
-  if (!_sawFrame || !_surface)
+  if (!_sawFrame || !_surface) {
     return nil;
+  }
   IOSurfaceRef s = (IOSurfaceRef)CFRetain(_surface);
   // the presented content can be smaller than the display buffer
   CGFloat sc = _contentScale ?: 1;
@@ -744,13 +808,15 @@ static NSString *SRPlainString(id s) {
       png = [NSMutableData data];
       CGImageDestinationRef dst = CGImageDestinationCreateWithData((__bridge CFMutableDataRef)png, CFSTR("public.png"), 1, NULL);
       CGImageDestinationAddImage(dst, img, NULL);
-      if (!CGImageDestinationFinalize(dst))
+      if (!CGImageDestinationFinalize(dst)) {
         png = nil;
+      }
       CFRelease(dst);
       CGImageRelease(img);
     }
-    if (bm)
+    if (bm) {
       CGContextRelease(bm);
+    }
     CGColorSpaceRelease(cs);
   }
   CFRelease(s);
@@ -759,8 +825,9 @@ static NSString *SRPlainString(id s) {
 
 // ---------------------------------------------------------------- scripts (protocol.h SR_MSG_SCRIPT_*)
 - (BOOL)runScript:(NSString *)source snapshot:(BOOL)snapshot output:(void (^)(NSString *key, NSString *text))output {
-  if (_exited || !_scriptPort)
+  if (_exited || !_scriptPort) {
     return NO;
+  }
   mach_port_t task = mach_task_self(), reply = MACH_PORT_NULL, prev = MACH_PORT_NULL;
   mach_port_allocate(task, MACH_PORT_RIGHT_RECEIVE, &reply);
   // a script can print faster than one message at a time is drained
@@ -789,15 +856,18 @@ static NSString *SRPlainString(id s) {
         continue;
       }
       NSString *text = [[NSString alloc] initWithBytes:u.m.data.address length:u.m.data.size encoding:NSUTF8StringEncoding] ?: @"";
-      if (u.m.data.size)
+      if (u.m.data.size) {
         vm_deallocate(task, (vm_address_t)u.m.data.address, u.m.data.size);
+      }
       uint32_t kind = u.m.kind;
-      if (kind == SR_SCRIPT_RESULT || kind == SR_SCRIPT_EXCEPTION)
+      if (kind == SR_SCRIPT_RESULT || kind == SR_SCRIPT_EXCEPTION) {
         done = YES;
+      }
       output(kind == SR_SCRIPT_LOG ? @"log" : kind == SR_SCRIPT_SNAPSHOT ? @"snapshot" : kind == SR_SCRIPT_RESULT ? @"result" : @"exception", text);
     }
-    if (done)
+    if (done) {
       dispatch_source_cancel(src);
+    }
   });
   dispatch_source_set_cancel_handler(src, ^{
     mach_port_mod_refs(task, reply, MACH_PORT_RIGHT_RECEIVE, -1);
@@ -832,32 +902,38 @@ static NSString *SRPlainString(id s) {
 
 // ---------------------------------------------------------------- the layer tree (protocol.h SR_MSG_INSPECT_*)
 - (id)addLayerObserver:(void (^)(SRLayerMirror *mirror, NSDictionary *changes))observer {
-  if (_exited || !_scriptPort)
+  if (_exited || !_scriptPort) {
     return nil;
-  if (!_inspectPort && ![self startInspecting])
+  }
+  if (!_inspectPort && ![self startInspecting]) {
     return nil;
+  }
   id token = [observer copy];
   [_layerObservers addObject:token];
   if (_mirror.batchCount) {   // already copied: the newcomer gets what is there
     SRLayerMirror *m = _mirror;
     dispatch_async(dispatch_get_main_queue(), ^{
-      if ([self->_layerObservers indexOfObjectIdenticalTo:token] != NSNotFound)
+      if ([self->_layerObservers indexOfObjectIdenticalTo:token] != NSNotFound) {
         observer(m, @{});
+      }
     });
   }
   return token;
 }
 - (void)removeLayerObserver:(id)token {
-  if (!token)
+  if (!token) {
     return;
+  }
   [_layerObservers removeObjectIdenticalTo:token];
-  if (!_layerObservers.count)
+  if (!_layerObservers.count) {
     [self stopInspecting];
+  }
 }
 - (SRLayerMirror *)detachLayerMirror {
   SRLayerMirror *m = _mirror;
-  if (m)
+  if (m) {
     _mirror = [m clone];
+  }
   return m;
 }
 - (SRLayerMirror *)layerMirror {
@@ -869,14 +945,17 @@ static NSString *SRPlainString(id s) {
   return mach_msg(&h, MACH_SEND_MSG | MACH_SEND_TIMEOUT, sizeof h, 0, MACH_PORT_NULL, 1000, MACH_PORT_NULL) == KERN_SUCCESS;
 }
 - (BOOL)editLayer:(NSNumber *)nid key:(NSString *)key value:(id)value {
-  if (_exited || !_scriptPort || !nid || !key)
+  if (_exited || !_scriptPort || !nid || !key) {
     return NO;
+  }
   NSMutableDictionary *edit = [@{ @"id": nid, @"key": key } mutableCopy];
-  if (value)
+  if (value) {
     edit[@"value"] = value;   // none: back to none (a color)
+  }
   NSData *d = [NSPropertyListSerialization dataWithPropertyList:edit format:NSPropertyListBinaryFormat_v1_0 options:0 error:NULL];
-  if (!d)
+  if (!d) {
     return NO;
+  }
   sr_script_msg_t m = {0};
   m.h.msgh_bits = MACH_MSGH_BITS(MACH_MSG_TYPE_COPY_SEND, 0) | MACH_MSGH_BITS_COMPLEX;
   m.h.msgh_size = sizeof m;
@@ -892,13 +971,15 @@ static NSString *SRPlainString(id s) {
   return mach_msg(&m.h, MACH_SEND_MSG | MACH_SEND_TIMEOUT, sizeof m, 0, MACH_PORT_NULL, 100, MACH_PORT_NULL) == KERN_SUCCESS;
 }
 - (void)resyncLayers {
-  if (_inspectPort && _scriptPort)
+  if (_inspectPort && _scriptPort) {
     [self sendInspectStart:_inspectPort];
+  }
 }
 - (BOOL)startInspecting {
   mach_port_t task = mach_task_self(), port = MACH_PORT_NULL;
-  if (mach_port_allocate(task, MACH_PORT_RIGHT_RECEIVE, &port) != KERN_SUCCESS)
+  if (mach_port_allocate(task, MACH_PORT_RIGHT_RECEIVE, &port) != KERN_SUCCESS) {
     return NO;
+  }
   // batches come once per commit; the app sends the whole tree again if this queue is ever full
   mach_port_limits_t limits = { .mpl_qlimit = MACH_PORT_QLIMIT_MAX };
   mach_port_set_attributes(task, port, MACH_PORT_LIMITS_INFO, (mach_port_info_t)&limits, MACH_PORT_LIMITS_INFO_COUNT);
@@ -908,8 +989,9 @@ static NSString *SRPlainString(id s) {
   }
   _inspectPort = port;
   _mirror = [SRLayerMirror new];
-  if (!_layerObservers)
+  if (!_layerObservers) {
     _layerObservers = [NSMutableArray array];
+  }
   // decoded off the main thread, applied on it
   dispatch_source_t src = dispatch_source_create(DISPATCH_SOURCE_TYPE_MACH_RECV, port, 0, dispatch_queue_create("dev.simrun.inspect", DISPATCH_QUEUE_SERIAL));
   __weak SRSession *weakSelf = self;
@@ -925,14 +1007,16 @@ static NSString *SRPlainString(id s) {
         continue;
       }
       NSData *d = [[NSData alloc] initWithBytesNoCopy:u.m.data.address length:u.m.data.size deallocator:^(void *bytes, NSUInteger length) {
-        if (length)
+        if (length) {
           vm_deallocate(task, (vm_address_t)bytes, length);
+        }
       }];
       NSDictionary *batch = [NSPropertyListSerialization propertyListWithData:d options:NSPropertyListImmutable format:NULL error:NULL];
-      if ([batch isKindOfClass:NSDictionary.class])
+      if ([batch isKindOfClass:NSDictionary.class]) {
         dispatch_async(dispatch_get_main_queue(), ^{
           [weakSelf applyLayerBatch:batch fromPort:port];
         });
+      }
     }
   });
   // destroying the port tells the app to stop (a dead-name notification on its side)
@@ -944,16 +1028,19 @@ static NSString *SRPlainString(id s) {
   return YES;
 }
 - (void)applyLayerBatch:(NSDictionary *)batch fromPort:(mach_port_t)port {
-  if (port != _inspectPort || !_mirror)
+  if (port != _inspectPort || !_mirror) {
     return;   // from a stream that has since been stopped
+  }
   NSDictionary *changes = [_mirror applyBatch:batch];
   SRLayerMirror *m = _mirror;
-  for (void (^o)(SRLayerMirror *, NSDictionary *) in [_layerObservers copy])
+  for (void (^o)(SRLayerMirror *, NSDictionary *) in [_layerObservers copy]) {
     o(m, changes);
+  }
 }
 - (void)stopInspecting {
-  if (_inspectSource)
+  if (_inspectSource) {
     dispatch_source_cancel(_inspectSource);
+  }
   _inspectSource = nil;
   _inspectPort = MACH_PORT_NULL;
   _mirror = nil;
@@ -970,8 +1057,9 @@ static NSString *SRPlainString(id s) {
   while (mach_msg(&m.h, MACH_RCV_MSG | MACH_RCV_TIMEOUT, 0, sizeof m, _port, 0, 0) == KERN_SUCCESS) {
     switch (m.h.msgh_id) {
       case SR_MSG_HELLO:
-        if (_view.inputPort)
+        if (_view.inputPort) {
           mach_port_deallocate(mach_task_self(), _view.inputPort);
+        }
         _view.inputPort = m.p.port.name;
         break;
       case SR_MSG_TEXT_STATE:
@@ -979,26 +1067,29 @@ static NSString *SRPlainString(id s) {
           _textFocused = m.t.focused != 0;
           _caret = NSMakeRect(m.t.x, m.t.y, m.t.width, m.t.height);
           [_view textInputFocused:_textFocused caret:_caret];
-          for (void (^o)(BOOL, NSRect) in [_textObservers copy])
+          for (void (^o)(BOOL, NSRect) in [_textObservers copy]) {
             o(_textFocused, _caret);
+          }
         }
         break;
       case SR_MSG_SCRIPT_HELLO:
-        if (_scriptPort)
+        if (_scriptPort) {
           mach_port_deallocate(mach_task_self(), _scriptPort);
+        }
         _scriptPort = m.p.port.name;
         break;
       case SR_MSG_SURFACE: {
         // CA rotates between up to 3 framebuffers, so this arrives on most frames: cache surfaces by id.
         IOSurfaceRef s = IOSurfaceLookupFromMachPort(m.p.port.name);
         mach_port_deallocate(mach_task_self(), m.p.port.name);
-        if (!s)
+        if (!s) {
           break;
+        }
         NSNumber *key = @(IOSurfaceGetID(s));
         id cached = _surfaces[key];
-        if (cached)
+        if (cached) {
           CFRelease(s);
-        else {
+        } else {
           _surfaces[key] = (__bridge_transfer id)s;
           cached = _surfaces[key];
         }
@@ -1028,15 +1119,17 @@ static NSString *SRPlainString(id s) {
         {
           // show exactly the display buffer this frame was copied into (protocol.h: frame ownership)
           id named = m.h.msgh_size >= sizeof(sr_frame_msg_t) ? _surfaces[@(m.f.surface_id)] : nil;
-          if (named)
+          if (named) {
             _surface = (__bridge IOSurfaceRef)named;
+          }
           // Re-setting the same IOSurface makes CA pick up the new pixels (actions are disabled on this layer).
           if (!_headless) {
             _surfaceLayer.contents = nil;
             _surfaceLayer.contents = (__bridge id)_surface;
           }
-          for (id o in [_frameObservers copy])
+          for (id o in [_frameObservers copy]) {
             [self notifyFrameObserver:o];
+          }
           [self acknowledgeFrame:m.f.seq replyPort:m.h.msgh_remote_port bits:m.h.msgh_bits];
         }
         break;

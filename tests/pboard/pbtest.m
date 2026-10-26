@@ -8,8 +8,9 @@
 static int gFail;
 static void check(BOOL ok, NSString *what) {
   printf("%s %s\n", ok ? "ok  " : "FAIL", what.UTF8String);
-  if (!ok)
+  if (!ok) {
     gFail++;
+  }
 }
 
 static void dump(UIPasteboard *pb) {
@@ -80,8 +81,9 @@ int main(int argc, char **argv) {
       }];
       __block NSInteger seen = pb.changeCount;
       [NSTimer scheduledTimerWithTimeInterval:0.25 repeats:YES block:^(NSTimer *t) {
-        if (pb.changeCount == seen)
+        if (pb.changeCount == seen) {
           return;
+        }
         seen = pb.changeCount;
         printf("-- changed (changeCount)\n");
         dump(pb);

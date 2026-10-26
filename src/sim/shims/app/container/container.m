@@ -8,7 +8,12 @@
 #import "app.h"
 
 static int gVerbose;
-#define LOG(...) do { if (gVerbose) fprintf(stderr, "[container] " __VA_ARGS__); } while (0)
+#define LOG(...) \
+  do { \
+    if (gVerbose) { \
+      fprintf(stderr, "[container] " __VA_ARGS__); \
+    } \
+  } while (0)
 
 int sandbox_container_path_for_pid(pid_t pid, char *buf, size_t size);
 static int my_sandbox_container_path_for_pid(pid_t pid, char *buf, size_t size) {

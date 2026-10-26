@@ -12,10 +12,11 @@ static double gSeconds = 1.0;
 static double gPhase;
 
 static void report(const char *what, OSStatus st) {
-  if (st)
+  if (st) {
     printf("%s: FAIL %d ('%.4s')\n", what, (int)st, (char *)&(uint32_t){ CFSwapInt32HostToBig((uint32_t)st) });
-  else
+  } else {
     printf("%s: ok\n", what);
+  }
 }
 
 // a 440 Hz tone, float32 mono
@@ -50,8 +51,9 @@ static BOOL testQueue(void) {
   AudioQueueRef q;
   OSStatus st = AudioQueueNewOutput(&f, queueCallback, NULL, NULL, NULL, 0, &q);
   report("AudioQueueNewOutput", st);
-  if (st)
+  if (st) {
     return NO;
+  }
   for (int i = 0; i < 3; i++) {
     AudioQueueBufferRef b;
     AudioQueueAllocateBuffer(q, 4096 * 4, &b);
@@ -82,16 +84,18 @@ static BOOL testUnit(void) {
   AudioUnit u;
   OSStatus st = AudioComponentInstanceNew(c, &u);
   report("RemoteIO new", st);
-  if (st)
+  if (st) {
     return NO;
+  }
   AudioStreamBasicDescription f = { 44100, kAudioFormatLinearPCM, kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked, 4, 1, 4, 1, 32, 0 };
   AudioUnitSetProperty(u, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 0, &f, sizeof f);
   AURenderCallbackStruct cb = { unitRender, NULL };
   AudioUnitSetProperty(u, kAudioUnitProperty_SetRenderCallback, kAudioUnitScope_Input, 0, &cb, sizeof cb);
   st = AudioUnitInitialize(u);
   report("RemoteIO initialize", st);
-  if (st)
+  if (st) {
     return NO;
+  }
   st = AudioOutputUnitStart(u);
   report("RemoteIO start", st);
   [NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:gSeconds]];
@@ -141,8 +145,9 @@ static NSURL *toneFile(void) {
 
 static BOOL testPlayer(void) {
   NSURL *url = toneFile();
-  if (!url)
+  if (!url) {
     return NO;
+  }
   NSError *e = nil;
   AVAudioPlayer *p = [[AVAudioPlayer alloc] initWithContentsOfURL:url error:&e];
   if (!p) {
@@ -159,8 +164,9 @@ static BOOL testPlayer(void) {
 
 static BOOL testAVPlayer(void) {
   NSURL *url = toneFile();
-  if (!url)
+  if (!url) {
     return NO;
+  }
   AVPlayer *p = [AVPlayer playerWithURL:url];
   [p play];
   [NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:gSeconds]];
@@ -172,20 +178,23 @@ static BOOL testAVPlayer(void) {
 
 static BOOL testSystem(void) {
   NSURL *url = toneFile();
-  if (!url)
+  if (!url) {
     return NO;
+  }
   SystemSoundID sid;
   OSStatus st = AudioServicesCreateSystemSoundID((__bridge CFURLRef)url, &sid);
   report("AudioServicesCreateSystemSoundID", st);
-  if (st)
+  if (st) {
     return NO;
+  }
   __block BOOL done = NO;
   AudioServicesPlaySystemSoundWithCompletion(sid, ^{
     done = YES;
   });
   NSDate *until = [NSDate dateWithTimeIntervalSinceNow:gSeconds + 2];
-  while (!done && [until timeIntervalSinceNow] > 0)
+  while (!done && [until timeIntervalSinceNow] > 0) {
     [NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.05]];
+  }
   printf("system sound completion: %s\n", done ? "ok" : "FAIL (none)");
   AudioServicesDisposeSystemSoundID(sid);
   return done;
@@ -202,8 +211,9 @@ static void measure(Level *l, const float *x, UInt32 n, UInt32 stride) {
   for (UInt32 i = 0; i < n; i++) {
     float v = x[i * stride];
     l->sum += (double)v * v;
-    if (fabsf(v) > l->peak)
+    if (fabsf(v) > l->peak) {
       l->peak = fabsf(v);
+    }
   }
   l->frames += n;
 }
@@ -211,8 +221,9 @@ static void measure16(Level *l, const int16_t *x, UInt32 n, UInt32 stride) {
   for (UInt32 i = 0; i < n; i++) {
     float v = x[i * stride] / 32768.f;
     l->sum += (double)v * v;
-    if (fabsf(v) > l->peak)
+    if (fabsf(v) > l->peak) {
       l->peak = fabsf(v);
+    }
   }
   l->frames += n;
 }
@@ -235,17 +246,20 @@ static BOOL testRecordSession(void) {
   printf("session setActive: %s %s\n", ok ? "ok" : "FAIL", e ? e.description.UTF8String : "");
   printf("session recordPermission %#lx, inputAvailable %d, inputChannels %ld, sampleRate %.0f\n", (unsigned long)s.recordPermission,
          s.inputAvailable, (long)s.inputNumberOfChannels, s.sampleRate);
-  for (AVAudioSessionPortDescription *p in s.availableInputs)
+  for (AVAudioSessionPortDescription *p in s.availableInputs) {
     printf("  input %s (%s)\n", p.portName.UTF8String, p.portType.UTF8String);
-  for (AVAudioSessionPortDescription *p in s.currentRoute.inputs)
+  }
+  for (AVAudioSessionPortDescription *p in s.currentRoute.inputs) {
     printf("  route input %s (%s)\n", p.portName.UTF8String, p.portType.UTF8String);
+  }
   __block int answer = -1;
   [s requestRecordPermission:^(BOOL granted) {
     answer = granted;
   }];
   NSDate *until = [NSDate dateWithTimeIntervalSinceNow:3];
-  while (answer < 0 && [until timeIntervalSinceNow] > 0)
+  while (answer < 0 && [until timeIntervalSinceNow] > 0) {
     [NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.05]];
+  }
   printf("requestRecordPermission: %s\n", answer < 0 ? "no answer" : answer ? "granted" : "denied");
   return ok && s.inputAvailable;
 }
@@ -253,12 +267,14 @@ static BOOL testRecordSession(void) {
 // recording needs a session category that records, as on a device
 static void recordingSession(void) {
   static BOOL done;
-  if (done)
+  if (done) {
     return;
+  }
   done = YES;
   NSError *e = nil;
-  if (![AVAudioSession.sharedInstance setCategory:AVAudioSessionCategoryPlayAndRecord error:&e] || ![AVAudioSession.sharedInstance setActive:YES error:&e])
+  if (![AVAudioSession.sharedInstance setCategory:AVAudioSessionCategoryPlayAndRecord error:&e] || ![AVAudioSession.sharedInstance setActive:YES error:&e]) {
     printf("recording session: FAIL %s\n", e.description.UTF8String);
+  }
 }
 
 static void inputCallback(void *ud, AudioQueueRef q, AudioQueueBufferRef b, const AudioTimeStamp *ts, UInt32 n, const AudioStreamPacketDescription *pd) {
@@ -272,8 +288,9 @@ static BOOL testRecordQueue(void) {
   AudioQueueRef q;
   OSStatus st = AudioQueueNewInput(&f, inputCallback, NULL, CFRunLoopGetCurrent(), kCFRunLoopCommonModes, 0, &q);
   report("AudioQueueNewInput", st);
-  if (st)
+  if (st) {
     return NO;
+  }
   for (int i = 0; i < 3; i++) {
     AudioQueueBufferRef b;
     AudioQueueAllocateBuffer(q, 4096 * 2, &b);
@@ -295,8 +312,9 @@ static OSStatus unitInput(void *ud, AudioUnitRenderActionFlags *fl, const AudioT
   OSStatus st = AudioUnitRender(gInUnit, fl, ts, 1, n, &l);
   if (st) {
     static int once;
-    if (!once++)
+    if (!once++) {
       report("RemoteIO AudioUnitRender", st);
+    }
     return st;
   }
   measure(&gLevel, gInBuf, n, 1);
@@ -309,8 +327,9 @@ static BOOL testRecordUnit(void) {
   AudioComponent c = AudioComponentFindNext(NULL, &d);
   OSStatus st = AudioComponentInstanceNew(c, &gInUnit);
   report("RemoteIO new", st);
-  if (st)
+  if (st) {
     return NO;
+  }
   UInt32 one = 1, zero = 0;
   st = AudioUnitSetProperty(gInUnit, kAudioOutputUnitProperty_EnableIO, kAudioUnitScope_Input, 1, &one, sizeof one);
   report("RemoteIO enable input", st);
@@ -321,8 +340,9 @@ static BOOL testRecordUnit(void) {
   AudioUnitSetProperty(gInUnit, kAudioOutputUnitProperty_SetInputCallback, kAudioUnitScope_Global, 0, &cb, sizeof cb);
   st = AudioUnitInitialize(gInUnit);
   report("RemoteIO initialize", st);
-  if (st)
+  if (st) {
     return NO;
+  }
   gLevel = (Level){0};
   st = AudioOutputUnitStart(gInUnit);
   report("RemoteIO start", st);
@@ -388,8 +408,9 @@ int main(int argc, char **argv) {
   @autoreleasepool {
     setvbuf(stdout, NULL, _IOLBF, 0);
     NSString *which = argc > 1 ? @(argv[1]) : @"all";
-    if (argc > 2)
+    if (argc > 2) {
       gSeconds = atof(argv[2]);
+    }
     NSArray *all = @[ @"session", @"queue", @"unit", @"engine", @"player", @"avplayer", @"system" ];
     NSArray *record = @[ @"rsession", @"rqueue", @"runit", @"rengine", @"recorder" ];
     NSArray *tests = [which isEqualToString:@"all"] ? all : [which isEqualToString:@"record"] ? record : @[ which ];
@@ -403,8 +424,9 @@ int main(int argc, char **argv) {
               : [t isEqualToString:@"rqueue"] ? testRecordQueue() : [t isEqualToString:@"runit"] ? testRecordUnit()
               : [t isEqualToString:@"rengine"] ? testRecordEngine() : [t isEqualToString:@"recorder"] ? testRecorder() : NO;
       printf("%s: %s\n", t.UTF8String, ok ? "PASS" : "FAIL");
-      if (!ok)
+      if (!ok) {
         failed++;
+      }
     }
     return failed ? 1 : 0;
   }

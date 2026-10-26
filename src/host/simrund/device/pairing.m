@@ -13,8 +13,9 @@ extern int posix_spawnattr_setspecialport_np(posix_spawnattr_t *, mach_port_t, i
 @end
 
 mach_port_t SRSimnsLookUp(mach_port_t control, const char *name) {
-  if (!control)
+  if (!control) {
     return MACH_PORT_NULL;
+  }
   mach_port_t reply;
   mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &reply);
   union {
@@ -40,33 +41,39 @@ mach_port_t SRSimnsLookUp(mach_port_t control, const char *name) {
 }
 
 void SRNoteWatchApps(NSString *appPath) {
-  if (!appPath)
+  if (!appPath) {
     return;
+  }
   NSMutableArray<NSDictionary *> *found = [NSMutableArray array];   // { companion, watch }
   NSDictionary *info = [NSDictionary dictionaryWithContentsOfFile:[appPath stringByAppendingPathComponent:@"Info.plist"]];
   NSString *ident = info[@"CFBundleIdentifier"], *companion = info[@"WKCompanionAppBundleIdentifier"];
-  if ([ident isKindOfClass:NSString.class] && [companion isKindOfClass:NSString.class])
+  if ([ident isKindOfClass:NSString.class] && [companion isKindOfClass:NSString.class]) {
     [found addObject:@{ @"companion": companion, @"watch": ident }];
+  }
   NSString *watchDir = [appPath stringByAppendingPathComponent:@"Watch"];
   for (NSString *w in [NSFileManager.defaultManager contentsOfDirectoryAtPath:watchDir error:nil]) {
     NSDictionary *wi = [NSDictionary dictionaryWithContentsOfFile:[watchDir stringByAppendingFormat:@"/%@/Info.plist", w]];
-    if ([w.pathExtension isEqualToString:@"app"] && [wi[@"CFBundleIdentifier"] isKindOfClass:NSString.class] && [ident isKindOfClass:NSString.class])
+    if ([w.pathExtension isEqualToString:@"app"] && [wi[@"CFBundleIdentifier"] isKindOfClass:NSString.class] && [ident isKindOfClass:NSString.class]) {
       [found addObject:@{ @"companion": ident, @"watch": wi[@"CFBundleIdentifier"] }];
+    }
   }
-  if (!found.count)
+  if (!found.count) {
     return;
+  }
   NSString *path = SREnvironment.watchAppsPath;
   NSMutableDictionary *apps = [[NSDictionary dictionaryWithContentsOfFile:path] mutableCopy] ?: [NSMutableDictionary dictionary];
   BOOL changed = NO;
   for (NSDictionary *f in found) {
     NSDictionary *old = apps[f[@"companion"]];
-    if ([old[@"watch"] isEqual:f[@"watch"]])
+    if ([old[@"watch"] isEqual:f[@"watch"]]) {
       continue;
+    }
     apps[f[@"companion"]] = @{ @"watch": f[@"watch"], @"installID": NSUUID.UUID.UUIDString };   // installed as a new app
     changed = YES;
   }
-  if (!changed)
+  if (!changed) {
     return;
+  }
   [NSFileManager.defaultManager createDirectoryAtPath:path.stringByDeletingLastPathComponent withIntermediateDirectories:YES attributes:nil error:nil];
   [apps writeToFile:path atomically:YES];
   LOG(@"watch apps: %@", [apps.allKeys componentsJoinedByString:@", "]);
@@ -94,14 +101,17 @@ static int RunSimpair(SRPairDevice *device, NSString *peer) {
   vars[@"XPC_SIMULATOR_LAUNCHD_NAME"] = @"dev.simrun.simns";
   vars[@"XPC_FLAGS"] = @"0x0";
   NSMutableArray *env = [NSMutableArray array];
-  for (char **e = environ; *e; e++)
+  for (char **e = environ; *e; e++) {
     [env addObject:@(*e)];
+  }
   NSArray *all = [SREnvironment environment:env withOverrides:vars];
   char **cenv = calloc(all.count + 1, sizeof(char *));
   int k = 0;
-  for (NSString *kv in all)
-    if (![kv hasPrefix:@"DYLD_INSERT_LIBRARIES="])
+  for (NSString *kv in all) {
+    if (![kv hasPrefix:@"DYLD_INSERT_LIBRARIES="]) {
       cenv[k++] = (char *)kv.UTF8String;
+    }
+  }
   char *argv[] = { (char *)exe.UTF8String, (char *)peer.UTF8String, NULL };
   posix_spawnattr_t at;
   posix_spawnattr_init(&at);
@@ -109,8 +119,9 @@ static int RunSimpair(SRPairDevice *device, NSString *peer) {
   posix_spawnattr_setflags(&at, POSIX_SPAWN_CLOEXEC_DEFAULT);
   posix_spawn_file_actions_t fa;
   posix_spawn_file_actions_init(&fa);
-  for (int i = 0; i < 3; i++)
+  for (int i = 0; i < 3; i++) {
     posix_spawn_file_actions_addinherit_np(&fa, i);
+  }
   pid_t pid = 0;
   int r = posix_spawn(&pid, argv[0], &fa, &at, argv, cenv);
   posix_spawn_file_actions_destroy(&fa);
@@ -133,10 +144,12 @@ static int RunSimpair(SRPairDevice *device, NSString *peer) {
 
 - (void)pairPhone:(SRPairDevice *)phone watch:(SRPairDevice *)watch done:(void (^)(NSString *))done {
   if ([_pairedWatchRoot isEqualToString:watch.root] || [_pairing isEqualToString:watch.root]) {
-    if (phone.nsPort)
+    if (phone.nsPort) {
       mach_port_deallocate(mach_task_self(), phone.nsPort);
-    if (watch.nsPort)
+    }
+    if (watch.nsPort) {
       mach_port_deallocate(mach_task_self(), watch.nsPort);
+    }
     return;
   }
   _pairing = watch.root;
@@ -146,9 +159,9 @@ static int RunSimpair(SRPairDevice *device, NSString *peer) {
     // the relays: each device's ids_simd (launched by the look-up) known to the other under its UDID
     mach_port_t phoneRelay = SRSimnsLookUp(phone.control, "com.apple.IDSSimRPC.local");
     mach_port_t watchRelay = SRSimnsLookUp(watch.control, "com.apple.IDSSimRPC.local");
-    if (!phoneRelay || !watchRelay)
+    if (!phoneRelay || !watchRelay) {
       err = @"no ids_simd (com.apple.IDSSimRPC.local) to relay through";
-    else {
+    } else {
       Register(phone.control, [@"com.apple.IDSSimRPC.remote." stringByAppendingString:watchUDID], watchRelay);
       Register(watch.control, [@"com.apple.IDSSimRPC.remote." stringByAppendingString:phoneUDID], phoneRelay);
       // both sides at once, as CoreSimulator makes a pair active: each one's NanoRegistry waits for the other's
@@ -161,25 +174,32 @@ static int RunSimpair(SRPairDevice *device, NSString *peer) {
         watchStatus = RunSimpair(watch, phoneUDID);
       });
       dispatch_group_wait(g, DISPATCH_TIME_FOREVER);
-      if (phoneStatus || watchStatus)
+      if (phoneStatus || watchStatus) {
         err = [NSString stringWithFormat:@"simpair failed (iPhone %d, watch %d)", phoneStatus, watchStatus];
+      }
     }
-    if (phoneRelay)
+    if (phoneRelay) {
       mach_port_deallocate(mach_task_self(), phoneRelay);
-    if (watchRelay)
+    }
+    if (watchRelay) {
       mach_port_deallocate(mach_task_self(), watchRelay);
-    if (phone.nsPort)
+    }
+    if (phone.nsPort) {
       mach_port_deallocate(mach_task_self(), phone.nsPort);
-    if (watch.nsPort)
+    }
+    if (watch.nsPort) {
       mach_port_deallocate(mach_task_self(), watch.nsPort);
+    }
     dispatch_async(dispatch_get_main_queue(), ^{
       self->_pairing = nil;
-      if (!err)
+      if (!err) {
         self->_pairedWatchRoot = watch.root;
+      }
       LOG(@"%@", err ?: [NSString stringWithFormat:@"iPhone (%@) and Apple Watch (%@) paired",
                           [SRRuntime runtimeAtRoot:phone.root].name, [SRRuntime runtimeAtRoot:watch.root].name]);
-      if (done)
+      if (done) {
         done(err);
+      }
     });
   });
 }

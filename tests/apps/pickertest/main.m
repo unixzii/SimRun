@@ -74,25 +74,25 @@ static NSArray<NSString *> *Modes(void) {
 
 - (void)present:(NSString *)mode {
   UIDocumentPickerViewController *p;
-  if ([mode isEqual:@"import"])
+  if ([mode isEqual:@"import"]) {
     p = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[ UTTypeItem ] asCopy:YES];
-  else if ([mode isEqual:@"open"])
+  } else if ([mode isEqual:@"open"]) {
     p = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[ UTTypePlainText, UTTypeImage, UTTypePDF ]];
-  else if ([mode isEqual:@"multiple"]) {
+  } else if ([mode isEqual:@"multiple"]) {
     p = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[ UTTypeItem ]];
     p.allowsMultipleSelection = YES;
   }
-  else if ([mode isEqual:@"folder"])
+  else if ([mode isEqual:@"folder"]) {
     p = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[ UTTypeFolder ]];
-  else if ([mode isEqual:@"export"])
+  } else if ([mode isEqual:@"export"]) {
     p = [[UIDocumentPickerViewController alloc] initForExportingURLs:@[ [self exportFile] ] asCopy:YES];
-  else if ([mode isEqual:@"move"])
+  } else if ([mode isEqual:@"move"]) {
     p = [[UIDocumentPickerViewController alloc] initForExportingURLs:@[ [self exportFile] ]];
-  else if ([mode isEqual:@"dismiss"])
+  } else if ([mode isEqual:@"dismiss"]) {
     p = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:@[ UTTypeItem ] asCopy:YES];
-  else if ([mode isEqual:@"legacy"])
+  } else if ([mode isEqual:@"legacy"]) {
     p = [[UIDocumentPickerViewController alloc] initWithDocumentTypes:@[ @"public.text" ] inMode:UIDocumentPickerModeImport];
-  else {
+  } else {
     [self note:[@"unknown mode " stringByAppendingString:mode]];
     return;
   }
@@ -100,12 +100,13 @@ static NSArray<NSString *> *Modes(void) {
   p.directoryURL = [NSURL fileURLWithPath:NSHomeDirectory()];
   [self note:[NSString stringWithFormat:@"— %@ (picker mode %lu)", mode, (unsigned long)p.documentPickerMode]];
   [self presentViewController:p animated:YES completion:nil];
-  if ([mode isEqual:@"dismiss"])
+  if ([mode isEqual:@"dismiss"]) {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
       [p dismissViewControllerAnimated:YES completion:^{
         [self note:@"dismissed by the app"];
       }];
     });
+  }
 }
 
 - (void)documentPicker:(UIDocumentPickerViewController *)p didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
@@ -116,8 +117,9 @@ static NSArray<NSString *> *Modes(void) {
     NSString *what = dir ? [NSString stringWithFormat:@"%lu entries", (unsigned long)[NSFileManager.defaultManager contentsOfDirectoryAtPath:u.path error:NULL].count]
                          : [NSString stringWithFormat:@"%lu bytes", (unsigned long)[NSData dataWithContentsOfURL:u].length];
     [self note:[NSString stringWithFormat:@"  %@\n    exists %d, scoped %d, %@", u.path, exists, scoped, what]];
-    if (scoped)
+    if (scoped) {
       [u stopAccessingSecurityScopedResource];
+    }
   }
 }
 

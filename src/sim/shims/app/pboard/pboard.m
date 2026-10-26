@@ -38,7 +38,12 @@
 @end
 
 static int gVerbose;
-#define LOG(...) do { if (gVerbose) fprintf(stderr, "[pboard] " __VA_ARGS__); } while (0)
+#define LOG(...) \
+  do { \
+    if (gVerbose) { \
+      fprintf(stderr, "[pboard] " __VA_ARGS__); \
+    } \
+  } while (0)
 
 static NSError *SRError(NSString *what) {
   return [NSError errorWithDomain:@"dev.simrun.pboard" code:1 userInfo:@{ NSLocalizedDescriptionKey: what }];
@@ -57,11 +62,13 @@ static BOOL store_open(void) {
       return;
     }
     const char *ev = xpc_dictionary_get_string(e, "event"), *name = xpc_dictionary_get_string(e, "name");
-    if (ev && name && !strcmp(ev, "changed"))
+    if (ev && name && !strcmp(ev, "changed")) {
       host_changed(@(name), xpc_dictionary_get_int64(e, "count"));
+    }
   });
-  if (!gHost)
+  if (!gHost) {
     fprintf(stderr, "[pboard] no %s in this SimRun; pasteboard unavailable\n", SRPB_SERVICE);
+  }
   return gHost != NULL;
 }
 
@@ -69,8 +76,9 @@ static xpc_object_t host_call(const char *op, NSString *name, void (^fill)(xpc_o
   xpc_object_t m = xpc_dictionary_create(NULL, NULL, 0);
   xpc_dictionary_set_string(m, "op", op);
   xpc_dictionary_set_string(m, "name", name.UTF8String);
-  if (fill)
+  if (fill) {
     fill(m);
+  }
   xpc_object_t r = xpc_connection_send_message_with_reply_sync(gHost, m);
   if (xpc_get_type(r) != XPC_TYPE_DICTIONARY) {
     LOG("%s %s: no reply\n", op, name.UTF8String);
@@ -87,18 +95,21 @@ static NSArray<NSArray<NSString *> *> *store_read(NSString *name, NSInteger *cou
   NSMutableArray *items = [NSMutableArray array];
   xpc_object_t r = host_call("read", name, nil);
   xpc_object_t a = r ? xpc_dictionary_get_value(r, "items") : NULL;
-  if (a && xpc_get_type(a) == XPC_TYPE_ARRAY)
+  if (a && xpc_get_type(a) == XPC_TYPE_ARRAY) {
     xpc_array_apply(a, ^bool(size_t i, xpc_object_t types) {
       NSMutableArray *ts = [NSMutableArray array];
-      if (xpc_get_type(types) == XPC_TYPE_ARRAY)
+      if (xpc_get_type(types) == XPC_TYPE_ARRAY) {
         xpc_array_apply(types, ^bool(size_t j, xpc_object_t t) {
-          if (xpc_get_type(t) == XPC_TYPE_STRING)
+          if (xpc_get_type(t) == XPC_TYPE_STRING) {
             [ts addObject:@(xpc_string_get_string_ptr(t))];
+          }
           return true;
         });
+      }
       [items addObject:ts];
       return true;
     });
+  }
   *count = r ? xpc_dictionary_get_int64(r, "count") : 0;
   return items;
 }
@@ -116,17 +127,20 @@ static NSData *url_from_mac(NSData *d) {
   NSMutableCharacterSet *junk = NSMutableCharacterSet.whitespaceAndNewlineCharacterSet;   // and a C string's NUL
   [junk formUnionWithCharacterSet:NSCharacterSet.controlCharacterSet];
   s = [s stringByTrimmingCharactersInSet:junk];
-  if (!s.length)
+  if (!s.length) {
     return d;
+  }
   return [NSPropertyListSerialization dataWithPropertyList:@[ s, @"" ] format:NSPropertyListBinaryFormat_v1_0 options:0 error:NULL] ?: d;
 }
 static NSData *url_to_mac(NSData *d) {
   NSArray *a = is_bplist(d) ? [NSPropertyListSerialization propertyListWithData:d options:0 format:NULL error:NULL] : nil;
-  if (![a isKindOfClass:NSArray.class] || ![a.firstObject isKindOfClass:NSString.class])
+  if (![a isKindOfClass:NSArray.class] || ![a.firstObject isKindOfClass:NSString.class]) {
     return d;
+  }
   NSString *s = a[0], *base = a.count > 1 && [a[1] isKindOfClass:NSString.class] ? a[1] : nil;
-  if (base.length)
+  if (base.length) {
     s = [NSURL URLWithString:s relativeToURL:[NSURL URLWithString:base]].absoluteString ?: s;
+  }
   return [s dataUsingEncoding:NSUTF8StringEncoding];
 }
 
@@ -183,8 +197,9 @@ static SRBoard *board(NSString *name) {
 }
 // The store is at `count`: if that is news, it is a new generation of contents.
 static BOOL board_sync(SRBoard *b, NSInteger count) {
-  if (b.storeCount == count || b.storeCount == -1)
+  if (b.storeCount == count || b.storeCount == -1) {
     return NO;
+  }
   b.storeCount = count;
   b.changeCount++;
   b.uuid = [NSUUID UUID];
@@ -192,8 +207,9 @@ static BOOL board_sync(SRBoard *b, NSInteger count) {
 }
 
 static void host_changed(NSString *name, NSInteger count) {
-  if (!board_sync(board(name), count))
+  if (!board_sync(board(name), count)) {
     return;
+  }
   uint64_t state = ++gState;
   LOG("%s changed on the host (count %ld) -> invalidate UIKit's cache (state %llu)\n", name.UTF8String, (long)count, state);
   dispatch_async(dispatch_get_main_queue(), ^{
@@ -212,8 +228,9 @@ static id make_collection(NSString *name, NSArray<NSArray<NSString *> *> *types,
   NSMutableArray *items = [NSMutableArray array];
   for (NSArray<NSString *> *ts in types) {
     id it = [I new];
-    for (NSString *t in ts)
+    for (NSString *t in ts) {
       [it addRepresentation:[[R alloc] initWithType:t preferredRepresentation:0 v3_loader:loader]];
+    }
     [items addObject:it];
   }
   id c = [[C alloc] initWithItems:items];
@@ -228,8 +245,9 @@ static id make_collection(NSString *name, NSArray<NSArray<NSString *> *> *types,
 // thread while the app's main thread is blocked on us must not hang the app.
 static NSArray<NSArray<NSArray *> *> *pull(id collection, NSXPCListenerEndpoint *endpoint) {
   NSArray *items = [collection items];
-  if (!items.count || !endpoint)
+  if (!items.count || !endpoint) {
     return @[];
+  }
   NSXPCConnection *c = [[NSXPCConnection alloc] initWithListenerEndpoint:endpoint];
   c.remoteObjectInterface = [NSXPCInterface interfaceWithProtocol:objc_getProtocol("PBDataProviderProtocol")];
   [c resume];
@@ -247,30 +265,37 @@ static NSArray<NSArray<NSArray *> *> *pull(id collection, NSXPCListenerEndpoint 
         dispatch_group_leave(g);
       }];
       [proxy loadRepresentationForItemAtIndex:i type:type completionBlock:^(NSData *d, id urlWrapper, NSError *e, NSUUID *cleanup) {
-        if (!d && urlWrapper)
+        if (!d && urlWrapper) {
           d = [NSData dataWithContentsOfURL:[urlWrapper url]];
-        if (d)
+        }
+        if (d) {
           @synchronized (slots) {
             [slot addObject:d];
           }
-        if (cleanup)
+        }
+        if (cleanup) {
           [proxy callCleanupBlockWithUUID:cleanup];
+        }
         dispatch_group_leave(g);
       }];
     }
   }];
-  if (dispatch_group_wait(g, dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC)))
+  if (dispatch_group_wait(g, dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC))) {
     LOG("data provider timed out; saving what arrived\n");
+  }
   [c invalidate];
   NSMutableArray *out = [NSMutableArray array];
   @synchronized (slots) {
     for (NSArray *reps in slots) {
       NSMutableArray *loaded = [NSMutableArray array];
-      for (NSArray *slot in reps)
-        if (slot.count == 2)
+      for (NSArray *slot in reps) {
+        if (slot.count == 2) {
           [loaded addObject:[slot copy]];
-      if (loaded.count)
+        }
+      }
+      if (loaded.count) {
         [out addObject:loaded];
+      }
     }
   }
   return out;
@@ -294,8 +319,9 @@ static NSArray<NSArray<NSArray *> *> *pull(id collection, NSXPCListenerEndpoint 
     NSInteger count = 0;
     NSArray *types = store_read(name, &count);
     BOOL system = [name isEqual:@SRPB_GENERAL] || [name isEqual:@SRPB_FIND];
-    if (!system && !create && !types.count && !gBoards[name])
+    if (!system && !create && !types.count && !gBoards[name]) {
       return;   // a named pasteboard nobody created
+    }
     SRBoard *b = board(name);
     board_sync(b, count);
     col = make_collection(name, types, b);
@@ -329,23 +355,26 @@ static NSArray<NSArray<NSArray *> *> *pull(id collection, NSXPCListenerEndpoint 
   });
   // iOS 27 added removedItemUUIDs:; earlier runtimes (18, 26) have only the three-argument initializer
   id response = [NSClassFromString(@"PBSaveResponse") alloc];
-  if ([response respondsToSelector:@selector(initWithNotificationState:changeCount:sharingToken:removedItemUUIDs:)])
+  if ([response respondsToSelector:@selector(initWithNotificationState:changeCount:sharingToken:removedItemUUIDs:)]) {
     response = [response initWithNotificationState:state changeCount:changeCount sharingToken:nil removedItemUUIDs:nil];
-  else
+  } else {
     response = [response initWithNotificationState:state changeCount:changeCount sharingToken:nil];
+  }
   done(response, nil);
   // later readers (other apps, or this one once its cache is gone) queue up behind this on gQ
   dispatch_async(gQ, ^{
     NSArray *items = pull(collection, endpoint);
     if (!items.count && [collection items].count) {   // provider gone (app quitting?): keep what the store has
       LOG("saved %s: no data could be loaded; store left alone\n", name.UTF8String);
-      if (b.storeCount == -1)
+      if (b.storeCount == -1) {
         b.storeCount = NSIntegerMin;   // unknown: the next read or change resyncs
+      }
       return;
     }
     NSInteger count = store_write(name, items);
-    if (b.storeCount == -1)
+    if (b.storeCount == -1) {
       b.storeCount = count;
+    }
     LOG("saved %s: %lu items -> store count %ld\n", name.UTF8String, (unsigned long)items.count, (long)count);
   });
 }
@@ -409,12 +438,13 @@ static SRPasteServer *gServer;
 static void disable_paste_touch_authentication(void) {
   Method m = class_getInstanceMethod(NSClassFromString(@"_UIEditMenuContentPresentation"),
                                      sel_registerName("wantsPasteTouchAuthenticationInEditMenuListView:"));
-  if (m)
+  if (m) {
     method_setImplementation(m, imp_implementationWithBlock(^BOOL(id self, id listView) {
       return NO;
     }));
-  else
+  } else {
     LOG("no -[_UIEditMenuContentPresentation wantsPasteTouchAuthenticationInEditMenuListView:]; edit menu Paste may not respond\n");
+  }
 }
 
 void SRPasteboardStart(void) {
@@ -429,8 +459,9 @@ void SRPasteboardStart(void) {
   disable_paste_touch_authentication();
   gQ = dispatch_queue_create("dev.simrun.pboard", DISPATCH_QUEUE_SERIAL);
   gBoards = [NSMutableDictionary dictionary];
-  if (!store_open())
+  if (!store_open()) {
     return;
+  }
   // a launchd-style check-in: simns hands us the receive right for the name in this app's own namespace
   // (-initWithMachServiceName: is marked unavailable in the iOS SDK headers; sim Foundation has it)
   gListener = ((id (*)(id, SEL, NSString *))objc_msgSend)([NSXPCListener alloc], sel_registerName("initWithMachServiceName:"), @"com.apple.pasteboard.pasted");

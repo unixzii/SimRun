@@ -19,7 +19,12 @@
 #include "tcc.h"
 
 static int gVerbose;
-#define LOG(...) do { if (gVerbose) fprintf(stderr, "[tcc] " __VA_ARGS__); } while (0)
+#define LOG(...) \
+  do { \
+    if (gVerbose) { \
+      fprintf(stderr, "[tcc] " __VA_ARGS__); \
+    } \
+  } while (0)
 
 typedef void (^SRTCCReply)(id record, id error);
 extern void tcc_server_message_request_authorization(id server, id options, id credential, id service, id unused, SRTCCReply reply);
@@ -36,20 +41,25 @@ static os_unfair_lock gServicesLock = OS_UNFAIR_LOCK_INIT;
 void SRTCCRegister(const SRTCCService *s) {
   os_unfair_lock_lock(&gServicesLock);
   int i = 0;
-  while (i < MAX_SERVICES && gServices[i] && strcmp(gServices[i]->service, s->service))
+  while (i < MAX_SERVICES && gServices[i] && strcmp(gServices[i]->service, s->service)) {
     i++;
-  if (i < MAX_SERVICES)
+  }
+  if (i < MAX_SERVICES) {
     gServices[i] = s;
+  }
   os_unfair_lock_unlock(&gServicesLock);
-  if (i == MAX_SERVICES)
+  if (i == MAX_SERVICES) {
     fprintf(stderr, "[tcc] too many services: %s left to tccd\n", s->service);
+  }
 }
 static const SRTCCService *service_named(const char *name) {
   const SRTCCService *found = NULL;
   os_unfair_lock_lock(&gServicesLock);
-  for (int i = 0; i < MAX_SERVICES && gServices[i] && !found; i++)
-    if (!strcmp(gServices[i]->service, name))
+  for (int i = 0; i < MAX_SERVICES && gServices[i] && !found; i++) {
+    if (!strcmp(gServices[i]->service, name)) {
       found = gServices[i];
+    }
+  }
   os_unfair_lock_unlock(&gServicesLock);
   return found;
 }
@@ -60,16 +70,18 @@ static xpc_connection_t privacy_host(void) {
   static dispatch_once_t once;
   dispatch_once(&once, ^{
     c = SRHostConnect(SRPV_SERVICE, dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), nil);
-    if (!c)
+    if (!c) {
       fprintf(stderr, "[tcc] no %s: SimRun's permissions can't be checked, the app is denied\n", SRPV_SERVICE);
+    }
   });
   return c;
 }
 // SimRun's permission, from its reply (one of privacy.h's strings, which outlive the reply); denied if there is none.
 static const char *host_status(xpc_object_t reply) {
   const char *st = reply && xpc_get_type(reply) == XPC_TYPE_DICTIONARY ? xpc_dictionary_get_string(reply, "status") : NULL;
-  if (!st)
+  if (!st) {
     return SRPV_DENIED;
+  }
   return !strcmp(st, SRPV_AUTHORIZED) ? SRPV_AUTHORIZED : !strcmp(st, SRPV_UNDETERMINED) ? SRPV_UNDETERMINED
        : !strcmp(st, SRPV_RESTRICTED) ? SRPV_RESTRICTED : SRPV_DENIED;
 }
@@ -94,8 +106,9 @@ static BOOL app_allowed(const SRTCCService *s) {
 }
 static void remember_allowed(const SRTCCService *s) {
   NSString *p = decisions_path();
-  if (!p || app_allowed(s))
+  if (!p || app_allowed(s)) {
     return;
+  }
   NSMutableDictionary *d = [[NSDictionary dictionaryWithContentsOfFile:p] mutableCopy] ?: [NSMutableDictionary dictionary];
   d[@(s->service)] = @"allowed";
   [NSFileManager.defaultManager createDirectoryAtPath:p.stringByDeletingLastPathComponent withIntermediateDirectories:YES attributes:nil error:NULL];
@@ -106,23 +119,26 @@ static void remember_allowed(const SRTCCService *s) {
 // has no Info.plist, and WebKit's extensions ask for their app.
 static BOOL usage_missing(const SRTCCService *s) {
   NSBundle *b = NSBundle.mainBundle;
-  if (![b.bundlePath.pathExtension isEqualToString:@"app"] || [b objectForInfoDictionaryKey:@(s->usageKey)])
+  if (![b.bundlePath.pathExtension isEqualToString:@"app"] || [b objectForInfoDictionaryKey:@(s->usageKey)]) {
     return NO;
+  }
   static NSMutableSet<NSString *> *warned;
   static os_unfair_lock lock = OS_UNFAIR_LOCK_INIT;
   os_unfair_lock_lock(&lock);
   BOOL first = ![warned containsObject:@(s->service)];
   [warned ?: (warned = [NSMutableSet set]) addObject:@(s->service)];
   os_unfair_lock_unlock(&lock);
-  if (first)
+  if (first) {
     fprintf(stderr, "[tcc] %s asked for %s without %s in its Info.plist: iOS would end the app here; SimRun denies it\n",
                      getprogname(), s->service, s->usageKey);
+  }
   return YES;
 }
 
 static void settled(const SRTCCService *s, SRTCCRight right) {
-  if (s->changed)
+  if (s->changed) {
     s->changed(right);
+  }
 }
 
 static SRTCCRight current_right(const SRTCCService *s) {
@@ -155,24 +171,26 @@ static void request_right(const SRTCCService *s, BOOL sync, void (^done)(SRTCCRi
   };
   const char *permission = s->macPermission ? s->macPermission() : NULL;
   xpc_connection_t c = permission ? privacy_host() : NULL;
-  if (!permission)
+  if (!permission) {
     finish(SRPV_AUTHORIZED);   // nothing of the Mac's
-  else if (!c)
+  } else if (!c) {
     finish(SRPV_DENIED);
-  else if (sync)
+  } else if (sync) {
     finish(host_status(xpc_connection_send_message_with_reply_sync(c, host_message("request", permission))));
-  else
+  } else {
     xpc_connection_send_message_with_reply(c, host_message("request", permission), dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0),
                                               ^(xpc_object_t r) {
       finish(host_status(r));
     });
+  }
 }
 void SRTCCRequest(const char *service, BOOL sync, void (^done)(SRTCCRight right)) {
   const SRTCCService *s = service_named(service);
-  if (s)
+  if (s) {
     request_right(s, sync, done);
-  else
+  } else {
     done(SRTCCDenied);
+  }
 }
 
 // ---------- libTCC
@@ -180,13 +198,15 @@ static id gRecords[3];   // the records we answer with, one per right
 static char kPromptPolicy, kReplyPolicy;   // associated-object keys on the options
 
 static void my_tcc_message_options_set_request_prompt_policy(id options, int policy) {
-  if (options)
+  if (options) {
     objc_setAssociatedObject(options, &kPromptPolicy, @(policy), OBJC_ASSOCIATION_RETAIN);
+  }
   tcc_message_options_set_request_prompt_policy(options, policy);
 }
 static void my_tcc_message_options_set_reply_handler_policy(id options, int policy) {
-  if (options)
+  if (options) {
     objc_setAssociatedObject(options, &kReplyPolicy, @(policy), OBJC_ASSOCIATION_RETAIN);
+  }
   tcc_message_options_set_reply_handler_policy(options, policy);
 }
 
@@ -212,9 +232,11 @@ static void my_tcc_server_message_request_authorization(id server, id options, i
   });
 }
 static long my_tcc_authorization_record_get_authorization_right(id record) {
-  for (long r = 0; r < 3; r++)
-    if (record && record == gRecords[r])
+  for (long r = 0; r < 3; r++) {
+    if (record && record == gRecords[r]) {
       return r;
+    }
+  }
   return tcc_authorization_record_get_authorization_right(record);
 }
 
@@ -229,6 +251,7 @@ __attribute__((used, section("__DATA,__interpose"))) static struct {
 
 void SRTCCStart(void) {
   gVerbose = getenv("TCC_VERBOSE") != NULL;
-  for (int r = 0; r < 3; r++)
+  for (int r = 0; r < 3; r++) {
     gRecords[r] = [NSObject new];
+  }
 }

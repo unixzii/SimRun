@@ -10,8 +10,9 @@ static void try(const char *host, const char *port, bool tls) {
   nw_connection_set_state_changed_handler(c, ^(nw_connection_state_t st, nw_error_t err) {
     const char *n[] = {"invalid", "waiting", "preparing", "ready", "failed", "cancelled"};
     printf("[nw] %s:%s%s -> %s", host, port, tls ? " (TLS)" : "", n[st]);
-    if (err)
+    if (err) {
       printf(" err=%d domain=%d", nw_error_get_error_code(err), nw_error_get_error_domain(err));
+    }
     printf("\n");
     if ((st == nw_connection_state_ready || st == nw_connection_state_failed || st == nw_connection_state_waiting) && !done) {
       done = true;
@@ -19,8 +20,9 @@ static void try(const char *host, const char *port, bool tls) {
     }
   });
   nw_connection_start(c);
-  if (dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, 10 * NSEC_PER_SEC)))
+  if (dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, 10 * NSEC_PER_SEC))) {
     printf("[nw] %s:%s -> TIMEOUT (stuck preparing)\n", host, port);
+  }
   nw_connection_cancel(c);
 }
 int main() {

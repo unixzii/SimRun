@@ -21,7 +21,12 @@
 #import "app.h"
 
 static int gVerbose;
-#define LOG(fmt, ...) do { if (gVerbose) NSLog(@"[drag] " fmt, ##__VA_ARGS__); } while (0)
+#define LOG(fmt, ...) \
+  do { \
+    if (gVerbose) { \
+      NSLog(@"[drag] " fmt, ##__VA_ARGS__); \
+    } \
+  } while (0)
 
 // UIKit / DragUI (private; resolved at runtime)
 @interface NSObject (SRDragSPI)
@@ -68,8 +73,9 @@ static SRDragSession *session_for(uint32_t sid) {
 // The finger, once it belongs to the drag (main thread). Drag events wait for the image hand-off (UIKit ignores
 // them before it, and a lift it ignores would leave the drag hanging); then the latest state is sent.
 static void send_drag_event(SRDragSession *s) {
-  if (s.ended || !s.handedOff)
+  if (s.ended || !s.handedOff) {
     return;
+  }
   int locus = s.entered ? SRHID_DRAG_WITHIN : SRHID_DRAG_ENTERED;
   s.entered = YES;
   SRHIDDragEvent(s.sessionID, locus, s.location.x, s.location.y, !s.lifted);   // UIKit -> destination -> our server methods
@@ -84,8 +90,9 @@ static void send_drag_event(SRDragSession *s) {
 }
 static void touch_handler(int phase, float x, float y, void *ctx) {
   SRDragSession *s = (__bridge SRDragSession *)ctx;
-  if (s.ended || s.lifted)
+  if (s.ended || s.lifted) {
     return;
+  }
   s.lifted = phase == SRHID_TOUCH_ENDED || phase == SRHID_TOUCH_CANCELLED;
   s.location = CGPointMake(x, y);
   [s moveTo:s.location];
@@ -103,8 +110,9 @@ static void touch_handler(int phase, float x, float y, void *ctx) {
   // the preview: asking for it also hands the drag image off, which UIKit waits for before feeding drop targets
   NSIndexSet *want = [self.configuration valueForKey:@"preferredPreviewIndexes"];
   NSUInteger n = [[[self.configuration valueForKey:@"itemCollection"] valueForKey:@"items"] count];
-  if (!want.count)
+  if (!want.count) {
     want = [NSIndexSet indexSetWithIndexesInRange:NSMakeRange(0, n)];
+  }
   [self.source requestDragPreviewsForIndexSet:want reply:^(NSArray *previews, id fence, long long x) {
     dispatch_async(dispatch_get_main_queue(), ^{
       self.handedOff = YES;
@@ -116,14 +124,18 @@ static void touch_handler(int phase, float x, float y, void *ctx) {
 
 // ---- floating preview (main thread)
 - (void)showPreviews:(NSArray *)previews {
-  if (self.ended)
+  if (self.ended) {
     return;
+  }
   UIWindowScene *scene = nil;
-  for (UIScene *sc in UIApplication.sharedApplication.connectedScenes)
-    if ([sc isKindOfClass:UIWindowScene.class] && (!scene || sc.activationState == UISceneActivationStateForegroundActive))
+  for (UIScene *sc in UIApplication.sharedApplication.connectedScenes) {
+    if ([sc isKindOfClass:UIWindowScene.class] && (!scene || sc.activationState == UISceneActivationStateForegroundActive)) {
       scene = (UIWindowScene *)sc;
-  if (!scene)
+    }
+  }
+  if (!scene) {
     return;
+  }
   UIWindow *w = [[UIWindow alloc] initWithWindowScene:scene];
   w.windowLevel = UIWindowLevelAlert + 100;
   w.userInteractionEnabled = NO;   // the hid module sends events to the interactive window under the finger
@@ -135,8 +147,9 @@ static void touch_handler(int phase, float x, float y, void *ctx) {
   for (id pc in previews.reverseObjectEnumerator) {   // first preview on top
     id p = [pc preview];
     UIView *v = [[pc imageComponent] createSnapshotViewForPreview:p];
-    if (!v)
+    if (!v) {
       continue;
+    }
     // druid shows the lifted image at its scaled size, with the finger at the lift anchor point
     CGSize unscaled = [[p valueForKey:@"unscaledSize"] CGSizeValue], scaled = [[p valueForKey:@"scaledSize"] CGSizeValue];
     CGFloat k = unscaled.width > 0 ? scaled.width / unscaled.width : 1;
@@ -153,8 +166,9 @@ static void touch_handler(int phase, float x, float y, void *ctx) {
   LOG(@"session %u: showing %lu previews", self.sessionID, (unsigned long)previews.count);
 }
 - (void)moveTo:(CGPoint)p {
-  if (!self.overlay)
+  if (!self.overlay) {
     return;
+  }
   self.stack.center = [self.overlay convertPoint:p fromCoordinateSpace:self.overlay.windowScene.coordinateSpace];
 }
 - (void)hidePreview {
@@ -169,8 +183,9 @@ static void touch_handler(int phase, float x, float y, void *ctx) {
 
 - (void)finishWithOperation:(NSUInteger)op {
   @synchronized (self) {
-    if (self.ended)
+    if (self.ended) {
       return;
+    }
     self.ended = YES;
   }
   LOG(@"session %u ends, operation %lu", self.sessionID, (unsigned long)op);
@@ -218,8 +233,9 @@ static void touch_handler(int phase, float x, float y, void *ctx) {
   [self finishWithOperation:op];
 }
 - (void)sawDragEndEvent {   // the finger lifted; without a drop request nothing accepted the drag
-  if (!self.dropRequested)
+  if (!self.dropRequested) {
     [self finishWithOperation:0];
+  }
 }
 @end
 
@@ -236,8 +252,9 @@ static void copy_interfaces(void) {
     destination = [[NSClassFromString(@"_UIDruidDestinationConnection") alloc] initWithSessionIdentifier:UINT32_MAX systemPolicy:NO];
     gSourceInterface = [[source valueForKey:@"_connection"] remoteObjectInterface];
     gDestinationInterface = [[destination valueForKey:@"_connection"] remoteObjectInterface];
-    if (!gSourceInterface || !gDestinationInterface)
+    if (!gSourceInterface || !gDestinationInterface) {
       NSLog(@"[drag] UIKit's druid interfaces not found; drag & drop won't work");
+    }
   });
 }
 
@@ -248,8 +265,9 @@ static void copy_interfaces(void) {
 - (BOOL)listener:(NSXPCListener *)l shouldAcceptNewConnection:(NSXPCConnection *)c {
   copy_interfaces();
   c.exportedInterface = self.destination ? gDestinationInterface : gSourceInterface;
-  if (!c.exportedInterface)
+  if (!c.exportedInterface) {
     return NO;
+  }
   c.exportedObject = self;
   [c resume];
   return YES;

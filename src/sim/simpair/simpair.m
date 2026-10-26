@@ -44,8 +44,9 @@ static NSError *Wait(const char *what, BOOL (^finished)(void), void (^call)(SRPa
     }
     [NSRunLoop.currentRunLoop runMode:NSDefaultRunLoopMode beforeDate:[NSDate dateWithTimeIntervalSinceNow:0.1]];
   }
-  if (result)
+  if (result) {
     LOG("%s: %s", what, result.description.UTF8String);
+  }
   return result;
 }
 
@@ -72,8 +73,9 @@ int main(int argc, char **argv) {
     LOG("connecting the IDS relay to %s", peer.UUIDString.UTF8String);
     if (Wait("IDSSimulatorLocalPairingTransportConnect", nil, ^(SRPairCompletion c) {
       connect(peer, c, q);
-    }))
+    })) {
       return 1;
+    }
     // as CoreSimulatorBridge does, on to NanoRegistry whatever this says (a relay that was never suspended answers EALREADY)
     Wait("IDSSimulatorLocalPairingTransportResume", nil, ^(SRPairCompletion c) {
       resume(^(NSError *error) {
@@ -93,16 +95,18 @@ int main(int argc, char **argv) {
       return 0;
     }
     BOOL before = NO;
-    for (id device in [registry getPairedDevices])
+    for (id device in [registry getPairedDevices]) {
       before |= [[device valueForProperty:pairingID] isEqual:peer];
+    }
     LOG("%s %s", before ? "switching to" : "pairing with", peer.UUIDString.UTF8String);
     NSError *e = before ? Wait("switchToSimulator", paired, ^(SRPairCompletion c) {
       [registry switchToSimulator:peer withQueue:q withCompletion:c];
     }) : Wait("pairWithSimulator", paired, ^(SRPairCompletion c) {
       [registry pairWithSimulator:peer withQueue:q withCompletion:c];
     });
-    if (e)
+    if (e) {
       return 1;
+    }
     LOG("paired with %s", peer.UUIDString.UTF8String);
     return 0;
   }

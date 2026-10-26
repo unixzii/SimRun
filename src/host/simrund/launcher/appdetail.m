@@ -45,9 +45,11 @@ static NSString *const kDefaultProfile = @"default";   // instancesOfApp:'s key 
 - (NSArray<NSString *> *)appPaths:(id<NSDraggingInfo>)info {
   NSArray<NSURL *> *urls = [info.draggingPasteboard readObjectsForClasses:@[ NSURL.class ] options:@{ NSPasteboardURLReadingFileURLsOnlyKey: @YES }];
   NSMutableArray *paths = [NSMutableArray array];
-  for (NSURL *u in urls)
-    if ([u.pathExtension isEqualToString:@"app"])
+  for (NSURL *u in urls) {
+    if ([u.pathExtension isEqualToString:@"app"]) {
       [paths addObject:u.path];
+    }
+  }
   return paths;
 }
 - (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)info {
@@ -55,8 +57,9 @@ static NSString *const kDefaultProfile = @"default";   // instancesOfApp:'s key 
 }
 - (BOOL)performDragOperation:(id<NSDraggingInfo>)info {
   NSArray *p = [self appPaths:info];
-  if (!p.count || !self.onDrop)
+  if (!p.count || !self.onDrop) {
     return NO;
+  }
   self.onDrop(p);
   return YES;
 }
@@ -116,8 +119,9 @@ static NSImage *Symbol(NSString *name, CGFloat size, NSFontWeight weight) {
   __weak SRAppDetailController *weakSelf = self;
   root.onDrop = ^(NSArray<NSString *> *paths) {
     SRAppDetailController *me = weakSelf;
-    if (me.onDrop)
+    if (me.onDrop) {
       me.onDrop(paths);
+    }
   };
   self.view = root;
   [self buildAppView];
@@ -142,8 +146,9 @@ static NSImage *Symbol(NSString *name, CGFloat size, NSFontWeight weight) {
   _bundleID.textColor = NSColor.secondaryLabelColor;
   _bundleID.selectable = YES;
   _bundleID.lineBreakMode = NSLineBreakByTruncatingTail;
-  for (NSTextField *f in @[ _name, _bundleID ])
+  for (NSTextField *f in @[ _name, _bundleID ]) {
     [f setContentCompressionResistancePriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
+  }
   _version = InfoValue();
   _requires = InfoValue();
   _status = InfoValue();
@@ -228,10 +233,11 @@ static NSImage *Symbol(NSString *name, CGFloat size, NSFontWeight weight) {
   _profiles.onDelete = ^{
     SRAppDetailController *me = weakSelf;
     NSArray *ps = me.selectedProfiles;
-    if ([me canDeleteProfiles:ps])
+    if ([me canDeleteProfiles:ps]) {
       [me deleteProfiles:ps];
-    else
+    } else {
       NSBeep();
+    }
   };
   NSArray *cols = @[ @[ @"profile", @"Profile", @120 ], @[ @"process", @"PID", @80 ], @[ @"runsOn", @"Runs On", @250 ],
                      @[ @"container", @"Data Container", @280 ] ];
@@ -330,8 +336,9 @@ static NSImage *Symbol(NSString *name, CGFloat size, NSFontWeight weight) {
 
 - (void)showPage:(NSInteger)index {
   _tabs.selectedIndex = index;
-  for (NSUInteger i = 0; i < _pages.count; i++)
+  for (NSUInteger i = 0; i < _pages.count; i++) {
     _pages[i].hidden = (NSInteger)i != index;
+  }
 }
 
 // ---------------------------------------------------------------- state
@@ -355,8 +362,9 @@ static NSImage *Symbol(NSString *name, CGFloat size, NSFontWeight weight) {
 }
 
 - (void)update {
-  if (!self.isViewLoaded)
+  if (!self.isViewLoaded) {
     return;
+  }
   _appView.hidden = _app == nil;
   _emptyView.hidden = _app != nil;
   _emptyTitle.stringValue = _libraryEmpty ? @"No Apps" : @"No App Selected";
@@ -367,8 +375,9 @@ static NSImage *Symbol(NSString *name, CGFloat size, NSFontWeight weight) {
 }
 
 - (void)reloadInfo {
-  if (!self.isViewLoaded || !_app)
+  if (!self.isViewLoaded || !_app) {
     return;
+  }
   _icon.image = _app.icon;
   _name.stringValue = _app.name;
   _bundleID.stringValue = _app.bundleIdentifier.length ? _app.bundleIdentifier : @"No bundle identifier";
@@ -391,12 +400,14 @@ static NSImage *Symbol(NSString *name, CGFloat size, NSFontWeight weight) {
 // What `profile`'s launch options (Launch With…) say it runs as and on: "iPhone 17 Pro · iOS 27.1".
 - (NSString *)runsOnForProfile:(NSString *)profile {
   NSString *key = profile ?: kDefaultProfile;
-  if (_runsOn[key])
+  if (_runsOn[key]) {
     return _runsOn[key];
+  }
   SRLaunchOptions *o = [SRLaunchOptions optionsForAppAtPath:_app.path profile:profile];
   SRRuntime *rt = o.runtimeBuild ? [SREnvironment installedRuntimeWithBuild:o.runtimeBuild] : [SREnvironment defaultRuntimeForPlatform:_app.platform];
-  if (rt && ![rt.platform isEqualToString:_app.platform])
+  if (rt && ![rt.platform isEqualToString:_app.platform]) {
     rt = nil;
+  }
   SRDeviceType *device = !rt ? nil : o.deviceType ? [SREnvironment deviceTypeWithIdentifier:o.deviceType runtime:rt]
                                                   : [SREnvironment defaultDeviceTypeForRuntime:rt];
   NSString *runtime = rt ? [NSString stringWithFormat:@"%@ %@", rt.platform, rt.version]
@@ -406,16 +417,19 @@ static NSImage *Symbol(NSString *name, CGFloat size, NSFontWeight weight) {
 }
 
 - (void)reloadState {
-  if (!self.isViewLoaded || !_app)
+  if (!self.isViewLoaded || !_app) {
     return;
+  }
   NSDictionary<NSString *, NSArray<NSNumber *> *> *running = [_delegate instancesOfApp:_app];
   NSString *ident = [SREnvironment containerIdentifierForExecutable:_app.executablePath];
   NSMutableArray<NSString *> *names = [[SREnvironment profilesForIdentifier:ident] mutableCopy];
   [names removeObject:kDefaultProfile];
   [names insertObject:kDefaultProfile atIndex:0];   // there before its first launch too
-  for (NSString *p in [running.allKeys sortedArrayUsingSelector:@selector(localizedStandardCompare:)])
-    if (![names containsObject:p])
+  for (NSString *p in [running.allKeys sortedArrayUsingSelector:@selector(localizedStandardCompare:)]) {
+    if (![names containsObject:p]) {
       [names addObject:p];
+    }
+  }
 
   NSMutableArray<SRProfileRow *> *rows = [NSMutableArray array];
   NSMutableArray<NSString *> *runningNames = [NSMutableArray array];
@@ -430,8 +444,9 @@ static NSImage *Symbol(NSString *name, CGFloat size, NSFontWeight weight) {
     row.pids = running[name] ?: @[];
     row.launching = [_delegate stateForApp:_app profile:row.profile] == SRAppStateLaunching;
     launching |= row.launching;
-    if (row.pids.count)
+    if (row.pids.count) {
       [runningNames addObject:row.profile ?: @"Default"];
+    }
     if (row.pids.count > 1) {
       NSMutableArray *instances = [NSMutableArray array];
       for (NSNumber *pid in row.pids) {
@@ -445,18 +460,20 @@ static NSImage *Symbol(NSString *name, CGFloat size, NSFontWeight weight) {
     [rows addObject:row];
   }
 
-  if (!runningNames.count)
+  if (!runningNames.count) {
     _status.stringValue = launching ? @"Launching…" : @"Not running";
-  else
+  } else {
     _status.stringValue = [NSString stringWithFormat:@"Running in %@", [NSListFormatter localizedStringByJoiningStrings:runningNames]];
+  }
   _status.textColor = runningNames.count || launching ? NSColor.labelColor : NSColor.secondaryLabelColor;
 
   NSArray<NSString *> *keep = _profiles.numberOfSelectedRows ? self.selectedProfiles : nil;   // by profile, across reloads
   _rows = rows;
   [_profiles reloadData];
   [_profiles expandItem:nil expandChildren:YES];
-  if (keep)
+  if (keep) {
     [self selectRowsOfProfiles:keep];
+  }
   [self updateRemoveButton];
 }
 
@@ -470,8 +487,9 @@ static NSImage *Symbol(NSString *name, CGFloat size, NSFontWeight weight) {
   NSMutableOrderedSet<NSString *> *out = [NSMutableOrderedSet orderedSet];
   [rows enumerateIndexesUsingBlock:^(NSUInteger r, BOOL *stop) {
     SRProfileRow *row = [self rowAt:(NSInteger)r];
-    if (row)
+    if (row) {
       [out addObject:row.profile ?: kDefaultProfile];
+    }
   }];
   return out.array;
 }
@@ -481,22 +499,26 @@ static NSImage *Symbol(NSString *name, CGFloat size, NSFontWeight weight) {
 }
 - (NSArray<NSString *> *)profilesForMenu {
   NSInteger r = _profiles.clickedRow;
-  if (![self rowAt:r])
+  if (![self rowAt:r]) {
     return nil;
-  if ([_profiles isRowSelected:r])
+  }
+  if ([_profiles isRowSelected:r]) {
     return self.selectedProfiles;
+  }
   return [self profilesOfRows:[NSIndexSet indexSetWithIndex:(NSUInteger)r]];
 }
 - (void)selectRowsOfProfiles:(NSArray<NSString *> *)profiles {
   NSMutableIndexSet *rows = [NSMutableIndexSet indexSet];
   for (NSInteger r = 0; r < _profiles.numberOfRows; r++) {
     SRProfileRow *row = [self rowAt:r];
-    if (row && !row.pid && [profiles containsObject:row.profile ?: kDefaultProfile])
+    if (row && !row.pid && [profiles containsObject:row.profile ?: kDefaultProfile]) {
       [rows addIndex:(NSUInteger)r];
+    }
   }
   [_profiles selectRowIndexes:rows byExtendingSelection:NO];
-  if (rows.count)
+  if (rows.count) {
     [_profiles scrollRowToVisible:(NSInteger)rows.firstIndex];
+  }
 }
 - (void)selectProfile:(NSString *)profile {
   [self reloadState];
@@ -504,13 +526,15 @@ static NSImage *Symbol(NSString *name, CGFloat size, NSFontWeight weight) {
 }
 - (void)outlineViewSelectionDidChange:(NSNotification *)n {
   [self updateRemoveButton];
-  if (self.onSelectProfile)
+  if (self.onSelectProfile) {
     self.onSelectProfile();
+  }
 }
 - (void)openProfile:(id)sender {
   SRProfileRow *row = [self rowAt:_profiles.clickedRow];
-  if (row && self.onOpenProfile)
+  if (row && self.onOpenProfile) {
     self.onOpenProfile(row.profile);
+  }
 }
 
 // ---------------------------------------------------------------- new profile
@@ -518,8 +542,9 @@ static NSImage *Symbol(NSString *name, CGFloat size, NSFontWeight weight) {
 // Asks for a name and makes the profile's data container, so it is listed (and runs) from then on.
 - (void)newProfile:(id)sender {
   NSWindow *window = self.view.window;
-  if (!_app || !window || window.attachedSheet)
+  if (!_app || !window || window.attachedSheet) {
     return;
+  }
   NSAlert *al = [NSAlert new];
   al.messageText = [NSString stringWithFormat:@"New Profile for %@", _app.name];
   al.informativeText = @"A profile is another data container for the app, with its own documents, preferences and caches, so the "
@@ -553,8 +578,9 @@ static NSImage *Symbol(NSString *name, CGFloat size, NSFontWeight weight) {
     NSString *name = [self->_newName.stringValue stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
     self->_newName = self->_newProblem = nil;
     self->_createButton = nil;
-    if (r != NSAlertFirstButtonReturn || ![app.path isEqualToString:self->_app.path])
+    if (r != NSAlertFirstButtonReturn || ![app.path isEqualToString:self->_app.path]) {
       return;
+    }
     [SREnvironment createContainerForIdentifier:[SREnvironment containerIdentifierForExecutable:app.executablePath] profile:name];
     [self selectProfile:name];
   }];
@@ -562,16 +588,21 @@ static NSImage *Symbol(NSString *name, CGFloat size, NSFontWeight weight) {
 
 // Why the typed name can't be a new profile, or nil.
 - (NSString *)problemWithNewProfileName:(NSString *)name {
-  if (!name.length)
+  if (!name.length) {
     return @"";
-  if (![SREnvironment normalizedProfile:name])
+  }
+  if (![SREnvironment normalizedProfile:name]) {
     return @"“default” is the app's default container.";
+  }
   NSString *problem = [SREnvironment problemWithProfileName:name];
-  if (problem)
+  if (problem) {
     return @"Use letters, digits, spaces, “.”, “_” and “-” (up to 64), not starting with “.” or a space.";
-  for (SRProfileRow *row in _rows)   // the file system compares names without case
-    if (row.profile && [row.profile caseInsensitiveCompare:name] == NSOrderedSame)
+  }
+  for (SRProfileRow *row in _rows) {   // the file system compares names without case
+    if (row.profile && [row.profile caseInsensitiveCompare:name] == NSOrderedSame) {
       return [NSString stringWithFormat:@"%@ already has a profile named “%@”.", _app.name, row.profile];
+    }
+  }
   return nil;
 }
 - (void)validateNewProfileName {
@@ -580,8 +611,9 @@ static NSImage *Symbol(NSString *name, CGFloat size, NSFontWeight weight) {
   _newProblem.stringValue = problem ?: @"";
 }
 - (void)controlTextDidChange:(NSNotification *)n {
-  if (n.object == _newName)
+  if (n.object == _newName) {
     [self validateNewProfileName];
+  }
 }
 
 // ---------------------------------------------------------------- deleting profiles
@@ -594,9 +626,11 @@ static NSImage *Symbol(NSString *name, CGFloat size, NSFontWeight weight) {
 }
 // The first of `profiles` the app runs in, or nil.
 - (NSString *)runningProfileOf:(NSArray<NSString *> *)profiles {
-  for (NSString *p in profiles)
-    if ([self isRunningInProfile:[SREnvironment normalizedProfile:p]])
+  for (NSString *p in profiles) {
+    if ([self isRunningInProfile:[SREnvironment normalizedProfile:p]]) {
       return p;
+    }
+  }
   return nil;
 }
 - (BOOL)canDeleteProfiles:(NSArray<NSString *> *)profiles {
@@ -613,13 +647,15 @@ static NSImage *Symbol(NSString *name, CGFloat size, NSFontWeight weight) {
 }
 - (void)deleteSelectedProfile:(id)sender {
   NSArray *ps = self.selectedProfiles;
-  if ([self canDeleteProfiles:ps])
+  if ([self canDeleteProfiles:ps]) {
     [self deleteProfiles:ps];
+  }
 }
 - (void)deleteProfiles:(NSArray<NSString *> *)profiles {
   NSWindow *window = self.view.window;
-  if (![self canDeleteProfiles:profiles] || !window || window.attachedSheet)
+  if (![self canDeleteProfiles:profiles] || !window || window.attachedSheet) {
     return;
+  }
   profiles = [self deletableProfiles:profiles];
   NSAlert *al = [NSAlert new];
   if (profiles.count == 1) {
@@ -628,8 +664,9 @@ static NSImage *Symbol(NSString *name, CGFloat size, NSFontWeight weight) {
                           "launch options are deleted. This can't be undone. Keychain items and app group containers are kept.";
   } else {
     NSMutableArray *quoted = [NSMutableArray array];
-    for (NSString *p in profiles)
+    for (NSString *p in profiles) {
       [quoted addObject:[NSString stringWithFormat:@"“%@”", p]];
+    }
     al.messageText = [NSString stringWithFormat:@"Delete %lu profiles of %@?", (unsigned long)profiles.count, _app.name];
     al.informativeText = [NSString stringWithFormat:@"%@: their data containers (documents, preferences, caches, everything the app "
                           "saved in them) and launch options are deleted. This can't be undone. Keychain items and app group "
@@ -639,10 +676,12 @@ static NSImage *Symbol(NSString *name, CGFloat size, NSFontWeight weight) {
   [al addButtonWithTitle:@"Cancel"];
   SRAppInfo *app = _app;
   [al beginSheetModalForWindow:window completionHandler:^(NSModalResponse r) {
-    if (r != NSAlertFirstButtonReturn)
+    if (r != NSAlertFirstButtonReturn) {
       return;
-    for (NSString *p in profiles)
+    }
+    for (NSString *p in profiles) {
       [self->_delegate deleteProfile:p ofApp:app];
+    }
     if ([app.path isEqualToString:self->_app.path]) {
       [self->_runsOn removeObjectsForKeys:profiles];
       [self reloadState];
@@ -652,16 +691,19 @@ static NSImage *Symbol(NSString *name, CGFloat size, NSFontWeight weight) {
 
 // ---------------------------------------------------------------- actions
 - (void)addApp:(id)sender {
-  if (self.onAddApp)
+  if (self.onAddApp) {
     self.onAddApp();
+  }
 }
 - (void)addXcodeBuilds:(id)sender {
-  if (self.onAddXcodeBuilds)
+  if (self.onAddXcodeBuilds) {
     self.onAddXcodeBuilds();
+  }
 }
 - (void)revealApp:(id)sender {
-  if (_app)
+  if (_app) {
     [NSWorkspace.sharedWorkspace activateFileViewerSelectingURLs:@[ [NSURL fileURLWithPath:_app.path] ]];
+  }
 }
 
 // ---------------------------------------------------------------- Profiles outline
@@ -678,8 +720,9 @@ static NSImage *Symbol(NSString *name, CGFloat size, NSFontWeight weight) {
 // A cell: an optional leading image, then a label.
 - (NSTableCellView *)cellIn:(NSOutlineView *)ov identifier:(NSString *)ident {
   NSTableCellView *cv = [ov makeViewWithIdentifier:ident owner:self];
-  if (cv)
+  if (cv) {
     return cv;
+  }
   cv = [NSTableCellView new];
   cv.identifier = ident;
   NSImageView *iv = [NSImageView new];
@@ -730,19 +773,20 @@ static NSImage *Symbol(NSString *name, CGFloat size, NSFontWeight weight) {
     iv.image = Symbol(@"circle.fill", 7, NSFontWeightRegular);
     iv.contentTintColor = NSColor.systemGreenColor;
     iv.hidden = n == 0;
-    if (row.pid)
+    if (row.pid) {
       tf.stringValue = [NSString stringWithFormat:@"%d", row.pid];
-    else if (n == 1)
+    } else if (n == 1) {
       tf.stringValue = [NSString stringWithFormat:@"%@", row.pids[0]];
-    else if (n > 1)
+    } else if (n > 1) {
       tf.stringValue = [NSString stringWithFormat:@"%lu instances", (unsigned long)n];
-    else {
+    } else {
       tf.stringValue = row.launching ? @"Launching…" : @"—";
       tf.textColor = NSColor.secondaryLabelColor;
       tf.toolTip = row.launching ? nil : @"Not running";
     }
-    if (n)
+    if (n) {
       tf.toolTip = @"Process ID";
+    }
   } else if ([ident isEqualToString:@"runsOn"]) {
     iv.hidden = YES;
     if (!row.pid) {
@@ -756,8 +800,9 @@ static NSImage *Symbol(NSString *name, CGFloat size, NSFontWeight weight) {
       iv.contentTintColor = NSColor.secondaryLabelColor;
       tf.stringValue = row.path.stringByAbbreviatingWithTildeInPath;
       tf.toolTip = row.exists ? row.path : [row.path stringByAppendingString:@"\nCreated when the app first runs in this profile."];
-      if (!row.exists)
+      if (!row.exists) {
         tf.textColor = NSColor.tertiaryLabelColor;
+      }
     }
   }
   return cv;

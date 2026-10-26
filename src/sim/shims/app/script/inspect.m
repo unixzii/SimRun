@@ -48,10 +48,11 @@ static void SRNote(CALayer *layer) {
   gFlushScheduled = YES;
   os_unfair_lock_unlock(&gLock);
   // runs after the commit that is going on now (a commit on the main thread is itself a run loop callout)
-  if (schedule)
+  if (schedule) {
     dispatch_async(dispatch_get_main_queue(), ^{
       SRFlush();
     });
+  }
 }
 
 // QuartzCore functions for backing stores, what -drawRect:/-drawInContext: drew into (looked up at runtime: private)
@@ -68,8 +69,9 @@ static NSMutableDictionary<NSString *, NSArray *> *gPendingImages;   // name -> 
 typedef void *(*SRCopyRenderLayerIMP)(id, SEL, void *, uint32_t, uint32_t *);
 static SRCopyRenderLayerIMP gCopyRenderLayer;
 static void *SRCopyRenderLayer(CALayer *self, SEL cmd, void *transaction, uint32_t layerFlags, uint32_t *commitFlags) {
-  if (gHost)
+  if (gHost) {
     SRNote(self);   // gHost is read without a lock: at worst one commit too many or too few is noted
+  }
   return gCopyRenderLayer(self, cmd, transaction, layerFlags, commitFlags);
 }
 
@@ -102,16 +104,18 @@ static NSNumber *SRId(CALayer *layer) {
 // Whether `l` is in the tree under the screen: under one of the windows' layers, through superlayers and masks.
 static BOOL SRReachable(CALayer *l, NSSet<CALayer *> *windowLayers) {
   for (int depth = 0; l && depth < 1000; depth++) {
-    if ([windowLayers containsObject:l])
+    if ([windowLayers containsObject:l]) {
       return YES;
+    }
     l = l.superlayer ?: [gMaskOwners objectForKey:l];
   }
   return NO;
 }
 static NSSet<CALayer *> *SRWindowLayers(void) {
   NSMutableSet *s = [NSMutableSet set];
-  for (UIWindow *w in SRWindows())
+  for (UIWindow *w in SRWindows()) {
     [s addObject:w.layer];
+  }
   return s;
 }
 // Forgets the nodes the Mac side has just dropped: those the screen can't reach in the tree as sent (its copy), which
@@ -124,17 +128,22 @@ static void SRForgetUnreachable(void) {
     NSNumber *n = todo.lastObject;
     [todo removeLastObject];
     NSDictionary *rec = gSent[n];
-    if (!rec || [reach containsObject:n])
+    if (!rec || [reach containsObject:n]) {
       continue;
+    }
     [reach addObject:n];
-    if (rec[@"sublayers"])
+    if (rec[@"sublayers"]) {
       [todo addObjectsFromArray:rec[@"sublayers"]];
-    if (rec[@"mask"])
+    }
+    if (rec[@"mask"]) {
       [todo addObject:rec[@"mask"]];
+    }
   }
-  for (NSNumber *n in gSent.allKeys)
-    if (![reach containsObject:n])
+  for (NSNumber *n in gSent.allKeys) {
+    if (![reach containsObject:n]) {
       [gSent removeObjectForKey:n];
+    }
+  }
 }
 
 static NSArray *SRRectValue(CGRect r) {
@@ -149,14 +158,17 @@ static NSArray *SRMatrix(CATransform3D t) {
 }
 // [r, g, b, a] in extended sRGB (components can go past 0–1 for P3 colors); nil for no color or a pattern
 static NSArray *SRColor(CGColorRef c) {
-  if (!c)
+  if (!c) {
     return nil;
+  }
   static CGColorSpaceRef ext;
-  if (!ext)
+  if (!ext) {
     ext = CGColorSpaceCreateWithName(kCGColorSpaceExtendedSRGB);
+  }
   CGColorRef m = CGColorCreateCopyByMatchingToColorSpace(ext, kCGRenderingIntentDefault, c, NULL);
-  if (!m)
+  if (!m) {
     return nil;
+  }
   const CGFloat *v = CGColorGetComponents(m);
   NSArray *a = CGColorGetNumberOfComponents(m) == 4 ? @[ @(v[0]), @(v[1]), @(v[2]), @(v[3]) ] : nil;
   CGColorRelease(m);
@@ -164,8 +176,9 @@ static NSArray *SRColor(CGColorRef c) {
 }
 // A path as [element type, coordinates…] arrays (CGPathElementType: move 1 point, line 1, quad 2, curve 3, close 0)
 static NSArray *SRPath(CGPathRef path) {
-  if (!path)
+  if (!path) {
     return nil;
+  }
   NSMutableArray *out = [NSMutableArray array];
   CGPathApplyWithBlock(path, ^(const CGPathElement *e) {
     static const int counts[] = { 1, 1, 2, 3, 0 };
@@ -179,8 +192,9 @@ static NSArray *SRPath(CGPathRef path) {
   return out;
 }
 static NSArray *SRFilterNames(NSArray *filters) {
-  if (!filters.count)
+  if (!filters.count) {
     return nil;
+  }
   NSMutableArray *names = [NSMutableArray array];
   for (id f in filters) {
     NSString *n = [f respondsToSelector:@selector(name)] ? [f name] : nil;   // CAFilter
@@ -191,20 +205,27 @@ static NSArray *SRFilterNames(NSArray *filters) {
 
 // What the Mac side can make of a layer: the Core Animation class it can mirror, or one it can only stand in for.
 static NSString *SRKind(CALayer *l) {
-  if ([l isKindOfClass:CAGradientLayer.class])
+  if ([l isKindOfClass:CAGradientLayer.class]) {
     return @"gradient";
-  if ([l isKindOfClass:CAShapeLayer.class])
+  }
+  if ([l isKindOfClass:CAShapeLayer.class]) {
     return @"shape";
-  if ([l isKindOfClass:CATransformLayer.class])
+  }
+  if ([l isKindOfClass:CATransformLayer.class]) {
     return @"transform";
-  if ([l isKindOfClass:CATextLayer.class])
+  }
+  if ([l isKindOfClass:CATextLayer.class]) {
     return @"text";
-  if ([l isKindOfClass:CAReplicatorLayer.class])
+  }
+  if ([l isKindOfClass:CAReplicatorLayer.class]) {
     return @"replicator";
-  if ([l isKindOfClass:CAEmitterLayer.class])
+  }
+  if ([l isKindOfClass:CAEmitterLayer.class]) {
     return @"emitter";
-  if ([l isKindOfClass:CAMetalLayer.class])
+  }
+  if ([l isKindOfClass:CAMetalLayer.class]) {
     return @"metal";
+  }
   // private classes, by what the layer is (SwiftUI.SDFLayer, say, is a plain container despite its name)
   static NSArray *special;
   if (!special) {
@@ -212,17 +233,21 @@ static NSString *SRKind(CALayer *l) {
     for (NSArray *e in @[ @[ @"CABackdropLayer", @"backdrop" ], @[ @"CAPortalLayer", @"portal" ], @[ @"CALayerHost", @"host" ],
                           @[ @"CASDFElementLayer", @"sdfElement" ], @[ @"CASDFLayer", @"sdf" ] ]) {
       Class k = NSClassFromString(e[0]);
-      if (k)
+      if (k) {
         [m addObject:@[ k, e[1] ]];
+      }
     }
     special = m;
   }
-  for (NSArray *e in special)
-    if ([l isKindOfClass:e[0]])
+  for (NSArray *e in special) {
+    if ([l isKindOfClass:e[0]]) {
       return e[1];
+    }
+  }
   NSString *c = NSStringFromClass(l.class);
-  if ([c containsString:@"PlayerLayer"] || [c containsString:@"VideoLayer"])
+  if ([c containsString:@"PlayerLayer"] || [c containsString:@"VideoLayer"]) {
     return @"video";
+  }
   return @"layer";
 }
 
@@ -230,8 +255,9 @@ static NSString *SRKind(CALayer *l) {
 // into), or the class of whatever else it is (an IOSurface, …).
 static void SRContents(CALayer *l, NSMutableDictionary *p) {
   id c = l.contents;
-  if (!c)
+  if (!c) {
     return;
+  }
   CFTypeRef cf = (__bridge CFTypeRef)c;
   if (CFGetTypeID(cf) == CGImageGetTypeID()) {
     p[@"contents"] = @"image";
@@ -239,56 +265,67 @@ static void SRContents(CALayer *l, NSMutableDictionary *p) {
   } else {
     // CABackingStore is a CF type: its class is the generic __NSCFType
     NSString *cls = NSStringFromClass([c class]);
-    if ([cls isEqualToString:@"__NSCFType"])
+    if ([cls isEqualToString:@"__NSCFType"]) {
       cls = CFBridgingRelease(CFCopyTypeIDDescription(CFGetTypeID(cf)));
+    }
     p[@"contents"] = [cls containsString:@"BackingStore"] ? @"backingStore" : cls;
   }
   // the picture: an image, and a tint to paint it in (alpha-only backing stores, SF Symbols' CATintedImage)
   CGImageRef image = NULL;
   CGColorRef tint = NULL;
   @try {   // private classes: whatever they do, inspecting must not take the app down
-    if (CFGetTypeID(cf) == CGImageGetTypeID())
+    if (CFGetTypeID(cf) == CGImageGetTypeID()) {
       image = CGImageRetain((CGImageRef)cf);
-    else if (gBackingStoreTypeID && CFGetTypeID(cf) == gBackingStoreTypeID()) {
+    } else if (gBackingStoreTypeID && CFGetTypeID(cf) == gBackingStoreTypeID()) {
       image = gBackingStoreCopyImage(cf);
       tint = gBackingStoreCopyTint ? gBackingStoreCopyTint(cf) : NULL;
     } else if ([NSStringFromClass([c class]) isEqualToString:@"CATintedImage"]) {
       // -image and -tint return a CGImage and a CGColor (not objects to KVC)
       SEL imageSel = NSSelectorFromString(@"image"), tintSel = NSSelectorFromString(@"tint");
-      if ([c respondsToSelector:imageSel])
+      if ([c respondsToSelector:imageSel]) {
         image = CGImageRetain(((CGImageRef (*)(id, SEL))objc_msgSend)(c, imageSel));
-      if ([c respondsToSelector:tintSel])
+      }
+      if ([c respondsToSelector:tintSel]) {
         tint = CGColorRetain(((CGColorRef (*)(id, SEL))objc_msgSend)(c, tintSel));
+      }
     }
   } @catch (NSException *e) {
     VLOG("inspect: no picture for %s: %s", NSStringFromClass([c class]).UTF8String, e.reason.UTF8String);
   }
-  if (!image && gBackingStoreTypeID && CFGetTypeID(cf) == gBackingStoreTypeID())
+  if (!image && gBackingStoreTypeID && CFGetTypeID(cf) == gBackingStoreTypeID()) {
     p[@"contents"] = @"backingStore (empty)";   // nothing drawn yet
+  }
   if (image) {
     // and the layer's contentsMultiplyColor, which Core Animation multiplies the contents by (SF Symbols' color)
     NSArray *multiply = nil;
     SEL multiplySel = NSSelectorFromString(@"contentsMultiplyColor");
-    if ([l respondsToSelector:multiplySel])
+    if ([l respondsToSelector:multiplySel]) {
       multiply = SRColor(((CGColorRef (*)(id, SEL))objc_msgSend)(l, multiplySel));
-    if ([multiply isEqual:@[ @1, @1, @1, @1 ]])
+    }
+    if ([multiply isEqual:@[ @1, @1, @1, @1 ]]) {
       multiply = nil;
+    }
     NSArray *tc = SRColor(tint);
     NSString *name = [NSString stringWithFormat:@"%p%@%@", image, tc ? [@" tint " stringByAppendingString:[tc componentsJoinedByString:@","]] : @"",
                                                   multiply ? [@" multiply " stringByAppendingString:[multiply componentsJoinedByString:@","]] : @""];
     p[@"contentsImage"] = name;
-    if (!gImages[name] && !gPendingImages[name])
+    if (!gImages[name] && !gPendingImages[name]) {
       gPendingImages[name] = @[ (__bridge id)image, tint ? (__bridge id)tint : NSNull.null, multiply ?: NSNull.null ];
+    }
     CGImageRelease(image);
   }
-  if (tint)
+  if (tint) {
     CGColorRelease(tint);
-  if (![l.contentsGravity isEqualToString:kCAGravityResize])
+  }
+  if (![l.contentsGravity isEqualToString:kCAGravityResize]) {
     p[@"contentsGravity"] = l.contentsGravity;
-  if (!CGRectEqualToRect(l.contentsRect, CGRectMake(0, 0, 1, 1)))
+  }
+  if (!CGRectEqualToRect(l.contentsRect, CGRectMake(0, 0, 1, 1))) {
     p[@"contentsRect"] = SRRectValue(l.contentsRect);
-  if (!CGRectEqualToRect(l.contentsCenter, CGRectMake(0, 0, 1, 1)))
+  }
+  if (!CGRectEqualToRect(l.contentsCenter, CGRectMake(0, 0, 1, 1))) {
     p[@"contentsCenter"] = SRRectValue(l.contentsCenter);
+  }
   p[@"contentsScale"] = @(l.contentsScale);
 }
 
@@ -296,7 +333,7 @@ static void SRContents(CALayer *l, NSMutableDictionary *p) {
 // they are (key-value coding, then keyed archiving), besides those every layer has.
 static NSArray<NSString *> *SRExtraKeys(NSString *kind) {
   static NSDictionary *keys;
-  if (!keys)
+  if (!keys) {
     keys = @{
       @"backdrop": @[ @"enabled", @"scale", @"zoom", @"groupName", @"groupNamespace", @"usesGlobalGroupNamespace", @"marginWidth", @"captureOnly",
                       @"backdropRect", @"ignoresScreenClip", @"allowsInPlaceFiltering" ],
@@ -304,6 +341,7 @@ static NSArray<NSString *> *SRExtraKeys(NSString *kind) {
       @"sdf": @[ @"effect", @"effectOffset", @"gaussianRadius", @"smoothness", @"mergeElements" ],
       @"sdfElement": @[ @"operation", @"mode", @"contentsZeroValueDistance", @"contentsOneValueDistance", @"gradientOvalization" ],
     };
+  }
   return keys[kind] ?: @[];
 }
 
@@ -311,33 +349,40 @@ static NSArray<NSString *> *SRExtraKeys(NSString *kind) {
 // keyed archive the Mac side unarchives into the same classes. Whatever can't be archived is left out.
 static NSData *SRExtras(CALayer *l, NSString *kind) {
   NSMutableDictionary *values = [NSMutableDictionary dictionary];
-  if (l.filters.count)
+  if (l.filters.count) {
     values[@"filters"] = l.filters;
-  if (l.backgroundFilters.count)
+  }
+  if (l.backgroundFilters.count) {
     values[@"backgroundFilters"] = l.backgroundFilters;
-  if (l.compositingFilter)
+  }
+  if (l.compositingFilter) {
     values[@"compositingFilter"] = l.compositingFilter;
+  }
   // per-corner radii (capsules and other corner configurations): a struct both sides' CALayer has. -_usesCornerRadii is
   // a method, not a layer property: key-value coding on a CALayer would read a key of that name from its own storage
   SEL usesRadii = NSSelectorFromString(@"_usesCornerRadii");
   @try {
-    if ([l respondsToSelector:usesRadii] && ((BOOL (*)(id, SEL))objc_msgSend)(l, usesRadii))
+    if ([l respondsToSelector:usesRadii] && ((BOOL (*)(id, SEL))objc_msgSend)(l, usesRadii)) {
       values[@"cornerRadii"] = [l valueForKey:@"cornerRadii"];
+    }
   } @catch (NSException *e) {}
   for (NSString *k in SRExtraKeys(kind)) {
     @try {
       id v = [l valueForKey:k];
-      if (v)
+      if (v) {
         values[k] = v;
+      }
     } @catch (NSException *e) {}
   }
-  if (!values.count)
+  if (!values.count) {
     return nil;
+  }
   // a struct in an NSValue (cornerRadii, CATransform3D, …) doesn't keyed-archive securely: its type and bytes do
   for (NSString *k in values.allKeys) {
     id v = values[k];
-    if (![v isKindOfClass:NSValue.class] || [v isKindOfClass:NSNumber.class])
+    if (![v isKindOfClass:NSValue.class] || [v isKindOfClass:NSNumber.class]) {
       continue;
+    }
     NSUInteger size = 0;
     NSGetSizeAndAlignment([v objCType], &size, NULL);
     NSMutableData *bytes = [NSMutableData dataWithLength:size];
@@ -346,12 +391,14 @@ static NSData *SRExtras(CALayer *l, NSString *kind) {
   }
   NSError *err = nil;
   NSData *d = [NSKeyedArchiver archivedDataWithRootObject:values requiringSecureCoding:YES error:&err];
-  if (d)
+  if (d) {
     return d;
+  }
   // one of them won't archive: keep the others
   for (NSString *k in values.allKeys) {
-    if ([NSKeyedArchiver archivedDataWithRootObject:@{ k: values[k] } requiringSecureCoding:YES error:NULL])
+    if ([NSKeyedArchiver archivedDataWithRootObject:@{ k: values[k] } requiringSecureCoding:YES error:NULL]) {
       continue;
+    }
     VLOG("inspect: can't copy %s's %s (%s)", NSStringFromClass(l.class).UTF8String, k.UTF8String, NSStringFromClass([values[k] class]).UTF8String);
     [values removeObjectForKey:k];
   }
@@ -368,21 +415,25 @@ static NSDictionary *SRRecord(CALayer *l) {
     p[@"view"] = NSStringFromClass([d class]);
     // the view controller whose view this is (UIKit's -_viewDelegate)
     static SEL viewDelegate;
-    if (!viewDelegate)
+    if (!viewDelegate) {
       viewDelegate = NSSelectorFromString(@"_viewDelegate");
+    }
     if ([d respondsToSelector:viewDelegate]) {
       id vc = ((id (*)(id, SEL))objc_msgSend)(d, viewDelegate);
-      if ([vc isKindOfClass:UIViewController.class])
+      if ([vc isKindOfClass:UIViewController.class]) {
         p[@"viewController"] = NSStringFromClass([vc class]);
+      }
     }
   }
-  if (l.name.length)
+  if (l.name.length) {
     p[@"name"] = l.name;
+  }
   NSArray *subs = l.sublayers;
   if (subs.count) {
     NSMutableArray *ids = [NSMutableArray arrayWithCapacity:subs.count];
-    for (CALayer *s in subs)
+    for (CALayer *s in subs) {
       [ids addObject:SRId(s)];
+    }
     p[@"sublayers"] = ids;
   }
   if (l.mask) {
@@ -392,31 +443,43 @@ static NSDictionary *SRRecord(CALayer *l) {
 
   p[@"bounds"] = SRRectValue(l.bounds);
   p[@"position"] = SRPointValue(l.position);
-  if (!CGPointEqualToPoint(l.anchorPoint, CGPointMake(0.5, 0.5)))
+  if (!CGPointEqualToPoint(l.anchorPoint, CGPointMake(0.5, 0.5))) {
     p[@"anchorPoint"] = SRPointValue(l.anchorPoint);
-  if (l.anchorPointZ)
+  }
+  if (l.anchorPointZ) {
     p[@"anchorPointZ"] = @(l.anchorPointZ);
-  if (l.zPosition)
+  }
+  if (l.zPosition) {
     p[@"zPosition"] = @(l.zPosition);
-  if (!CATransform3DIsIdentity(l.transform))
+  }
+  if (!CATransform3DIsIdentity(l.transform)) {
     p[@"transform"] = SRMatrix(l.transform);
-  if (!CATransform3DIsIdentity(l.sublayerTransform))
+  }
+  if (!CATransform3DIsIdentity(l.sublayerTransform)) {
     p[@"sublayerTransform"] = SRMatrix(l.sublayerTransform);
-  if (l.geometryFlipped)
+  }
+  if (l.geometryFlipped) {
     p[@"geometryFlipped"] = @YES;
+  }
 
-  if (l.hidden)
+  if (l.hidden) {
     p[@"hidden"] = @YES;
-  if (l.opacity != 1)
+  }
+  if (l.opacity != 1) {
     p[@"opacity"] = @(l.opacity);
-  if (!l.allowsGroupOpacity)
+  }
+  if (!l.allowsGroupOpacity) {
     p[@"allowsGroupOpacity"] = @NO;
-  if (!l.doubleSided)
+  }
+  if (!l.doubleSided) {
     p[@"doubleSided"] = @NO;
-  if (l.masksToBounds)
+  }
+  if (l.masksToBounds) {
     p[@"masksToBounds"] = @YES;
-  if (SRColor(l.backgroundColor))
+  }
+  if (SRColor(l.backgroundColor)) {
     p[@"backgroundColor"] = SRColor(l.backgroundColor);
+  }
   // colors whose default is opaque black are always sent, [] for none
   if (l.borderWidth) {
     p[@"borderWidth"] = @(l.borderWidth);
@@ -424,29 +487,36 @@ static NSDictionary *SRRecord(CALayer *l) {
   }
   if (l.cornerRadius) {
     p[@"cornerRadius"] = @(l.cornerRadius);
-    if (![l.cornerCurve isEqualToString:kCACornerCurveCircular])
+    if (![l.cornerCurve isEqualToString:kCACornerCurveCircular]) {
       p[@"cornerCurve"] = l.cornerCurve;
-    if (l.maskedCorners != 15)
+    }
+    if (l.maskedCorners != 15) {
       p[@"maskedCorners"] = @(l.maskedCorners);
+    }
   }
   if (l.shadowOpacity > 0) {
     p[@"shadowOpacity"] = @(l.shadowOpacity);
     p[@"shadowColor"] = SRColor(l.shadowColor) ?: @[];
     p[@"shadowOffset"] = @[ @(l.shadowOffset.width), @(l.shadowOffset.height) ];
     p[@"shadowRadius"] = @(l.shadowRadius);
-    if (l.shadowPath)
+    if (l.shadowPath) {
       p[@"shadowPath"] = SRPath(l.shadowPath);
+    }
   }
   SRContents(l, p);
-  if (SRFilterNames(l.filters))
+  if (SRFilterNames(l.filters)) {
     p[@"filters"] = SRFilterNames(l.filters);
-  if (SRFilterNames(l.backgroundFilters))
+  }
+  if (SRFilterNames(l.backgroundFilters)) {
     p[@"backgroundFilters"] = SRFilterNames(l.backgroundFilters);
-  if (l.compositingFilter)
+  }
+  if (l.compositingFilter) {
     p[@"compositingFilter"] = SRFilterNames(@[ l.compositingFilter ]).firstObject;
+  }
   NSData *extras = SRExtras(l, p[@"kind"]);
-  if (extras)
+  if (extras) {
     p[@"extras"] = extras;
+  }
   // animations in flight: each a keyed archive, by key. Once committed they carry an absolute beginTime on the mach
   // clock (CACurrentMediaTime), which the Mac shares, so the copy plays them in step with the app.
   NSArray *animationKeys = l.animationKeys;
@@ -455,67 +525,84 @@ static NSDictionary *SRRecord(CALayer *l) {
     for (NSString *k in animationKeys) {
       CAAnimation *a = [l animationForKey:k];
       NSData *d = a ? [NSKeyedArchiver archivedDataWithRootObject:a requiringSecureCoding:YES error:NULL] : nil;
-      if (d)
+      if (d) {
         anims[k] = d;
-      else
+      } else {
         VLOG("inspect: can't copy animation %s of %s", k.UTF8String, NSStringFromClass(l.class).UTF8String);
+      }
     }
-    if (anims.count)
+    if (anims.count) {
       p[@"animations"] = anims;
+    }
   }
   if ([p[@"kind"] isEqual:@"portal"]) {   // what it shows: another layer of the tree
     id src = nil;
     @try {
       src = [l valueForKey:@"sourceLayer"];
     } @catch (NSException *e) {}
-    if ([src isKindOfClass:CALayer.class])
+    if ([src isKindOfClass:CALayer.class]) {
       p[@"portalSource"] = SRId(src);
+    }
   }
 
   if ([l isKindOfClass:CAGradientLayer.class]) {
     CAGradientLayer *g = (CAGradientLayer *)l;
     NSMutableArray *colors = [NSMutableArray array];
-    for (id c in g.colors)
+    for (id c in g.colors) {
       [colors addObject:SRColor((__bridge CGColorRef)c) ?: @[ @0, @0, @0, @0 ]];
-    if (colors.count)
+    }
+    if (colors.count) {
       p[@"colors"] = colors;
-    if (g.locations.count)
+    }
+    if (g.locations.count) {
       p[@"locations"] = g.locations;
+    }
     p[@"startPoint"] = SRPointValue(g.startPoint);
     p[@"endPoint"] = SRPointValue(g.endPoint);
-    if (![g.type isEqualToString:kCAGradientLayerAxial])
+    if (![g.type isEqualToString:kCAGradientLayerAxial]) {
       p[@"gradientType"] = g.type;
+    }
   } else if ([l isKindOfClass:CAShapeLayer.class]) {
     CAShapeLayer *s = (CAShapeLayer *)l;
-    if (s.path)
+    if (s.path) {
       p[@"path"] = SRPath(s.path);
+    }
     p[@"fillColor"] = SRColor(s.fillColor) ?: @[];
-    if (SRColor(s.strokeColor))
+    if (SRColor(s.strokeColor)) {
       p[@"strokeColor"] = SRColor(s.strokeColor);
-    if (s.lineWidth != 1)
+    }
+    if (s.lineWidth != 1) {
       p[@"lineWidth"] = @(s.lineWidth);
-    if (![s.fillRule isEqualToString:kCAFillRuleNonZero])
+    }
+    if (![s.fillRule isEqualToString:kCAFillRuleNonZero]) {
       p[@"fillRule"] = s.fillRule;
-    if (![s.lineCap isEqualToString:kCALineCapButt])
+    }
+    if (![s.lineCap isEqualToString:kCALineCapButt]) {
       p[@"lineCap"] = s.lineCap;
-    if (![s.lineJoin isEqualToString:kCALineJoinMiter])
+    }
+    if (![s.lineJoin isEqualToString:kCALineJoinMiter]) {
       p[@"lineJoin"] = s.lineJoin;
-    if (s.miterLimit != 10)
+    }
+    if (s.miterLimit != 10) {
       p[@"miterLimit"] = @(s.miterLimit);
-    if (s.strokeStart != 0)
+    }
+    if (s.strokeStart != 0) {
       p[@"strokeStart"] = @(s.strokeStart);
-    if (s.strokeEnd != 1)
+    }
+    if (s.strokeEnd != 1) {
       p[@"strokeEnd"] = @(s.strokeEnd);
+    }
     if (s.lineDashPattern.count) {
       p[@"lineDashPattern"] = s.lineDashPattern;
       p[@"lineDashPhase"] = @(s.lineDashPhase);
     }
   } else if ([l isKindOfClass:CATextLayer.class]) {
     id str = ((CATextLayer *)l).string;
-    if ([str isKindOfClass:NSString.class])
+    if ([str isKindOfClass:NSString.class]) {
       p[@"string"] = str;
-    else if ([str isKindOfClass:NSAttributedString.class])
+    } else if ([str isKindOfClass:NSAttributedString.class]) {
       p[@"string"] = [str string];
+    }
   }
   return p;
 }
@@ -528,50 +615,62 @@ static NSDictionary *SRRecord(CALayer *l) {
 static NSMutableSet<NSNumber *> *gDetached;
 static void SRNoteDetached(NSDictionary *was, NSDictionary *now) {
   NSMutableSet *gone = [NSMutableSet setWithArray:was[@"sublayers"] ?: @[]];
-  if (was[@"mask"])
+  if (was[@"mask"]) {
     [gone addObject:was[@"mask"]];
+  }
   [gone minusSet:[NSSet setWithArray:now[@"sublayers"] ?: @[]]];
-  if (now[@"mask"])
+  if (now[@"mask"]) {
     [gone removeObject:now[@"mask"]];
+  }
   [gDetached unionSet:gone];
 }
 static void SRDiff(CALayer *l, NSMutableArray *nodes, NSMutableSet *done) {
   NSNumber *n = SRId(l);
-  if ([done containsObject:n])
+  if ([done containsObject:n]) {
     return;
+  }
   [done addObject:n];
   NSDictionary *now = SRRecord(l), *was = gSent[n];
   NSMutableDictionary *change = [NSMutableDictionary dictionary];
   [now enumerateKeysAndObjectsUsingBlock:^(NSString *k, id v, BOOL *stop) {
-    if (![was[k] isEqual:v])
+    if (![was[k] isEqual:v]) {
       change[k] = v;
+    }
   }];
   NSMutableArray *unset = [NSMutableArray array];
-  for (NSString *k in was)
-    if (!now[k])
+  for (NSString *k in was) {
+    if (!now[k]) {
       [unset addObject:k];
+    }
+  }
   if (change.count || unset.count) {
     change[@"id"] = n;
-    if (unset.count)
+    if (unset.count) {
       change[@"unset"] = unset;
+    }
     [nodes addObject:change];
     gSent[n] = now;
-    if (was && (change[@"sublayers"] || change[@"mask"] || [unset containsObject:@"sublayers"] || [unset containsObject:@"mask"]))
+    if (was && (change[@"sublayers"] || change[@"mask"] || [unset containsObject:@"sublayers"] || [unset containsObject:@"mask"])) {
       SRNoteDetached(was, now);
+    }
   }
-  for (CALayer *s in l.sublayers)
-    if (!gSent[SRId(s)])
+  for (CALayer *s in l.sublayers) {
+    if (!gSent[SRId(s)]) {
       SRDiff(s, nodes, done);
-  if (l.mask && !gSent[SRId(l.mask)])
+    }
+  }
+  if (l.mask && !gSent[SRId(l.mask)]) {
     SRDiff(l.mask, nodes, done);
+  }
 }
 
 // The screen node: its size, and the windows' layers back to front.
 static void SRDiffScreen(NSMutableArray *nodes, NSMutableSet *done) {
   UIWindowScene *scene = SRActiveScene();
   NSMutableArray *windows = [NSMutableArray array];
-  for (UIWindow *w in SRWindows())
+  for (UIWindow *w in SRWindows()) {
     [windows addObject:SRId(w.layer)];
+  }
   CGRect b = scene.coordinateSpace.bounds;
   NSDictionary *now = @{ @"class": @"Screen", @"kind": @"screen", @"bounds": SRRectValue(b), @"position": SRPointValue(CGPointMake(CGRectGetMidX(b), CGRectGetMidY(b))),
                          @"scale": @(scene.screen.scale), @"sublayers": windows };
@@ -580,22 +679,27 @@ static void SRDiffScreen(NSMutableArray *nodes, NSMutableSet *done) {
     NSMutableDictionary *change = [now mutableCopy];
     change[@"id"] = @1;
     [nodes addObject:change];
-    if (gSent[@1])
+    if (gSent[@1]) {
       SRNoteDetached(gSent[@1], now);
+    }
     gSent[@1] = now;
   }
-  for (UIWindow *w in SRWindows())
-    if (!gSent[SRId(w.layer)])
+  for (UIWindow *w in SRWindows()) {
+    if (!gSent[SRId(w.layer)]) {
       SRDiff(w.layer, nodes, done);
+    }
+  }
 }
 
 // Every layer in the tree, compared (the first batch, and the fallback without the commit hook).
 static void SRDiffAll(CALayer *l, NSMutableArray *nodes, NSMutableSet *done) {
   SRDiff(l, nodes, done);
-  for (CALayer *s in l.sublayers)
+  for (CALayer *s in l.sublayers) {
     SRDiffAll(s, nodes, done);
-  if (l.mask)
+  }
+  if (l.mask) {
     SRDiffAll(l.mask, nodes, done);
+  }
 }
 
 // ---------------------------------------------------------------- pictures
@@ -604,17 +708,20 @@ static void SRDiffAll(CALayer *l, NSMutableArray *nodes, NSMutableSet *done) {
 // painted in it; then everything is multiplied by `multiply` ([r, g, b, a], or nil).
 static NSDictionary *SRPicture(CGImageRef image, CGColorRef tint, NSArray *multiply) {
   size_t w = CGImageGetWidth(image), h = CGImageGetHeight(image);
-  if (!w || !h)
+  if (!w || !h) {
     return nil;
+  }
   double scale = w * h > 4e6 ? sqrt(4e6 / ((double)w * h)) : 1;
   size_t W = MAX(1, (size_t)(w * scale)), H = MAX(1, (size_t)(h * scale));
   static CGColorSpaceRef srgb;
-  if (!srgb)
+  if (!srgb) {
     srgb = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+  }
   NSMutableData *pixels = [NSMutableData dataWithLength:W * H * 4];
   CGContextRef ctx = CGBitmapContextCreate(pixels.mutableBytes, W, H, 8, W * 4, srgb, kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Little);
-  if (!ctx)
+  if (!ctx) {
     return nil;
+  }
   CGRect r = CGRectMake(0, 0, W, H);
   if (CGImageIsMask(image)) {   // a mask is painted in the fill color
     CGContextSetFillColorWithColor(ctx, tint ?: CGColorGetConstantColor(kCGColorWhite));
@@ -647,13 +754,15 @@ static NSDictionary *SRPicturesFor(NSArray *nodes) {
   NSMutableDictionary *out = [NSMutableDictionary dictionary];
   for (NSDictionary *n in nodes) {
     NSString *name = n[@"contentsImage"];
-    if (!name || gImages[name] || out[name])
+    if (!name || gImages[name] || out[name]) {
       continue;
+    }
     NSArray *src = gPendingImages[name];
     id tint = src[1] == NSNull.null ? nil : src[1], multiply = src[2] == NSNull.null ? nil : src[2];
     NSDictionary *pic = src ? SRPicture((__bridge CGImageRef)src[0], (__bridge CGColorRef)tint, multiply) : nil;
-    if (!pic)
+    if (!pic) {
       continue;
+    }
     out[name] = pic;
     gImages[name] = src[0];
   }
@@ -663,15 +772,20 @@ static NSDictionary *SRPicturesFor(NSArray *nodes) {
 
 // Drops the pictures no node names any more (the Mac side does the same after each batch).
 static void SRForgetUnusedPictures(void) {
-  if (!gImages.count)
+  if (!gImages.count) {
     return;
+  }
   NSMutableSet *used = [NSMutableSet set];
-  for (NSDictionary *rec in gSent.objectEnumerator)
-    if (rec[@"contentsImage"])
+  for (NSDictionary *rec in gSent.objectEnumerator) {
+    if (rec[@"contentsImage"]) {
       [used addObject:rec[@"contentsImage"]];
-  for (NSString *name in gImages.allKeys)
-    if (![used containsObject:name])
+    }
+  }
+  for (NSString *name in gImages.allKeys) {
+    if (![used containsObject:name]) {
       [gImages removeObjectForKey:name];
+    }
+  }
 }
 
 // ---------------------------------------------------------------- sending
@@ -721,23 +835,27 @@ static void SRFlush(void) {
   [gDirty removeAllObjects];
   gFlushScheduled = NO;
   os_unfair_lock_unlock(&gLock);
-  if (!gHost)
+  if (!gHost) {
     return;
+  }
   double t = SRNowMS();
   BOOL full = gSent.count == 0;   // the first batch, or starting over after one was dropped
   NSMutableArray *nodes = [NSMutableArray array];
   NSMutableSet *done = [NSMutableSet set];
   SRDiffScreen(nodes, done);
   if (full || !gCopyRenderLayer) {
-    for (UIWindow *w in SRWindows())
+    for (UIWindow *w in SRWindows()) {
       SRDiffAll(w.layer, nodes, done);
+    }
   }
   else {
     // a layer that isn't in the tree (not attached yet, or in a window we don't show) is sent once it is attached
     NSSet *windowLayers = SRWindowLayers();
-    for (CALayer *l in dirty)
-      if (SRReachable(l, windowLayers))
+    for (CALayer *l in dirty) {
+      if (SRReachable(l, windowLayers)) {
         SRDiff(l, nodes, done);
+      }
+    }
   }
   // something left its superlayer in this batch: forget what the Mac side drops along with it
   if (gDetached.count) {
@@ -748,10 +866,12 @@ static void SRFlush(void) {
   SRForgetUnusedPictures();
   if (nodes.count || full) {
     NSMutableDictionary *batch = [NSMutableDictionary dictionaryWithObject:nodes forKey:@"nodes"];
-    if (full)
+    if (full) {
       batch[@"full"] = @YES;
-    if (pictures.count)
+    }
+    if (pictures.count) {
       batch[@"images"] = pictures;
+    }
     SRSendBatch(batch);
   }
   VLOG("inspect: %s batch: %lu dirty, %lu nodes, %lu pictures, %.1f ms", full ? "full" : "change", (unsigned long)dirty.count, (unsigned long)nodes.count,
@@ -760,8 +880,9 @@ static void SRFlush(void) {
 
 // ---------------------------------------------------------------- start / stop (main thread)
 static void SRInspectStop(void) {
-  if (!gHost)
+  if (!gHost) {
     return;
+  }
   mach_port_deallocate(mach_task_self(), gHost);
   gHost = MACH_PORT_NULL;
   [gSent removeAllObjects];
@@ -785,24 +906,27 @@ void SRInspectStart(mach_port_t host, mach_port_t notify) {
     gBackingStoreTypeID = dlsym(RTLD_DEFAULT, "CABackingStoreGetTypeID");
     gBackingStoreCopyImage = dlsym(RTLD_DEFAULT, "CABackingStoreCopyCGImage");
     gBackingStoreCopyTint = dlsym(RTLD_DEFAULT, "CABackingStoreCopyTintColor");
-    if (!gBackingStoreCopyImage)
+    if (!gBackingStoreCopyImage) {
       gBackingStoreTypeID = NULL;
+    }
   }
   SRInspectStop();   // a new watcher replaces the old one
   gHost = host;
   // the host destroying its port (to stop watching, or because it quit) arrives as a dead-name notification
   mach_port_t prev = MACH_PORT_NULL;
   mach_port_request_notification(mach_task_self(), host, MACH_NOTIFY_DEAD_NAME, 0, notify, MACH_MSG_TYPE_MAKE_SEND_ONCE, &prev);
-  if (prev)
+  if (prev) {
     mach_port_deallocate(mach_task_self(), prev);
+  }
   if (!hooked) {
     hooked = YES;
     if (!SRHookCommits()) {   // no hook: compare everything 4 times a second while someone watches
       dispatch_source_t timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
       dispatch_source_set_timer(timer, DISPATCH_TIME_NOW, 250 * NSEC_PER_MSEC, 50 * NSEC_PER_MSEC);
       dispatch_source_set_event_handler(timer, ^{
-        if (gHost)
+        if (gHost) {
           SRFlush();
+        }
       });
       dispatch_resume(timer);
       (void)CFBridgingRetain(timer);
@@ -814,8 +938,9 @@ void SRInspectStart(mach_port_t host, mach_port_t notify) {
 
 void SRInspectDeadName(mach_port_t name) {
   mach_port_deallocate(mach_task_self(), name);   // the notification's reference
-  if (name == gHost)
+  if (name == gHost) {
     SRInspectStop();
+  }
 }
 
 // ---------------------------------------------------------------- edits from the inspector
@@ -835,56 +960,64 @@ void SRInspectEdit(NSDictionary *edit) {
   CGColorRef color = NULL;
   if ([key hasSuffix:@"Color"] && a.count == 4) {
     static CGColorSpaceRef ext;
-    if (!ext)
+    if (!ext) {
       ext = CGColorSpaceCreateWithName(kCGColorSpaceExtendedSRGB);
+    }
     CGFloat c[4] = { [a[0] doubleValue], [a[1] doubleValue], [a[2] doubleValue], [a[3] doubleValue] };
     color = CGColorCreate(ext, c);
   }
   @try {
     if ([key isEqual:@"hidden"]) {
-      if (view)
+      if (view) {
         view.hidden = [v boolValue];
-      else
+      } else {
         l.hidden = [v boolValue];
+      }
     }
     else if ([key isEqual:@"opacity"]) {
-      if (view)
+      if (view) {
         view.alpha = [v doubleValue];
-      else
+      } else {
         l.opacity = [v floatValue];
+      }
     }
-    else if ([key isEqual:@"masksToBounds"])
+    else if ([key isEqual:@"masksToBounds"]) {
       l.masksToBounds = [v boolValue];
-    else if ([key isEqual:@"backgroundColor"]) {
-      if (view)
+    } else if ([key isEqual:@"backgroundColor"]) {
+      if (view) {
         view.backgroundColor = color ? [UIColor colorWithCGColor:color] : nil;
-      else
+      } else {
         l.backgroundColor = color;
+      }
     }
-    else if ([key isEqual:@"borderWidth"])
+    else if ([key isEqual:@"borderWidth"]) {
       l.borderWidth = [v doubleValue];
-    else if ([key isEqual:@"borderColor"])
+    } else if ([key isEqual:@"borderColor"]) {
       l.borderColor = color;
-    else if ([key isEqual:@"cornerRadius"])
+    } else if ([key isEqual:@"cornerRadius"]) {
       l.cornerRadius = [v doubleValue];
-    else if ([key isEqual:@"position"] && a.count == 2) {
+    } else if ([key isEqual:@"position"] && a.count == 2) {
       CGPoint p = CGPointMake([a[0] doubleValue], [a[1] doubleValue]);
-      if (view)
+      if (view) {
         view.center = p;
-      else
+      } else {
         l.position = p;
+      }
     } else if ([key isEqual:@"size"] && a.count == 2) {
       CGRect b = l.bounds;
       b.size = CGSizeMake(MAX(0, [a[0] doubleValue]), MAX(0, [a[1] doubleValue]));
-      if (view)
+      if (view) {
         view.bounds = b;
-      else
+      } else {
         l.bounds = b;
-    } else
+      }
+    } else {
       VLOG("inspect: can't edit %s", key.UTF8String);
+    }
   } @catch (NSException *e) {
     LOG("inspect: editing %s failed: %s", key.UTF8String, e.reason.UTF8String);
   }
-  if (color)
+  if (color) {
     CGColorRelease(color);
+  }
 }

@@ -29,8 +29,9 @@ static NSImage *Symbol(NSString *name, NSString *description) {
 @end
 @implementation SRAppCell
 - (instancetype)initWithFrame:(NSRect)f {
-  if (!(self = [super initWithFrame:f]))
+  if (!(self = [super initWithFrame:f])) {
     return nil;
+  }
   NSImageView *iv = [NSImageView new];
   iv.imageScaling = NSImageScaleProportionallyUpOrDown;
   iv.translatesAutoresizingMaskIntoConstraints = NO;
@@ -69,8 +70,9 @@ static NSImage *Symbol(NSString *name, NSString *description) {
   titles.orientation = NSUserInterfaceLayoutOrientationVertical;
   titles.alignment = NSLayoutAttributeLeading;
   titles.spacing = 1;
-  for (NSTextField *t in @[ title, sub ])
+  for (NSTextField *t in @[ title, sub ]) {
     [t setContentCompressionResistancePriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
+  }
   NSView *status = [NSView new];
   status.translatesAutoresizingMaskIntoConstraints = NO;
   [status addSubview:dot];
@@ -112,10 +114,11 @@ static NSImage *Symbol(NSString *name, NSString *description) {
 - (void)setLaunching:(BOOL)launching running:(BOOL)running {
   self.status.hidden = !launching && !running;
   self.runningDot.hidden = launching || !running;
-  if (launching)
+  if (launching) {
     [self.spinner startAnimation:nil];
-  else
+  } else {
     [self.spinner stopAnimation:nil];
+  }
 }
 @end
 
@@ -127,8 +130,9 @@ static NSImage *Symbol(NSString *name, NSString *description) {
 @implementation SRSidebarView
 - (NSRect)frameOfOutlineCellAtRow:(NSInteger)row {
   NSRect f = [super frameOfOutlineCellAtRow:row];
-  if (NSIsEmptyRect(f))
+  if (NSIsEmptyRect(f)) {
     return f;
+  }
   CGFloat h = MIN(NSHeight(f), NSWidth(f));   // the triangle is square
   return NSMakeRect(NSMinX(f), NSMidY(f) - h / 2, NSWidth(f), h);
 }
@@ -219,8 +223,9 @@ static NSImage *Symbol(NSString *name, NSString *description) {
   _detail.onOpenProfile = ^(NSString *profile) {
     SRLauncher *me = weakSelf;
     SRAppInfo *a = [me selectedApp];
-    if (a)
+    if (a) {
       [me->_delegate launchApp:a profile:profile];
+    }
   };
   NSMenu *profileMenu = [NSMenu new];
   profileMenu.delegate = self;
@@ -249,22 +254,26 @@ static NSImage *Symbol(NSString *name, NSString *description) {
 
   _window.contentMinSize = NSMakeSize(700, 420);
   [_window setContentSize:NSMakeSize(900, 600)];
-  if (!splitSaved)
+  if (!splitSaved) {
     [split.splitView setPosition:250 ofDividerAtIndex:0];
+  }
   _window.frameAutosaveName = @"SRLauncher";
-  if (![_window setFrameUsingName:@"SRLauncher"])
+  if (![_window setFrameUsingName:@"SRLauncher"]) {
     [_window center];
+  }
   [self reload];
 }
 
 - (void)show {
-  if (!_window)
+  if (!_window) {
     [self buildWindow];
+  }
   [_window layoutIfNeeded];
   [_table sizeLastColumnToFit];
   // SimRun started by simrun stays out of the Dock until it has a window to show (main() in simrund.m)
-  if (NSApp.activationPolicy != NSApplicationActivationPolicyRegular)
+  if (NSApp.activationPolicy != NSApplicationActivationPolicyRegular) {
     NSApp.activationPolicy = NSApplicationActivationPolicyRegular;
+  }
   [_window makeKeyAndOrderFront:nil];
   [NSApp activateIgnoringOtherApps:YES];
 }
@@ -276,32 +285,40 @@ static NSImage *Symbol(NSString *name, NSString *description) {
 - (void)buildSidebar {
   NSArray<SRAppInfo *> *apps = SRLibrary.shared.apps;
   NSMutableSet *bundled = [NSMutableSet set], *watchAppRows = [NSMutableSet set];
-  for (SRAppInfo *a in apps)
+  for (SRAppInfo *a in apps) {
     for (SRAppInfo *w in a.watchApps) {
-      if (w.bundleIdentifier.length)
+      if (w.bundleIdentifier.length) {
         [bundled addObject:w.bundleIdentifier];
+      }
       [watchAppRows addObject:w.path];
     }
+  }
   NSMutableArray *phone = [NSMutableArray array], *watch = [NSMutableArray array];
-  for (SRAppInfo *a in apps)
-    if (![a.platform isEqualToString:SRPlatformWatchOS])
+  for (SRAppInfo *a in apps) {
+    if (![a.platform isEqualToString:SRPlatformWatchOS]) {
       [phone addObject:a];
-    else if (![bundled containsObject:a.bundleIdentifier])
+    } else if (![bundled containsObject:a.bundleIdentifier]) {
       [watch addObject:a];
+    }
+  }
   NSMutableArray *sections = [NSMutableArray array];
-  if (phone.count)
+  if (phone.count) {
     [sections addObject:kPhoneSection];
-  if (watch.count)
+  }
+  if (watch.count) {
     [sections addObject:kWatchSection];
+  }
   _sections = sections;
   _sectionApps = @{ kPhoneSection: phone, kWatchSection: watch };
   _watchAppRows = watchAppRows;
 }
 // The row of the app at `path` (shown), or NSNotFound
 - (NSUInteger)rowOfAppAtPath:(NSString *)path {
-  for (NSInteger r = 0; r < _table.numberOfRows; r++)
-    if ([[self appAtRow:r].path isEqualToString:path])
+  for (NSInteger r = 0; r < _table.numberOfRows; r++) {
+    if ([[self appAtRow:r].path isEqualToString:path]) {
       return (NSUInteger)r;
+    }
+  }
   return NSNotFound;
 }
 - (SRAppInfo *)appAtRow:(NSInteger)row {
@@ -310,40 +327,52 @@ static NSImage *Symbol(NSString *name, NSString *description) {
 }
 
 - (void)reload {
-  if (!_window)
+  if (!_window) {
     return;
-  if (!_expanded)
+  }
+  if (!_expanded) {
     _expanded = [NSMutableSet setWithArray:[NSUserDefaults.standardUserDefaults stringArrayForKey:kExpandedKey] ?: @[]];
+  }
   NSString *path = [self selectedApp].path ?: [NSUserDefaults.standardUserDefaults stringForKey:kSelectionKey];
   [self buildSidebar];
   _restoring = YES;
   [_table reloadData];
   for (NSString *section in _sections) {
     [_table expandItem:section];
-    for (SRAppInfo *a in _sectionApps[section])
-      if ([_expanded containsObject:a.path])
+    for (SRAppInfo *a in _sectionApps[section]) {
+      if ([_expanded containsObject:a.path]) {
         [_table expandItem:a];
+      }
+    }
   }
   _restoring = NO;
   NSUInteger i = [self rowOfAppAtPath:path];
-  if (i == NSNotFound)   // a Watch app whose iPhone app is collapsed: the iPhone app
-    for (SRAppInfo *a in _sectionApps[kPhoneSection])
-      if ([[a.watchApps valueForKey:@"path"] containsObject:path])
+  if (i == NSNotFound) {   // a Watch app whose iPhone app is collapsed: the iPhone app
+    for (SRAppInfo *a in _sectionApps[kPhoneSection]) {
+      if ([[a.watchApps valueForKey:@"path"] containsObject:path]) {
         i = [self rowOfAppAtPath:a.path];
-  for (NSInteger r = 0; i == NSNotFound && r < _table.numberOfRows; r++)
-    if ([self appAtRow:r])
+      }
+    }
+  }
+  for (NSInteger r = 0; i == NSNotFound && r < _table.numberOfRows; r++) {
+    if ([self appAtRow:r]) {
       i = (NSUInteger)r;
-  if (i != NSNotFound)
+    }
+  }
+  if (i != NSNotFound) {
     [_table selectRowIndexes:[NSIndexSet indexSetWithIndex:i] byExtendingSelection:NO];
+  }
   [self selectionChanged];
   [_detail reloadInfo];   // launch options are saved with a library change notification
 }
 - (void)reloadState {
-  if (!_window)
+  if (!_window) {
     return;
-  if (_table.numberOfRows)
+  }
+  if (_table.numberOfRows) {
     [_table reloadDataForRowIndexes:[NSIndexSet indexSetWithIndexesInRange:NSMakeRange(0, (NSUInteger)_table.numberOfRows)]
                       columnIndexes:[NSIndexSet indexSetWithIndex:0]];
+  }
   [_detail reloadState];
   [_window.toolbar validateVisibleItems];
 }
@@ -352,13 +381,15 @@ static NSImage *Symbol(NSString *name, NSString *description) {
 }
 - (void)selectApp:(SRAppInfo *)app {
   NSUInteger i = [self rowOfAppAtPath:app.path];
-  if (i != NSNotFound && _window)
+  if (i != NSNotFound && _window) {
     [_table selectRowIndexes:[NSIndexSet indexSetWithIndex:i] byExtendingSelection:NO];
+  }
 }
 - (void)selectionChanged {
   SRAppInfo *a = [self selectedApp];
-  if (a)
+  if (a) {
     [NSUserDefaults.standardUserDefaults setObject:a.path forKey:kSelectionKey];
+  }
   _detail.libraryEmpty = SRLibrary.shared.apps.count == 0;
   _detail.app = a;
   _moreItem.enabled = a != nil;
@@ -379,12 +410,14 @@ static NSString *Profile(NSString *name) {
 - (SRAppInfo *)appFor:(id)sender profiles:(NSArray<NSString *> **)profiles {
   NSDictionary *t = [sender isKindOfClass:NSMenuItem.class] ? [sender representedObject] : nil;
   if ([t isKindOfClass:NSDictionary.class]) {
-    if (profiles)
+    if (profiles) {
       *profiles = [t[@"profiles"] isKindOfClass:NSArray.class] ? t[@"profiles"] : @[ @"default" ];
+    }
     return t[@"app"];
   }
-  if (profiles)
+  if (profiles) {
     *profiles = _detail.selectedProfiles;
+  }
   return [self selectedApp];
 }
 - (SRAppInfo *)appFor:(id)sender {
@@ -392,32 +425,38 @@ static NSString *Profile(NSString *name) {
 }
 
 - (void)launchSelected:(id)sender {   // double-click, Launch / Show: launch, or show the running app
-  if (sender == _table && ![self appAtRow:_table.clickedRow])
+  if (sender == _table && ![self appAtRow:_table.clickedRow]) {
     return;   // not an app's row
+  }
   NSArray *ps = nil;
   SRAppInfo *a = [self appFor:sender profiles:&ps];
-  if (a)
-    for (NSString *p in ps)
+  if (a) {
+    for (NSString *p in ps) {
       [_delegate launchApp:a profile:Profile(p)];
+    }
+  }
 }
 - (void)run:(id)sender {               // ▶: launch, or relaunch the running app
   NSArray *ps = nil;
   SRAppInfo *a = [self appFor:sender profiles:&ps];
-  if (!a)
+  if (!a) {
     return;
+  }
   for (NSString *name in ps) {
     NSString *p = Profile(name);
-    if ([_delegate stateForApp:a profile:p] == SRAppStateRunning)
+    if ([_delegate stateForApp:a profile:p] == SRAppStateRunning) {
       [_delegate relaunchApp:a profile:p];
-    else
+    } else {
       [_delegate launchApp:a profile:p];
+    }
   }
 }
 - (void)launchWithSelected:(id)sender {   // one profile's options at a time
   NSArray *ps = nil;
   SRAppInfo *a = [self appFor:sender profiles:&ps];
-  if (a && ps.count == 1)
+  if (a && ps.count == 1) {
     [self showLaunchOptionsForApp:a profile:Profile(ps[0])];
+  }
 }
 
 - (void)showLaunchOptionsForApp:(SRAppInfo *)app profile:(NSString *)profile {
@@ -427,10 +466,11 @@ static NSString *Profile(NSString *name) {
   BOOL running = [_delegate stateForApp:app profile:profile] != SRAppStateStopped;
   __weak id<SRLauncherDelegate> delegate = _delegate;
   [SRLaunchSheet beginForApp:app profile:profile running:running window:_window launch:^{
-    if (running)
+    if (running) {
       [delegate relaunchApp:app profile:profile];
-    else
+    } else {
       [delegate launchApp:app profile:profile];
+    }
   }];
 }
 
@@ -446,8 +486,9 @@ static NSString *Profile(NSString *name) {
     last = [SRLibrary.shared addPath:p];
     [_delegate launchApp:last profile:nil];
   }
-  if (last)
+  if (last) {
     [self selectApp:last];
+  }
   if (problems.count) {
     [self show];
     NSAlert *al = [NSAlert new];
@@ -469,11 +510,13 @@ static NSString *Profile(NSString *name) {
   p.message = @"Choose app bundles built for an iOS or watchOS Simulator destination, or iOS apps built for devices (not from "
                "the App Store).";
   [p beginSheetModalForWindow:_window completionHandler:^(NSModalResponse r) {
-    if (r != NSModalResponseOK)
+    if (r != NSModalResponseOK) {
       return;
+    }
     NSMutableArray *paths = [NSMutableArray array];
-    for (NSURL *u in p.URLs)
+    for (NSURL *u in p.URLs) {
       [paths addObject:u.path];
+    }
     [self openPaths:paths];
   }];
 }
@@ -485,8 +528,9 @@ static NSString *Profile(NSString *name) {
   [self show];
   NSArray *builds = [SRLibrary xcodeSimulatorBuilds];
   NSUInteger before = SRLibrary.shared.apps.count;
-  for (NSString *p in builds)
+  for (NSString *p in builds) {
     [SRLibrary.shared addPath:p];
+  }
   NSUInteger added = SRLibrary.shared.apps.count - before;
   NSAlert *al = [NSAlert new];
   al.messageText = added ? [NSString stringWithFormat:@"Added %lu app%@ from Xcode", (unsigned long)added, added == 1 ? @"" : @"s"]
@@ -499,8 +543,9 @@ static NSString *Profile(NSString *name) {
 
 - (void)showInFinder:(id)sender {
   SRAppInfo *a = [self appFor:sender];
-  if (a)
+  if (a) {
     [NSWorkspace.sharedWorkspace activateFileViewerSelectingURLs:@[ [NSURL fileURLWithPath:a.path] ]];
+  }
 }
 - (void)removeSelected:(id)sender {
   SRAppInfo *a = [self appFor:sender];
@@ -512,16 +557,20 @@ static NSString *Profile(NSString *name) {
 - (void)quitSelected:(id)sender {
   NSArray *ps = nil;
   SRAppInfo *a = [self appFor:sender profiles:&ps];
-  if (a)
-    for (NSString *p in ps)
+  if (a) {
+    for (NSString *p in ps) {
       [_delegate quitApp:a profile:Profile(p)];
+    }
+  }
 }
 - (void)logSelected:(id)sender {
   NSArray *ps = nil;
   SRAppInfo *a = [self appFor:sender profiles:&ps];
-  if (a)
-    for (NSString *p in ps)
+  if (a) {
+    for (NSString *p in ps) {
       [_delegate showLogForApp:a profile:Profile(p)];   // no window for one it doesn't run in
+    }
+  }
 }
 - (NSString *)containerOfApp:(SRAppInfo *)a profile:(NSString *)profile {
   return [SREnvironment containerPathForIdentifier:[SREnvironment containerIdentifierForExecutable:a.executablePath] profile:profile];
@@ -532,26 +581,32 @@ static NSString *Profile(NSString *name) {
 - (void)containerSelected:(id)sender {
   NSArray *ps = nil;
   SRAppInfo *a = [self appFor:sender profiles:&ps];
-  if (!a)
+  if (!a) {
     return;
+  }
   NSMutableArray<NSURL *> *urls = [NSMutableArray array];
-  for (NSString *p in ps)
-    if ([self app:a hasDataInProfile:Profile(p)])
+  for (NSString *p in ps) {
+    if ([self app:a hasDataInProfile:Profile(p)]) {
       [urls addObject:[NSURL fileURLWithPath:[self containerOfApp:a profile:Profile(p)]]];
-  if (urls.count)
+    }
+  }
+  if (urls.count) {
     [NSWorkspace.sharedWorkspace activateFileViewerSelectingURLs:urls];
+  }
 }
 - (void)resetSelected:(id)sender {
   NSArray *ps = nil;
   SRAppInfo *a = [self appFor:sender profiles:&ps];
-  if (!a)
+  if (!a) {
     return;
+  }
   NSAlert *al = [NSAlert new];
   NSString *p = ps.count == 1 ? Profile(ps[0]) : nil;
   if (ps.count > 1) {
     NSMutableArray *names = [NSMutableArray array];
-    for (NSString *name in ps)
+    for (NSString *name in ps) {
       [names addObject:[NSString stringWithFormat:@"“%@”", Profile(name) ?: @"Default"]];
+    }
     al.messageText = [NSString stringWithFormat:@"Reset the data of %@ in %lu profiles?", a.name, (unsigned long)ps.count];
     al.informativeText = [NSString stringWithFormat:@"%@: their data containers (documents, preferences, caches, everything under the "
                           "app's home directory) are deleted, as if the app were deleted and installed again. Keychain items and app "
@@ -565,23 +620,27 @@ static NSString *Profile(NSString *name) {
   [al addButtonWithTitle:@"Reset"].hasDestructiveAction = YES;
   [al addButtonWithTitle:@"Cancel"];
   [al beginSheetModalForWindow:_window completionHandler:^(NSModalResponse r) {
-    if (r != NSAlertFirstButtonReturn)
+    if (r != NSAlertFirstButtonReturn) {
       return;
-    for (NSString *name in ps)
+    }
+    for (NSString *name in ps) {
       [self->_delegate resetDataForApp:a profile:Profile(name)];
+    }
     [self->_detail reloadState];
   }];
 }
 - (void)deleteProfileSelected:(id)sender {
   NSArray *ps = nil;
   SRAppInfo *a = [self appFor:sender profiles:&ps];
-  if (a)
+  if (a) {
     [_detail deleteProfiles:ps];
+  }
 }
 - (void)keychainSelected:(id)sender {
   SRAppInfo *a = [self appFor:sender];
-  if (a)
+  if (a) {
     [SRKeychainWindow.shared showWithFilter:a.bundleIdentifier ?: @""];
+  }
 }
 
 // ---------------------------------------------------------------- menus
@@ -593,11 +652,13 @@ static NSString *Profile(NSString *name) {
   SRAppInfo *a = nil;
   NSArray *profiles = nil;
   if (menu == _table.menu) {
-    if ((a = [self appAtRow:_table.clickedRow]))
+    if ((a = [self appAtRow:_table.clickedRow])) {
       [self addAppItemsFor:a to:menu];
+    }
   } else if (menu == _profileMenu) {
-    if ((a = [self selectedApp]) && (profiles = _detail.profilesForMenu))
+    if ((a = [self selectedApp]) && (profiles = _detail.profilesForMenu)) {
       [self addProfileItemsFor:a profiles:profiles to:menu running:YES];
+    }
   } else if ((a = [self selectedApp])) {   // More
     // the toolbar item doesn't list the first item of this menu, filled as it opens (like a pull-down's title): a hidden one
     [menu addItemWithTitle:@"" action:nil keyEquivalent:@""].hidden = YES;
@@ -619,8 +680,9 @@ static NSMenuItem *AddItem(NSMenu *menu, NSString *title, SEL action, id target,
 - (void)addAppItemsFor:(SRAppInfo *)a to:(NSMenu *)menu {
   AddItem(menu, @"Show Keychain Items", @selector(keychainSelected:), self, a, nil);
   AddItem(menu, @"Show in Finder", @selector(showInFinder:), self, a, nil);
-  if ([_watchAppRows containsObject:a.path])
+  if ([_watchAppRows containsObject:a.path]) {
     return;   // an iPhone app's Watch app: removed with it
+  }
   [menu addItem:NSMenuItem.separatorItem];
   AddItem(menu, @"Remove from SimRun", @selector(removeSelected:), self, a, nil);
 }
@@ -631,7 +693,7 @@ typedef struct {
 } SRStates;
 - (SRStates)statesOfApp:(SRAppInfo *)a profiles:(NSArray<NSString *> *)profiles {
   SRStates s = { 0, 0, 0 };
-  for (NSString *p in profiles)
+  for (NSString *p in profiles) {
     switch ([_delegate stateForApp:a profile:Profile(p)]) {
       case SRAppStateStopped:
         s.stopped++;
@@ -643,6 +705,7 @@ typedef struct {
         s.running++;
         break;
     }
+  }
   return s;
 }
 
@@ -662,26 +725,30 @@ typedef struct {
         with.keyEquivalentModifierMask = NSEventModifierFlagOption;
       }
     }
-    if (st.stopped < ps.count)
+    if (st.stopped < ps.count) {
       AddItem(menu, @"Quit App", @selector(quitSelected:), self, a, ps);
-    if (one)
+    }
+    if (one) {
       AddItem(menu, @"Launch Options…", @selector(launchWithSelected:), self, a, ps);
+    }
     NSMenuItem *log = AddItem(menu, one ? @"Show Log" : @"Show Logs", @selector(logSelected:), self, a, ps);
     log.enabled = st.stopped < ps.count;
     [menu addItem:NSMenuItem.separatorItem];
   }
   // the profiles' data containers: there once the app has run in them; reset only while it doesn't run in any of them
   BOOL hasData = NO;
-  for (NSString *p in ps)
+  for (NSString *p in ps) {
     hasData |= [self app:a hasDataInProfile:Profile(p)];
+  }
   NSMenu *container = [[NSMenu alloc] initWithTitle:@"Data Container"];
   container.autoenablesItems = NO;
   NSMenuItem *show = AddItem(container, @"Show in Finder", @selector(containerSelected:), self, a, ps);
   NSMenuItem *reset = AddItem(container, @"Reset…", @selector(resetSelected:), self, a, ps);
   show.enabled = hasData;
   reset.enabled = hasData && st.stopped == ps.count;
-  if (hasData && !reset.enabled)
+  if (hasData && !reset.enabled) {
     reset.toolTip = one ? @"Quit the app to reset its data." : @"Quit the app in these profiles to reset their data.";
+  }
   NSString *p = one ? Profile(ps[0]) : nil;
   NSString *title = !one ? [NSString stringWithFormat:@"Data Containers (%lu Profiles)", (unsigned long)ps.count]
                   : running || !p ? @"Data Container" : [NSString stringWithFormat:@"Data Container (%@)", p];
@@ -692,8 +759,9 @@ typedef struct {
     NSString *what = deletable == 1 ? @"Delete Profile…" : [NSString stringWithFormat:@"Delete %lu Profiles…", (unsigned long)deletable];
     NSMenuItem *del = AddItem(menu, what, @selector(deleteProfileSelected:), self, a, ps);
     del.enabled = [_detail canDeleteProfiles:ps];
-    if (!del.enabled)
+    if (!del.enabled) {
       del.toolTip = deletable == 1 ? @"Quit the app in this profile to delete it." : @"Quit the app in these profiles to delete them.";
+    }
   }
 }
 
@@ -737,8 +805,9 @@ typedef struct {
     kLogItem: @[ @"text.page", @"Log", @"Show the log (output) of the app in the selected profile", NSStringFromSelector(@selector(logSelected:)) ],
   };
   NSArray *d = items[ident];
-  if (!d)
+  if (!d) {
     return nil;
+  }
   NSToolbarItem *it = [[NSToolbarItem alloc] initWithItemIdentifier:ident];
   it.image = Symbol(d[0], d[1]) ?: Symbol(@"doc.text", d[1]);
   it.label = d[1];
@@ -762,21 +831,26 @@ typedef struct {
     item.toolTip = !a ? @"Run the app" : [NSString stringWithFormat:st.running && !st.stopped ? @"Relaunch %@" : @"Run %@", what];
     return a && st.launching < ps.count;
   }
-  if ([ident isEqualToString:kStopItem])
+  if ([ident isEqualToString:kStopItem]) {
     item.toolTip = a ? [NSString stringWithFormat:@"Quit %@", what] : @"Quit the app";
-  if ([ident isEqualToString:kStopItem] || [ident isEqualToString:kLogItem])
+  }
+  if ([ident isEqualToString:kStopItem] || [ident isEqualToString:kLogItem]) {
     return a && st.stopped < ps.count;
-  if ([ident isEqualToString:kOptionsItem])
+  }
+  if ([ident isEqualToString:kOptionsItem]) {
     return a && ps.count == 1;   // one profile's options at a time
+  }
   return a != nil;
 }
 
 // ---------------------------------------------------------------- sidebar
 - (NSArray *)childrenOfItem:(id)item {
-  if (!item)
+  if (!item) {
     return _sections;
-  if ([item isKindOfClass:NSString.class])
+  }
+  if ([item isKindOfClass:NSString.class]) {
     return _sectionApps[item] ?: @[];
+  }
   return [item watchApps];
 }
 - (NSInteger)outlineView:(NSOutlineView *)o numberOfChildrenOfItem:(id)item {
@@ -807,8 +881,9 @@ typedef struct {
 // which iPhone apps show their Watch apps, kept across launches; collapsing the selected Watch app's selects its iPhone app
 - (void)outlineViewItemDidExpand:(NSNotification *)n {
   SRAppInfo *a = n.userInfo[@"NSObject"];
-  if (_restoring || ![a isKindOfClass:SRAppInfo.class])
+  if (_restoring || ![a isKindOfClass:SRAppInfo.class]) {
     return;
+  }
   [_expanded addObject:a.path];
   [NSUserDefaults.standardUserDefaults setObject:_expanded.allObjects forKey:kExpandedKey];
 }
@@ -818,12 +893,14 @@ typedef struct {
 }
 - (void)outlineViewItemDidCollapse:(NSNotification *)n {
   SRAppInfo *a = n.userInfo[@"NSObject"];
-  if (_restoring || ![a isKindOfClass:SRAppInfo.class])
+  if (_restoring || ![a isKindOfClass:SRAppInfo.class]) {
     return;
+  }
   [_expanded removeObject:a.path];
   [NSUserDefaults.standardUserDefaults setObject:_expanded.allObjects forKey:kExpandedKey];
-  if (_selectAfterCollapse == a)
+  if (_selectAfterCollapse == a) {
     [_table selectRowIndexes:[NSIndexSet indexSetWithIndex:(NSUInteger)[_table rowForItem:a]] byExtendingSelection:NO];
+  }
   _selectAfterCollapse = nil;
 }
 - (NSView *)outlineView:(NSOutlineView *)o viewForTableColumn:(NSTableColumn *)c item:(id)item {
@@ -860,25 +937,30 @@ typedef struct {
   // the dot: running in some profile; the spinner: launching in one (no window yet)
   NSDictionary *instances = [_delegate instancesOfApp:a];
   BOOL launching = [_delegate stateForApp:a profile:nil] == SRAppStateLaunching;
-  for (NSString *p in instances)
+  for (NSString *p in instances) {
     launching |= [_delegate stateForApp:a profile:[p isEqualToString:@"default"] ? nil : p] == SRAppStateLaunching;
+  }
   [cell setLaunching:launching running:instances.count > 0];
   return cell;
 }
 - (NSDragOperation)outlineView:(NSOutlineView *)o validateDrop:(id<NSDraggingInfo>)info proposedItem:(id)item proposedChildIndex:(NSInteger)i {
   [o setDropItem:nil dropChildIndex:NSOutlineViewDropOnItemIndex];   // whole-list highlight
   NSArray<NSURL *> *urls = [info.draggingPasteboard readObjectsForClasses:@[ NSURL.class ] options:@{ NSPasteboardURLReadingFileURLsOnlyKey: @YES }];
-  for (NSURL *u in urls)
-    if ([u.pathExtension isEqualToString:@"app"])
+  for (NSURL *u in urls) {
+    if ([u.pathExtension isEqualToString:@"app"]) {
       return NSDragOperationCopy;
+    }
+  }
   return NSDragOperationNone;
 }
 - (BOOL)outlineView:(NSOutlineView *)o acceptDrop:(id<NSDraggingInfo>)info item:(id)item childIndex:(NSInteger)i {
   NSArray<NSURL *> *urls = [info.draggingPasteboard readObjectsForClasses:@[ NSURL.class ] options:@{ NSPasteboardURLReadingFileURLsOnlyKey: @YES }];
   NSMutableArray *paths = [NSMutableArray array];
-  for (NSURL *u in urls)
-    if ([u.pathExtension isEqualToString:@"app"])
+  for (NSURL *u in urls) {
+    if ([u.pathExtension isEqualToString:@"app"]) {
       [paths addObject:u.path];
+    }
+  }
   [self openPaths:paths];
   return paths.count > 0;
 }

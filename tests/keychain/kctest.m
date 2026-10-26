@@ -14,8 +14,9 @@
 static int gFail;
 static void check(BOOL ok, NSString *what) {
   printf("%s %s\n", ok ? "ok  " : "FAIL", what.UTF8String);
-  if (!ok)
+  if (!ok) {
     gFail++;
+  }
 }
 static void check_status(OSStatus got, OSStatus want, NSString *what) {
   check(got == want, got == want ? what : [NSString stringWithFormat:@"%@ (status %d, want %d)", what, (int)got, (int)want]);
@@ -135,8 +136,9 @@ static void keys(void) {
     (id)kSecAttrKeyType: (id)kSecAttrKeyTypeECSECPrimeRandom, (id)kSecAttrKeySizeInBits: @256, (id)kSecAttrLabel: @"kctest key",
     (id)kSecPrivateKeyAttrs: @{ (id)kSecAttrIsPermanent: @YES, (id)kSecAttrApplicationTag: tag } }, &e);
   check(priv != NULL, [NSString stringWithFormat:@"permanent key generated%@", e ? [(__bridge id)e description] : @""]);
-  if (!priv)
+  if (!priv) {
     return;
+  }
   SecKeyRef found = (__bridge_retained SecKeyRef)copy_matching(@{ (id)kSecClass: (id)kSecClassKey, (id)kSecAttrApplicationTag: tag,
     (id)kSecAttrKeyClass: (id)kSecAttrKeyClassPrivate, (id)kSecReturnRef: @YES }, &st);
   check_status(st, errSecSuccess, @"find the key by tag");
@@ -163,8 +165,9 @@ static void identities(void) {
   SecKeyRef key = SecKeyCreateWithData((__bridge CFDataRef)[[NSData alloc] initWithBase64EncodedString:kKey options:0],
     (__bridge CFDictionaryRef)@{ (id)kSecAttrKeyType: (id)kSecAttrKeyTypeECSECPrimeRandom, (id)kSecAttrKeyClass: (id)kSecAttrKeyClassPrivate }, NULL);
   check(cert && key, @"test certificate and key");
-  if (!cert || !key)
+  if (!cert || !key) {
     return;
+  }
   check_status(SecItemAdd((__bridge CFDictionaryRef)@{ (id)kSecValueRef: (__bridge id)cert }, NULL), errSecSuccess, @"add certificate (class from the ref)");
   NSDictionary *a = copy_matching(@{ (id)kSecClass: (id)kSecClassCertificate, (id)kSecAttrLabel: @"kctest", (id)kSecReturnAttributes: @YES }, &st);
   check_status(st, errSecSuccess, @"find certificate by its subject summary");
@@ -213,9 +216,10 @@ int main(int argc, char **argv) {
       for (id cls in @[ (id)kSecClassGenericPassword, (id)kSecClassInternetPassword ]) {
         NSArray *all = copy_matching(@{ (id)kSecClass: cls, (id)kSecMatchLimit: (id)kSecMatchLimitAll, (id)kSecReturnAttributes: @YES, (id)kSecReturnData: @YES,
                                         (id)kSecAttrSynchronizable: (id)kSecAttrSynchronizableAny }, &st);
-        for (NSDictionary *a in all)
+        for (NSDictionary *a in all) {
           printf("%s  %-30s %-20s %s  [%s]\n", [cls UTF8String], [a[(id)kSecAttrService] ?: a[(id)kSecAttrServer] ?: @"" UTF8String],
                  [a[(id)kSecAttrAccount] ?: @"" UTF8String], str(a[(id)kSecValueData]).UTF8String ?: "<data>", [a[(id)kSecAttrAccessGroup] UTF8String]);
+        }
       }
       return 0;
     }
@@ -233,10 +237,11 @@ int main(int argc, char **argv) {
       NSMutableDictionary *q = genp(@(argv[2]));
       q[(id)kSecReturnData] = @YES;
       NSData *d = copy_matching(q, &st);
-      if (st)
+      if (st) {
         printf("status %d\n", (int)st);
-      else
+      } else {
         printf("%s\n", str(d).UTF8String);
+      }
       return st != errSecSuccess;
     }
     if ([cmd isEqual:@"rm"] && argc > 2) {

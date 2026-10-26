@@ -23,43 +23,49 @@ static void mute_process(void) {
     Address a = { 'pmut' /* kAudioHardwarePropertyProcessIsAudible */, 'glob' /* kAudioObjectPropertyScopeGlobal */, 0 };
     UInt32 audible = 0;
     OSStatus st = set ? set(1 /* kAudioObjectSystemObject */, &a, 0, NULL, sizeof audible, &audible) : -1;
-    if (st)
+    if (st) {
       fprintf(stderr, "[audio] AUDIO_MUTE: couldn't mute this process (%d)\n", (int)st);
-    else
+    } else {
       LOG("muted (process inaudible)\n");
+    }
   });
 }
 
 // System sounds are played by the shared sound server, not by the process: don't ask it to (the completion still runs).
 static void muted_completion(void (^done)(void)) {
-  if (done)
+  if (done) {
     dispatch_async(dispatch_get_main_queue(), done);
+  }
 }
 static void my_AudioServicesPlaySystemSound(SystemSoundID s) {
-  if (gMuted)
+  if (gMuted) {
     LOG("muted system sound %u\n", (unsigned)s);
-  else
+  } else {
     AudioServicesPlaySystemSound(s);
+  }
 }
 static void my_AudioServicesPlayAlertSound(SystemSoundID s) {
-  if (gMuted)
+  if (gMuted) {
     LOG("muted alert sound %u\n", (unsigned)s);
-  else
+  } else {
     AudioServicesPlayAlertSound(s);
+  }
 }
 static void my_AudioServicesPlaySystemSoundWithCompletion(SystemSoundID s, void (^done)(void)) {
   if (gMuted) {
     LOG("muted system sound %u\n", (unsigned)s);
     muted_completion(done);
-  } else
+  } else {
     AudioServicesPlaySystemSoundWithCompletion(s, done);
+  }
 }
 static void my_AudioServicesPlayAlertSoundWithCompletion(SystemSoundID s, void (^done)(void)) {
   if (gMuted) {
     LOG("muted alert sound %u\n", (unsigned)s);
     muted_completion(done);
-  } else
+  } else {
     AudioServicesPlayAlertSoundWithCompletion(s, done);
+  }
 }
 
 __attribute__((used, section("__DATA,__interpose"))) static struct {

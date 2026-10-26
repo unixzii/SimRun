@@ -35,8 +35,9 @@ static void SRInstallTimers(JSContext *ctx) {
     NSNumber *ident = @(++lastID);
     [pending addObject:ident];
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(MAX(ms, 0) * NSEC_PER_MSEC)), dispatch_get_main_queue(), ^{
-      if (![pending containsObject:ident])
+      if (![pending containsObject:ident]) {
         return;   // cleared
+      }
       [pending removeObject:ident];
       gLastException = nil;
       [fn callWithArguments:@[]];
@@ -48,14 +49,16 @@ static void SRInstallTimers(JSContext *ctx) {
     return ident.doubleValue;
   };
   ctx[@"clearTimeout"] = ^(JSValue *ident) {
-    if (ident.isNumber)
+    if (ident.isNumber) {
       [pending removeObject:@([ident toDouble])];
+    }
   };
 }
 
 static JSContext *SRContext(void) {
-  if (gContext)
+  if (gContext) {
     return gContext;
+  }
   double t0 = SRNowMS();
   if (!dlopen("/System/Library/Frameworks/JavaScriptCore.framework/JavaScriptCore", RTLD_NOW)) {
     LOG("dlopen JavaScriptCore: %s", dlerror());
@@ -78,8 +81,9 @@ static JSContext *SRContext(void) {
     NSURL *url = [NSURL URLWithString:[@"simrun/" stringByAppendingString:@(kModules[i].name)]];
     gLastException = nil;
     JSValue *module = [ctx evaluateScript:[NSString stringWithFormat:@"(function (native, internal) { %@\n})", body] withSourceURL:url];
-    if (!gLastException)
+    if (!gLastException) {
       [module callWithArguments:@[ native, internal ]];
+    }
     if (gLastException) {
       LOG("loading %s: %s (line %s)", kModules[i].name, [gLastException toString].UTF8String, [gLastException[@"line"] toString].UTF8String);
       gLastException = nil;
@@ -102,13 +106,15 @@ void SRRunScript(NSString *src, uint32_t flags, void (^emit)(uint32_t kind, NSSt
   JSValue *console = [SRJSValueClass() valueWithNewObjectInContext:ctx];
   void (^log)(void) = ^{
     NSMutableArray *parts = [NSMutableArray array];
-    for (JSValue *v in SRCurrentArguments())
+    for (JSValue *v in SRCurrentArguments()) {
       [parts addObject:[[internal invokeMethod:@"formatValue" withArguments:@[ v ]] toString]];
+    }
     NSString *line = [parts componentsJoinedByString:@" "];
-    if (settled)
+    if (settled) {
       LOG("console (after its script finished): %s", line.UTF8String);
-    else
+    } else {
       emit(SR_SCRIPT_LOG, line);
+    }
   };
   console[@"log"] = log;
   console[@"error"] = log;
@@ -131,8 +137,9 @@ void SRRunScript(NSString *src, uint32_t flags, void (^emit)(uint32_t kind, NSSt
   NSNumber *prefix = @(head.length);
   double t0 = SRNowMS();
   void (^finish)(uint32_t, NSString *) = ^(uint32_t kind, NSString *text) {
-    if (settled)
+    if (settled) {
       return;
+    }
     settled = YES;
     VLOG("script took %.1f ms", SRNowMS() - t0);
     if (!(flags & SR_SCRIPT_FLAG_SNAPSHOT)) {

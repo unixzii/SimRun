@@ -1,0 +1,11 @@
+# Requires clang-format 15 or newer.
+BasedOnStyle: LLVM
+IndentWidth: 2
+ColumnLimit: 0
+SortIncludes: Never
+InsertBraces: true
+RemoveBracesLLVM: false
+AllowShortBlocksOnASingleLine: Never
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false

@@ -11,12 +11,15 @@ void xpc_connection_enable_sim2host_4sim(xpc_connection_t);   // sim clients spe
 // iOS pasteboard names -> Mac pasteboards. Other named pasteboards (UIPasteboard(name:)) get private Mac ones, so
 // they are shared by all apps but stay out of the way of Mac apps.
 static NSPasteboard *SRHostPasteboard(const char *name) {
-  if (!name)
+  if (!name) {
     return nil;
-  if (!strcmp(name, SRPB_GENERAL))
+  }
+  if (!strcmp(name, SRPB_GENERAL)) {
     return NSPasteboard.generalPasteboard;
-  if (!strcmp(name, SRPB_FIND))
+  }
+  if (!strcmp(name, SRPB_FIND)) {
     return [NSPasteboard pasteboardWithName:NSPasteboardNameFind];
+  }
   return [NSPasteboard pasteboardWithName:[@"dev.simrun.pboard." stringByAppendingString:@(name)]];
 }
 
@@ -30,8 +33,9 @@ static BOOL SRPortableType(NSString *t) {
     [ok formUnionWithCharacterSet:NSCharacterSet.alphanumericCharacterSet];
     bad = ok.invertedSet;
   });
-  if ([t hasPrefix:@"dyn."] || [t hasPrefix:@"com.apple.pasteboard.promised"] || [t isEqual:@"com.apple.NSFilePromiseItemMetaData"])
+  if ([t hasPrefix:@"dyn."] || [t hasPrefix:@"com.apple.pasteboard.promised"] || [t isEqual:@"com.apple.NSFilePromiseItemMetaData"]) {
     return NO;
+  }
   return [t containsString:@"."] && [t rangeOfCharacterFromSet:bad].location == NSNotFound;
 }
 
@@ -53,8 +57,9 @@ static BOOL SRPortableType(NSString *t) {
   _listener = xpc_connection_create(NULL, _q);
   xpc_connection_enable_sim2host_4sim(_listener);
   xpc_connection_set_event_handler(_listener, ^(xpc_object_t peer) {
-    if (xpc_get_type(peer) == XPC_TYPE_CONNECTION)
+    if (xpc_get_type(peer) == XPC_TYPE_CONNECTION) {
       [self accept:peer];
+    }
   });
   xpc_connection_activate(_listener);
   xpc_endpoint_t ep = xpc_endpoint_create(_listener);
@@ -76,19 +81,22 @@ static BOOL SRPortableType(NSString *t) {
               usingBlock:^(NSNotification *n) {
     [self setPolling:NO];
   }];
-  if (NSApp.isActive)
+  if (NSApp.isActive) {
     [self setPolling:YES];
+  }
   return port;
 }
 
 - (void)setPolling:(BOOL)on {
-  if (on == _polling)
+  if (on == _polling) {
     return;
+  }
   _polling = on;
-  if (on)
+  if (on) {
     dispatch_resume(_poll);
-  else
+  } else {
     dispatch_suspend(_poll);   // resuming fires at once: the activation check
+  }
 }
 
 - (void)isolatePid:(pid_t)pid {
@@ -99,8 +107,9 @@ static BOOL SRPortableType(NSString *t) {
 }
 - (void)endIsolationOfPid:(pid_t)pid {
   dispatch_async(_q, ^{
-    for (NSPasteboard *pb in self->_isolated[@(pid)].allValues)
+    for (NSPasteboard *pb in self->_isolated[@(pid)].allValues) {
       [pb releaseGlobally];
+    }
     [self->_isolated removeObjectForKey:@(pid)];
   });
 }
@@ -109,8 +118,9 @@ static BOOL SRPortableType(NSString *t) {
 // pasteboard named after the pid).
 - (NSPasteboard *)pasteboardNamed:(const char *)name forPid:(pid_t)pid {
   NSMutableDictionary<NSString *, NSPasteboard *> *own = _isolated[@(pid)];
-  if (!own || !name)
+  if (!own || !name) {
     return SRHostPasteboard(name);
+  }
   NSString *key = @(name);
   if (!own[key]) {
     own[key] = [NSPasteboard pasteboardWithName:[NSString stringWithFormat:@"dev.simrun.pboard.%d.%@", pid, key]];
@@ -120,11 +130,13 @@ static BOOL SRPortableType(NSString *t) {
 }
 
 - (void)checkGeneral {
-  if (!_peers.count)
+  if (!_peers.count) {
     return;
+  }
   NSInteger c = NSPasteboard.generalPasteboard.changeCount;
-  if (c == _seen)
+  if (c == _seen) {
     return;
+  }
   _seen = c;
   [self announce:SRPB_GENERAL count:c except:nil];
 }
@@ -134,11 +146,13 @@ static BOOL SRPortableType(NSString *t) {
   pid_t from = origin ? xpc_connection_get_pid(origin) : 0;
   NSNumber *domain = _isolated[@(from)] ? @(from) : nil;
   for (xpc_connection_t p in _peers) {
-    if (p == origin)
+    if (p == origin) {
       continue;
+    }
     pid_t pid = xpc_connection_get_pid(p);
-    if (domain ? pid != from : _isolated[@(pid)] != nil)
+    if (domain ? pid != from : _isolated[@(pid)] != nil) {
       continue;
+    }
     xpc_object_t e = xpc_dictionary_create(NULL, NULL, 0);
     xpc_dictionary_set_string(e, "event", "changed");
     xpc_dictionary_set_string(e, "name", name);
@@ -159,8 +173,9 @@ static BOOL SRPortableType(NSString *t) {
       return;
     }
     xpc_object_t reply = xpc_get_type(m) == XPC_TYPE_DICTIONARY ? xpc_dictionary_create_reply(m) : NULL;
-    if (!reply)
+    if (!reply) {
       return;
+    }
     @autoreleasepool {
       [self handle:m reply:reply from:peer];
     }
@@ -180,9 +195,11 @@ static BOOL SRPortableType(NSString *t) {
     xpc_object_t items = xpc_array_create(NULL, 0);
     for (NSPasteboardItem *it in pb.pasteboardItems) {
       xpc_object_t types = xpc_array_create(NULL, 0);
-      for (NSString *t in it.types)
-        if (SRPortableType(t))
+      for (NSString *t in it.types) {
+        if (SRPortableType(t)) {
           xpc_array_set_string(types, XPC_ARRAY_APPEND, t.UTF8String);
+        }
+      }
       xpc_array_append_value(items, types);
     }
     xpc_dictionary_set_value(r, "items", items);
@@ -191,31 +208,38 @@ static BOOL SRPortableType(NSString *t) {
     uint64_t i = xpc_dictionary_get_uint64(m, "index");
     const char *type = xpc_dictionary_get_string(m, "type");
     NSData *d = type && i < items.count ? [items[i] dataForType:@(type)] : nil;
-    if (d)
+    if (d) {
       xpc_dictionary_set_data(r, "data", d.bytes, d.length);
+    }
   } else if (!strcmp(op, "write")) {
     NSMutableArray<NSPasteboardItem *> *objs = [NSMutableArray array];
     xpc_object_t items = xpc_dictionary_get_value(m, "items");
-    if (items && xpc_get_type(items) == XPC_TYPE_ARRAY)
+    if (items && xpc_get_type(items) == XPC_TYPE_ARRAY) {
       xpc_array_apply(items, ^bool(size_t i, xpc_object_t reps) {
         NSPasteboardItem *it = [NSPasteboardItem new];
-        if (xpc_get_type(reps) == XPC_TYPE_ARRAY)
+        if (xpc_get_type(reps) == XPC_TYPE_ARRAY) {
           xpc_array_apply(reps, ^bool(size_t j, xpc_object_t rep) {
             const char *t = xpc_get_type(rep) == XPC_TYPE_DICTIONARY ? xpc_dictionary_get_string(rep, "type") : NULL;
             xpc_object_t d = t ? xpc_dictionary_get_value(rep, "data") : NULL;
-            if (d && xpc_get_type(d) == XPC_TYPE_DATA)
+            if (d && xpc_get_type(d) == XPC_TYPE_DATA) {
               [it setData:[NSData dataWithBytes:xpc_data_get_bytes_ptr(d) length:xpc_data_get_length(d)] forType:@(t)];
+            }
             return true;
           });
-        if (it.types.count)
+        }
+        if (it.types.count) {
           [objs addObject:it];
+        }
         return true;
       });
+    }
     [pb clearContents];
-    if (objs.count)
+    if (objs.count) {
       [pb writeObjects:objs];
-    if (pb == NSPasteboard.generalPasteboard)
+    }
+    if (pb == NSPasteboard.generalPasteboard) {
       _seen = pb.changeCount;
+    }
     [self announce:name count:pb.changeCount except:peer];   // the writer already knows
   } else {
     xpc_dictionary_set_string(r, "error", "unknown op");

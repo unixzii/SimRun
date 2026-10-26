@@ -89,8 +89,9 @@ static inline void simrund_log_path(char *buf, size_t n) {
 static inline int simrund_write_all(int fd, const void *p, size_t n) {
   while (n) {
     ssize_t w = write(fd, p, n);
-    if (w <= 0)
+    if (w <= 0) {
       return -1;
+    }
     p = (const char *)p + w;
     n -= (size_t)w;
   }
@@ -99,8 +100,9 @@ static inline int simrund_write_all(int fd, const void *p, size_t n) {
 static inline int simrund_read_all(int fd, void *p, size_t n) {
   while (n) {
     ssize_t r = read(fd, p, n);
-    if (r <= 0)
+    if (r <= 0) {
       return -1;
+    }
     p = (char *)p + r;
     n -= (size_t)r;
   }
@@ -110,8 +112,9 @@ static inline int simrund_read_all(int fd, void *p, size_t n) {
 // Sends one message; if fds != NULL, attaches nfds descriptors to it.
 static inline int simrund_send(int sock, CFDictionaryRef dict, const int *fds, int nfds) {
   CFDataRef data = CFPropertyListCreateData(NULL, dict, kCFPropertyListBinaryFormat_v1_0, 0, NULL);
-  if (!data)
+  if (!data) {
     return -1;
+  }
   uint32_t len = (uint32_t)CFDataGetLength(data);
   int rc;
   if (fds && nfds > 0) {
@@ -124,10 +127,12 @@ static inline int simrund_send(int sock, CFDictionaryRef dict, const int *fds, i
     c->cmsg_len = (socklen_t)CMSG_LEN(sizeof(int) * nfds);
     memcpy(CMSG_DATA(c), fds, sizeof(int) * nfds);
     rc = sendmsg(sock, &mh, 0) == (ssize_t)sizeof len ? 0 : -1;
-  } else
+  } else {
     rc = simrund_write_all(sock, &len, sizeof len);
-  if (rc == 0)
+  }
+  if (rc == 0) {
     rc = simrund_write_all(sock, CFDataGetBytePtr(data), len);
+  }
   CFRelease(data);
   return rc;
 }
@@ -139,20 +144,25 @@ static inline CFDictionaryRef simrund_recv(int sock, int *fds, int *nfds) {
   char ctl[CMSG_SPACE(sizeof(int) * 3)] = {0};
   struct msghdr mh = { .msg_iov = &iov, .msg_iovlen = 1, .msg_control = ctl, .msg_controllen = sizeof ctl };
   ssize_t r = recvmsg(sock, &mh, MSG_WAITALL);
-  if (nfds)
+  if (nfds) {
     *nfds = 0;
-  if (r != (ssize_t)sizeof len)
+  }
+  if (r != (ssize_t)sizeof len) {
     return NULL;
-  for (struct cmsghdr *c = CMSG_FIRSTHDR(&mh); c; c = CMSG_NXTHDR(&mh, c))
+  }
+  for (struct cmsghdr *c = CMSG_FIRSTHDR(&mh); c; c = CMSG_NXTHDR(&mh, c)) {
     if (c->cmsg_level == SOL_SOCKET && c->cmsg_type == SCM_RIGHTS && fds && nfds) {
       int n = (int)((c->cmsg_len - CMSG_LEN(0)) / sizeof(int));
-      if (n > 3)
+      if (n > 3) {
         n = 3;
+      }
       memcpy(fds, CMSG_DATA(c), sizeof(int) * n);
       *nfds = n;
     }
-  if (len == 0 || len > (64u << 20))
+  }
+  if (len == 0 || len > (64u << 20)) {
     return NULL;
+  }
   UInt8 *buf = malloc(len);
   if (simrund_read_all(sock, buf, len)) {
     free(buf);

@@ -22,15 +22,21 @@
 
 #define LOG(fmt, ...) fprintf(stderr, "[watch] " fmt "\n", ##__VA_ARGS__)
 static int gVerbose;
-#define VLOG(fmt, ...) do { if (gVerbose) LOG(fmt, ##__VA_ARGS__); } while (0)
+#define VLOG(fmt, ...) \
+  do { \
+    if (gVerbose) { \
+      LOG(fmt, ##__VA_ARGS__); \
+    } \
+  } while (0)
 
 // ---------------------------------------------------------------- WatchKit's main
 // Weak: app.dylib is the same library in iOS apps, which have no WatchKit (an unresolved interposee is skipped).
 extern int WKApplicationExtensionMain(int argc, char **argv, NSString *delegateClassName) __attribute__((weak_import));
 extern int WKApplicationMain(int argc, char **argv, NSString *delegateClassName) __attribute__((weak_import));
 static int my_WKApplicationExtensionMain(int argc, char **argv, NSString *delegateClassName) {
-  if (!SRModuleOn(SRModuleWatch) || !SRIsWatch() || !WKApplicationMain)
+  if (!SRModuleOn(SRModuleWatch) || !SRIsWatch() || !WKApplicationMain) {
     return WKApplicationExtensionMain(argc, argv, delegateClassName);
+  }
   VLOG("WKApplicationExtensionMain(%s) -> WKApplicationMain", delegateClassName.UTF8String ?: "nil");
   return WKApplicationMain(argc, argv, delegateClassName);
 }
@@ -79,14 +85,16 @@ static void SRInstallApplicationRecord(void) {
     Method *ms = class_copyMethodList(c, &n);
     for (unsigned i = 0; i < n; i++) {
       const char *name = sel_getName(method_getName(ms[i]));
-      if (strchr(name, ':') || name[0] == '_' || name[0] == '.' || !strcmp(name, "dealloc"))
+      if (strchr(name, ':') || name[0] == '_' || name[0] == '.' || !strcmp(name, "dealloc")) {
         continue;
+      }
       char rt[64];
       method_getReturnType(ms[i], rt, sizeof rt);
-      if (rt[0] == '@')
+      if (rt[0] == '@') {
         class_addMethod(fake, method_getName(ms[i]), (IMP)RecordNil, "@@:");
-      else if (strchr("cCsSiIlLqQB", rt[0]))
+      } else if (strchr("cCsSiIlLqQB", rt[0])) {
         class_addMethod(fake, method_getName(ms[i]), (IMP)RecordZero, "Q@:");
+      }
     }
     free(ms);
   }
@@ -102,8 +110,9 @@ static void SRInstallApplicationRecord(void) {
 }
 
 void SRWatchStart(void) {
-  if (!SRIsWatch())
+  if (!SRIsWatch()) {
     return;
+  }
   gVerbose = getenv("WATCH_VERBOSE") != NULL;
   SRInstallApplicationRecord();
 }

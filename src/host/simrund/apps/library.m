@@ -33,13 +33,16 @@ static NSString *const kLibraryKey = @"SRLibraryPaths";
 // Platform (LC_BUILD_VERSION) of the arm64 slice of a Mach-O, or 0; its minimum OS version (xxxx.yy.zz nibbles) in
 // *minos and whether it is encrypted (an App Store build) in *encrypted, if given.
 static uint32_t Arm64Platform(NSString *path, uint32_t *minos, BOOL *encrypted) {
-  if (minos)
+  if (minos) {
     *minos = 0;
-  if (encrypted)
+  }
+  if (encrypted) {
     *encrypted = NO;
+  }
   NSData *d = [NSData dataWithContentsOfFile:path options:NSDataReadingMappedIfSafe error:nil];
-  if (d.length < sizeof(struct mach_header_64))
+  if (d.length < sizeof(struct mach_header_64)) {
     return 0;
+  }
   const uint8_t *p = d.bytes;
   size_t off = 0;
   uint32_t magic = *(const uint32_t *)p;
@@ -48,33 +51,41 @@ static uint32_t Arm64Platform(NSString *path, uint32_t *minos, BOOL *encrypted) 
     uint32_t n = OSSwapBigToHostInt32(fh->nfat_arch);
     const struct fat_arch *fa = (const void *)(fh + 1);
     off = SIZE_MAX;
-    for (uint32_t i = 0; i < n && (const uint8_t *)(fa + i + 1) <= p + d.length; i++)
-      if ((cpu_type_t)OSSwapBigToHostInt32(fa[i].cputype) == CPU_TYPE_ARM64)
+    for (uint32_t i = 0; i < n && (const uint8_t *)(fa + i + 1) <= p + d.length; i++) {
+      if ((cpu_type_t)OSSwapBigToHostInt32(fa[i].cputype) == CPU_TYPE_ARM64) {
         off = OSSwapBigToHostInt32(fa[i].offset);
-    if (off == SIZE_MAX || off + sizeof(struct mach_header_64) > d.length)
+      }
+    }
+    if (off == SIZE_MAX || off + sizeof(struct mach_header_64) > d.length) {
       return 0;
+    }
   }
   const struct mach_header_64 *mh = (const void *)(p + off);
-  if (mh->magic != MH_MAGIC_64 || mh->cputype != CPU_TYPE_ARM64)
+  if (mh->magic != MH_MAGIC_64 || mh->cputype != CPU_TYPE_ARM64) {
     return 0;
+  }
   const uint8_t *lc = (const uint8_t *)(mh + 1), *end = p + d.length;
   uint32_t platform = 0;
   for (uint32_t i = 0; i < mh->ncmds && lc + sizeof(struct load_command) <= end; i++) {
     const struct load_command *c = (const void *)lc;
     if (c->cmd == LC_BUILD_VERSION && !platform) {
-      if (minos)
+      if (minos) {
         *minos = ((const struct build_version_command *)c)->minos;
+      }
       platform = ((const struct build_version_command *)c)->platform;
     }
     if (c->cmd == LC_VERSION_MIN_IPHONEOS && !platform) {   // old binaries; sim vs device unknown
-      if (minos)
+      if (minos) {
         *minos = ((const struct version_min_command *)c)->version;
+      }
       platform = PLATFORM_IOSSIMULATOR;
     }
-    if (c->cmd == LC_ENCRYPTION_INFO_64 && encrypted && lc + sizeof(struct encryption_info_command_64) <= end)
+    if (c->cmd == LC_ENCRYPTION_INFO_64 && encrypted && lc + sizeof(struct encryption_info_command_64) <= end) {
       *encrypted = ((const struct encryption_info_command_64 *)c)->cryptid != 0;
-    if (!c->cmdsize)
+    }
+    if (!c->cmdsize) {
       break;
+    }
     lc += c->cmdsize;
   }
   return platform;
@@ -83,14 +94,17 @@ static uint32_t Arm64Platform(NSString *path, uint32_t *minos, BOOL *encrypted) 
 @implementation SRAppInfo
 
 + (NSString *)problemWithAppAtPath:(NSString *)path {
-  if (![path.pathExtension isEqualToString:@"app"])
+  if (![path.pathExtension isEqualToString:@"app"]) {
     return @"Not an app bundle.";
+  }
   NSDictionary *info = [NSDictionary dictionaryWithContentsOfFile:[path stringByAppendingPathComponent:@"Info.plist"]];
-  if (!info)
+  if (!info) {
     return @"This doesn't look like an iOS app: it has no top-level Info.plist (macOS apps keep it in Contents/).";
+  }
   NSString *exe = info[@"CFBundleExecutable"];
-  if (!exe.length)
+  if (!exe.length) {
     return @"Info.plist has no CFBundleExecutable.";
+  }
   BOOL encrypted;
   switch (Arm64Platform([path stringByAppendingPathComponent:exe], NULL, &encrypted)) {
     case PLATFORM_IOSSIMULATOR:
@@ -110,8 +124,9 @@ static uint32_t Arm64Platform(NSString *path, uint32_t *minos, BOOL *encrypted) 
 
 + (NSString *)minimumOSVersionOfExecutable:(NSString *)path {
   uint32_t v;
-  if (!Arm64Platform(path, &v, NULL) || !v)
+  if (!Arm64Platform(path, &v, NULL) || !v) {
     return nil;
+  }
   return (v & 0xff) ? [NSString stringWithFormat:@"%u.%u.%u", v >> 16, (v >> 8) & 0xff, v & 0xff]
                     : [NSString stringWithFormat:@"%u.%u", v >> 16, (v >> 8) & 0xff];
 }
@@ -135,11 +150,13 @@ static uint32_t Arm64Platform(NSString *path, uint32_t *minos, BOOL *encrypted) 
     NSString *dir = [path stringByAppendingPathComponent:@"Watch"];
     for (NSString *name in [[NSFileManager.defaultManager contentsOfDirectoryAtPath:dir error:nil] sortedArrayUsingSelector:@selector(compare:)]) {
       NSString *w = [dir stringByAppendingPathComponent:name];
-      if (![name.pathExtension isEqualToString:@"app"] || [self problemWithAppAtPath:w])
+      if (![name.pathExtension isEqualToString:@"app"] || [self problemWithAppAtPath:w]) {
         continue;   // a device build's: not run
+      }
       SRAppInfo *watch = [SRAppInfo infoWithPath:w];
-      if ([watch.platform isEqualToString:SRPlatformWatchOS])
+      if ([watch.platform isEqualToString:SRPlatformWatchOS]) {
         [watchApps addObject:watch];
+      }
     }
   }
   a->_watchApps = watchApps;
@@ -156,12 +173,14 @@ static uint32_t Arm64Platform(NSString *path, uint32_t *minos, BOOL *encrypted) 
     dlopen("/System/Library/PrivateFrameworks/IconServices.framework/IconServices", RTLD_LAZY);
   });
   Class C = NSClassFromString(@"ISBundleIcon");
-  if (!C || !NSClassFromString(@"ISImageDescriptor"))
+  if (!C || !NSClassFromString(@"ISImageDescriptor")) {
     return [NSWorkspace.sharedWorkspace iconForContentType:UTTypeApplicationBundle];
+  }
   ISBundleIcon *icon = [[C alloc] initWithBundleURL:[NSURL fileURLWithPath:path]];
   NSURL *generic;
-  if ([icon.makeResourceProvider placeholder] && (generic = [self genericIconBundle]))
+  if ([icon.makeResourceProvider placeholder] && (generic = [self genericIconBundle])) {
     icon = [[C alloc] initWithBundleURL:generic];
+  }
   NSMutableDictionary<NSString *, id> *cache = [NSMutableDictionary dictionary];   // "appearance/pixels" -> CGImage
   return [NSImage imageWithSize:NSMakeSize(64, 64) flipped:NO drawingHandler:^BOOL(NSRect r) {
     BOOL dark = [[NSAppearance.currentDrawingAppearance bestMatchFromAppearancesWithNames:@[ NSAppearanceNameAqua, NSAppearanceNameDarkAqua ]]
@@ -175,8 +194,9 @@ static uint32_t Arm64Platform(NSString *path, uint32_t *minos, BOOL *encrypted) 
       d.appearance = dark && !watch;   // a watch has no dark icons
       [icon prepareImageForDescriptor:d];
       img = (__bridge id)[icon CGImageForDescriptor:d];
-      if (!img)
+      if (!img) {
         return NO;
+      }
       cache[key] = img;
     }
     CGContextRef ctx = NSGraphicsContext.currentContext.CGContext;
@@ -194,8 +214,9 @@ static uint32_t Arm64Platform(NSString *path, uint32_t *minos, BOOL *encrypted) 
   static dispatch_once_t once;
   dispatch_once(&once, ^{
     NSString *car = [SREnvironment.runtimeRoot stringByAppendingPathComponent:@"System/Library/CoreServices/IconsetResources.bundle/Assets.car"];
-    if (!car || ![NSFileManager.defaultManager fileExistsAtPath:car])
+    if (!car || ![NSFileManager.defaultManager fileExistsAtPath:car]) {
       return;
+    }
     NSFileManager *fm = NSFileManager.defaultManager;
     NSString *caches = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES).firstObject;
     NSString *dir = [caches stringByAppendingFormat:@"/%@/GenericAppIcon.app", NSBundle.mainBundle.bundleIdentifier ?: @"dev.simrun.SimRun"];
@@ -203,12 +224,14 @@ static uint32_t Arm64Platform(NSString *path, uint32_t *minos, BOOL *encrypted) 
     if (![[fm destinationOfSymbolicLinkAtPath:link error:nil] isEqualToString:car]) {
       [fm createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
       [fm removeItemAtPath:link error:nil];
-      if (![fm createSymbolicLinkAtPath:link withDestinationPath:car error:nil])
+      if (![fm createSymbolicLinkAtPath:link withDestinationPath:car error:nil]) {
         return;
+      }
     }
     NSDictionary *info = @{ @"CFBundleIcons": @{ @"CFBundlePrimaryIcon": @{ @"CFBundleIconName": @"GenericAppIcon_iOS" } }, @"UIDeviceFamily": @[ @1 ] };
-    if (![info writeToFile:[dir stringByAppendingPathComponent:@"Info.plist"] atomically:YES])
+    if (![info writeToFile:[dir stringByAppendingPathComponent:@"Info.plist"] atomically:YES]) {
       return;
+    }
     url = [NSURL fileURLWithPath:dir isDirectory:YES];
   });
   return url;
@@ -231,9 +254,11 @@ static uint32_t Arm64Platform(NSString *path, uint32_t *minos, BOOL *encrypted) 
 - (instancetype)init {
   if ((self = [super init])) {
     _apps = [NSMutableArray array];
-    for (NSString *p in [NSUserDefaults.standardUserDefaults stringArrayForKey:kLibraryKey])
-      if ([NSFileManager.defaultManager fileExistsAtPath:p])
+    for (NSString *p in [NSUserDefaults.standardUserDefaults stringArrayForKey:kLibraryKey]) {
+      if ([NSFileManager.defaultManager fileExistsAtPath:p]) {
         [_apps addObject:[SRAppInfo infoWithPath:p]];
+      }
+    }
   }
   return self;
 }
@@ -246,9 +271,11 @@ static uint32_t Arm64Platform(NSString *path, uint32_t *minos, BOOL *encrypted) 
 }
 - (SRAppInfo *)addPath:(NSString *)path {
   path = path.stringByStandardizingPath;
-  for (SRAppInfo *a in _apps)
-    if ([a.path isEqualToString:path])
+  for (SRAppInfo *a in _apps) {
+    if ([a.path isEqualToString:path]) {
       return a;
+    }
+  }
   SRAppInfo *a = [SRAppInfo infoWithPath:path];
   [_apps addObject:a];
   [_apps sortUsingComparator:^NSComparisonResult(SRAppInfo *x, SRAppInfo *y) {
@@ -273,13 +300,15 @@ static uint32_t Arm64Platform(NSString *path, uint32_t *minos, BOOL *encrypted) 
   for (NSString *proj in [fm contentsOfDirectoryAtPath:dd error:nil]) {
     NSString *products = [dd stringByAppendingFormat:@"/%@/Build/Products", proj];
     for (NSString *cfg in [fm contentsOfDirectoryAtPath:products error:nil]) {
-      if (![cfg hasSuffix:@"-iphonesimulator"] && ![cfg hasSuffix:@"-watchsimulator"])
+      if (![cfg hasSuffix:@"-iphonesimulator"] && ![cfg hasSuffix:@"-watchsimulator"]) {
         continue;
+      }
       NSString *dir = [products stringByAppendingPathComponent:cfg];
       for (NSString *f in [fm contentsOfDirectoryAtPath:dir error:nil]) {
         NSString *p = [dir stringByAppendingPathComponent:f];
-        if ([f.pathExtension isEqualToString:@"app"] && ![SRAppInfo problemWithAppAtPath:p])
+        if ([f.pathExtension isEqualToString:@"app"] && ![SRAppInfo problemWithAppAtPath:p]) {
           [out addObject:p];
+        }
       }
     }
   }

@@ -51,13 +51,15 @@ static IMP Swizzle(const char *cls, const char *sel, id block) {
 // The .app bundle that a process's executable is in, and its Info.plist's CFBundleIdentifier.
 static NSString *BundleIdentifierOfPid(pid_t pid) {
   char path[MAXPATHLEN];
-  if (pid <= 0 || proc_pidpath(pid, path, sizeof path) <= 0)
+  if (pid <= 0 || proc_pidpath(pid, path, sizeof path) <= 0) {
     return nil;
-  for (NSString *dir = @(path).stringByDeletingLastPathComponent; dir.length > 1; dir = dir.stringByDeletingLastPathComponent)
+  }
+  for (NSString *dir = @(path).stringByDeletingLastPathComponent; dir.length > 1; dir = dir.stringByDeletingLastPathComponent) {
     if ([dir.pathExtension isEqualToString:@"app"]) {
       id ident = [NSDictionary dictionaryWithContentsOfFile:[dir stringByAppendingPathComponent:@"Info.plist"]][@"CFBundleIdentifier"];
       return [ident isKindOfClass:NSString.class] ? ident : nil;
     }
+  }
   return nil;
 }
 
@@ -117,8 +119,9 @@ static NSSet *InstalledApps(void) {
   Class Info = objc_getClass("WCDApplicationInfo");
   [KnownApps() enumerateKeysAndObjectsUsingBlock:^(NSString *companion, NSDictionary *app, BOOL *stop) {
     NSString *watch = [app[@"watch"] isKindOfClass:NSString.class] ? app[@"watch"] : nil;
-    if (![companion isKindOfClass:NSString.class] || !watch)
+    if (![companion isKindOfClass:NSString.class] || !watch) {
       return;
+    }
     id info = nil;
     if (IsWatch()) {
       SRWatchAppRecord *r = [SRWatchAppRecord new];
@@ -133,8 +136,9 @@ static NSSet *InstalledApps(void) {
       a.deviceStatus.uniqueInstallID = [app[@"installID"] isKindOfClass:NSString.class] ? app[@"installID"] : NSUUID.UUID.UUIDString;
       info = ((id (*)(id, SEL, id))objc_msgSend)([Info alloc], sel_registerName("initWithACXApplication:"), a);
     }
-    if (info)
+    if (info) {
       [apps addObject:info];
+    }
   }];
   return apps;
 }
@@ -142,20 +146,23 @@ static NSSet *InstalledApps(void) {
 // wcd re-reads the list when SimRun rewrites the file (atomically: a new file, so watch its directory)
 static void WatchKnownApps(void) {
   const char *f = getenv("SIMRUN_WATCH_APPS");
-  if (!f)
+  if (!f) {
     return;
+  }
   NSString *dir = @(f).stringByDeletingLastPathComponent;
   [NSFileManager.defaultManager createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
   int fd = open(dir.fileSystemRepresentation, O_EVTONLY);
-  if (fd < 0)
+  if (fd < 0) {
     return;
+  }
   static dispatch_source_t source;
   source = dispatch_source_create(DISPATCH_SOURCE_TYPE_VNODE, fd, DISPATCH_VNODE_WRITE, dispatch_get_main_queue());
   __block NSDictionary *last = KnownApps();
   dispatch_source_set_event_handler(source, ^{
     NSDictionary *now = KnownApps();
-    if ([now isEqual:last])
+    if ([now isEqual:last]) {
       return;
+    }
     last = now;
     LOG("installed apps changed: %lu", (unsigned long)now.count);
     id monitor = ((id (*)(id, SEL))objc_msgSend)(objc_getClass("WCDSystemMonitor"), sel_registerName("sharedSystemMonitor"));
@@ -201,8 +208,9 @@ __attribute__((constructor)) static void SRWCDStart(void) {
   Swizzle("WCDSystemMonitor", "dataContainerURLForApplicationInfo:", ^NSURL *(id monitor, id info) {
     NSString *ident = [info valueForKey:IsWatch() ? @"watchAppBundleIdentifier" : @"companionAppBundleIdentifier"];
     const char *containers = getenv("SIMRUN_APP_CONTAINERS");
-    if (!ident || !containers)
+    if (!ident || !containers) {
       return nil;
+    }
     return [NSURL fileURLWithPath:[@(containers) stringByAppendingPathComponent:ident] isDirectory:YES];
   });
 
@@ -214,8 +222,9 @@ __attribute__((constructor)) static void SRWCDStart(void) {
     // no ClockFace to say whether the app is privileged: it isn't
     __block IMP update = Swizzle("WatchConnectivityDaemon", "updateClientWithValues:", ^(id daemon, id client) {
       ((void (*)(id, SEL, id))update)(daemon, sel_registerName("updateClientWithValues:"), client);
-      if (![daemon valueForKey:@"privateClient"])
+      if (![daemon valueForKey:@"privateClient"]) {
         ((void (*)(id, SEL, BOOL))objc_msgSend)(client, sel_registerName("setPrivileged:"), NO);
+      }
     });
     // no locationd: no transient authorization (the call would wait for it)
     Swizzle("WatchConnectivityDaemon", "requestCLTransientAuthorization:", ^id(id daemon, id ident) {
@@ -232,8 +241,9 @@ __attribute__((constructor)) static void SRWCDStart(void) {
   class_addMethod(objc_getClass("WatchConnectivityDaemon"), sel_registerName("service:account:incomingMessage:fromID:context:"),
     imp_implementationWithBlock(^(id daemon, id service, id account, NSDictionary *message, NSString *fromID, id context) {
       NSString *path = [message isKindOfClass:NSDictionary.class] ? message[@"ids-message-resource-transfer-url"] : nil;
-      if (![path isKindOfClass:NSString.class])
+      if (![path isKindOfClass:NSString.class]) {
         return;   // a plain message: wcd never took those
+      }
       ((void (*)(id, SEL, id, id, id, id, id, id))objc_msgSend)(daemon,
         sel_registerName("service:account:incomingResourceAtURL:metadata:fromID:context:"),
         service, account, [NSURL fileURLWithPath:path], message[@"ids-message-resource-transfer-metadata"], fromID, context);

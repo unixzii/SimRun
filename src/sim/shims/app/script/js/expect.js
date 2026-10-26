@@ -8,8 +8,9 @@ const { poll, defaults, Locator } = internal;
 
 const normalize = s => String(s).replace(/\s+/g, ' ').trim();
 const textMatches = (actual, expected, substring) => {
-  if (expected instanceof RegExp)
+  if (expected instanceof RegExp) {
     return expected.test(normalize(actual));
+  }
   return substring ? normalize(actual).includes(normalize(expected)) : normalize(actual) === normalize(expected);
 };
 const show = v => v instanceof RegExp ? String(v) : JSON.stringify(v);
@@ -43,8 +44,9 @@ const expectLocator = (locator, negated) => {
         last = check((await locator._find()).found);
         return { done: last.pass !== negated };
       }, timeout);
-      if (r.done)
+      if (r.done) {
         return;
+      }
       throw new Error(`expect(${locator})${negated ? '.not' : ''}.${name}(${args.map(show).join(', ')}) failed after ${timeout} ms\n` +
                       `  expected: ${negated ? 'not ' : ''}${expected}\n  received: ${negated ? expected : last.received}`);
     };
@@ -71,12 +73,14 @@ const valueMatchers = {
 };
 const expectValue = (value, negated) => {
   const m = {};
-  for (const [name, check] of Object.entries(valueMatchers))
+  for (const [name, check] of Object.entries(valueMatchers)) {
     m[name] = (...args) => {
       const [pass, expected] = check(value, ...args);
-      if (pass === negated)
+      if (pass === negated) {
         throw new Error(`expect(…)${negated ? '.not' : ''}.${name}() failed\n  expected: ${negated ? 'not ' : ''}${expected}\n  received: ${internal.formatValue(value)}`);
+      }
     };
+  }
   return m;
 };
 

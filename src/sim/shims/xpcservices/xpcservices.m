@@ -19,7 +19,12 @@
 #include "spi.h"
 
 static int gVerbose;
-#define LOG(...) do { if (gVerbose) fprintf(stderr, "[xpcservices] " __VA_ARGS__); } while (0)
+#define LOG(...) \
+  do { \
+    if (gVerbose) { \
+      fprintf(stderr, "[xpcservices] " __VA_ARGS__); \
+    } \
+  } while (0)
 
 extern xpc_connection_t sr_xpc_connection_create(const char *, dispatch_queue_t) __asm("_xpc_connection_create");
 extern void sr_xpc_main(void (*)(xpc_connection_t)) __asm("_xpc_main");
@@ -31,8 +36,9 @@ static NSArray<NSString *> *service_environment(const char *path) {
   NSDictionary *ev = [xs isKindOfClass:NSDictionary.class] && [xs[@"EnvironmentVariables"] isKindOfClass:NSDictionary.class] ? xs[@"EnvironmentVariables"] : @{};
   NSMutableArray<NSString *> *env = [NSMutableArray array];
   [ev enumerateKeysAndObjectsUsingBlock:^(id key, id v, BOOL *stop) {
-    if ([key isKindOfClass:NSString.class] && [v isKindOfClass:NSString.class])
+    if ([key isKindOfClass:NSString.class] && [v isKindOfClass:NSString.class]) {
       [env addObject:[NSString stringWithFormat:@"%@=%@", key, v]];
+    }
   }];
   return env;
 }
@@ -62,12 +68,14 @@ static dispatch_queue_t service_queue(void) {
 }
 static xpc_connection_t my_xpc_connection_create(const char *name, dispatch_queue_t q) {
   SRService *svc = NULL;
-  if (name && !getenv("XPCSERVICES_DISABLE"))
-    for (size_t i = 0; i < sizeof gServices / sizeof *gServices; i++)
+  if (name && !getenv("XPCSERVICES_DISABLE")) {
+    for (size_t i = 0; i < sizeof gServices / sizeof *gServices; i++) {
       if (!strcmp(name, gServices[i].name)) {
         svc = &gServices[i];
         break;
       }
+    }
+  }
   if (svc) {
     __block mach_port_t port = MACH_PORT_NULL;
     dispatch_sync(service_queue(), ^{
@@ -87,8 +95,9 @@ static xpc_connection_t my_xpc_connection_create(const char *name, dispatch_queu
                        .inNamespace = svc->inNamespace, .timeoutSeconds = 20, .tag = "xpcservices" };
         mach_port_t p = MACH_PORT_NULL;
         pid_t pid = SRSpawnHelper(&h, &p);
-        if (pid < 0)
+        if (pid < 0) {
           return;
+        }
         LOG("spawned %s pid %d -> listener %#x\n", path, pid, p);
         svc->port = p;
         svc->pid = pid;
@@ -110,8 +119,9 @@ static xpc_connection_t my_xpc_connection_create(const char *name, dispatch_queu
     });
     if (port) {
       xpc_connection_t c = sr_xpc_create_from_endpoint(xpc_endpoint_create_mach_port_4sim(port));
-      if (q)
+      if (q) {
         xpc_connection_set_target_queue(c, q);
+      }
       LOG("xpc_connection_create(%s) -> listener %#x\n", name, port);
       return c;
     }
@@ -130,8 +140,9 @@ static void my_xpc_main(void (*handler)(xpc_connection_t)) {
   // Specializer::specialize, EarlyCSE, PredicateInfo, ErrorHandler::reset ...).
   dispatch_queue_t peers = dispatch_queue_create("dev.simrun.xpcservices.peers", DISPATCH_QUEUE_SERIAL);
   xpc_connection_set_event_handler(l, ^(xpc_object_t peer) {
-    if (xpc_get_type(peer) != XPC_TYPE_CONNECTION)
+    if (xpc_get_type(peer) != XPC_TYPE_CONNECTION) {
       return;
+    }
     xpc_connection_set_target_queue(peer, peers);
     handler(peer);
   });

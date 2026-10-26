@@ -17,8 +17,9 @@ static void check(BOOL ok, const char *fmt, ...) {
   vprintf(fmt, ap);
   printf("\n");
   va_end(ap);
-  if (!ok)
+  if (!ok) {
     gFailures++;
+  }
 }
 static void run(double seconds) {
   [NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:seconds]];
@@ -47,12 +48,15 @@ static void accel(double interval) {
   __block double first = 0, last = 0, g = 0;
   NSOperationQueue *q = NSOperationQueue.mainQueue;
   [m startAccelerometerUpdatesToQueue:q withHandler:^(CMAccelerometerData *d, NSError *e) {
-    if (NSOperationQueue.currentQueue != q)
+    if (NSOperationQueue.currentQueue != q) {
       offQueue++;
-    if (!n)
+    }
+    if (!n) {
       first = d.timestamp;
-    if (d.timestamp <= last)
+    }
+    if (d.timestamp <= last) {
       backwards++;
+    }
     last = d.timestamp;
     n++;
     g += len(d.acceleration.x, d.acceleration.y, d.acceleration.z);
@@ -76,8 +80,9 @@ static void gyro(double interval) {
   __block int n = 0;
   __block double first = 0, last = 0, w = 0, x = 0, y = 0, z = 0;
   [m startGyroUpdatesToQueue:NSOperationQueue.mainQueue withHandler:^(CMGyroData *d, NSError *e) {
-    if (!n)
+    if (!n) {
       first = d.timestamp;
+    }
     last = d.timestamp;
     n++;
     w += len(d.rotationRate.x, d.rotationRate.y, d.rotationRate.z);
@@ -89,8 +94,9 @@ static void gyro(double interval) {
   [m stopGyroUpdates];
   rate("gyro", n, first, last, interval);
   check(n && w / n < 0.2, "gyro reads little at rest: %.4f rad/s", n ? w / n : 0);
-  if (n)
+  if (n) {
     printf("      mean: x %.5f y %.5f z %.5f rad/s (the sensor's bias)\n", x / n, y / n, z / n);
+  }
 }
 
 static void motion(double interval) {
@@ -120,12 +126,13 @@ static void motion(double interval) {
   check(start.m11 > 0.99 && fabs(start.m12) < 0.02, "device motion starts with x along the frame's x (%.3f %.3f %.3f)", start.m11, start.m12, start.m13);
   const char *pose = getenv("MOTION_POSE") ?: "screen";
   double pitch = d.attitude.pitch * 180 / M_PI, lid = atan2(-d.gravity.y, d.gravity.z) * 180 / M_PI;
-  if (!strcmp(pose, "flat"))
+  if (!strcmp(pose, "flat")) {
     check(d.gravity.z < -0.95 && fabs(pitch) < 10, "lying flat: gravity %.2f %.2f %.2f, pitch %.1f°", d.gravity.x, d.gravity.y, d.gravity.z, pitch);
-  else if (!strcmp(pose, "upright"))
+  } else if (!strcmp(pose, "upright")) {
     check(d.gravity.y < -0.95 && fabs(pitch - 90) < 10, "held upright: gravity %.2f %.2f %.2f, pitch %.1f°", d.gravity.x, d.gravity.y, d.gravity.z, pitch);
-  else
+  } else {
     check(fabs(d.gravity.x) < 0.1 && lid > 30 && lid < 180, "the screen: gravity %.2f %.2f %.2f, so the lid is open %.0f°", d.gravity.x, d.gravity.y, d.gravity.z, lid);
+  }
   check(maxDiff < 0.001, "gravity is a unit vector (off by %.5f)", maxDiff);
   check(n && user / n < 0.05, "user acceleration about 0 at rest: %.4f g", n ? user / n : 0);
   printf("      last: pitch %.1f° roll %.1f° yaw %.1f°, gravity %.3f %.3f %.3f, rate %.4f %.4f %.4f, heading %.0f, magnetic accuracy %d\n",
@@ -204,10 +211,12 @@ static void watch(void) {
 int main(int argc, char **argv) {
   setvbuf(stdout, NULL, _IOLBF, 0);
   const char *what = argc > 1 ? argv[1] : "all";
-  if (argc > 2)
+  if (argc > 2) {
     gSeconds = atof(argv[2]);
-  if (argc > 3)
+  }
+  if (argc > 3) {
     gWatchInterval = atof(argv[3]);
+  }
   BOOL all = !strcmp(what, "all");
   if (!strcmp(what, "info")) {
     info();
@@ -234,10 +243,12 @@ int main(int argc, char **argv) {
     motion(0.01);
     motion(1.0 / 30);
   }
-  if (all || !strcmp(what, "pull"))
+  if (all || !strcmp(what, "pull")) {
     pull();
-  if (all || !strcmp(what, "frames"))
+  }
+  if (all || !strcmp(what, "frames")) {
     frames();
+  }
 done:
   printf("%s\n", gFailures ? "FAILED" : "passed");
   return gFailures != 0;

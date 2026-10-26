@@ -27,10 +27,12 @@ static double Now(void) {
   self.frameSize = size;
 }
 - (void)renderFrame:(RTCVideoFrame *)frame {
-  if (!frame)
+  if (!frame) {
     return;
-  if (!self.frames)
+  }
+  if (!self.frames) {
     self.firstFrameAt = Now();
+  }
   self.frames++;
   self.frameSize = CGSizeMake(frame.width, frame.height);
 }
@@ -40,27 +42,31 @@ static double Now(void) {
 - (void)peerConnectionShouldNegotiate:(RTCPeerConnection *)pc {}
 - (void)peerConnection:(RTCPeerConnection *)pc didChangeIceConnectionState:(RTCIceConnectionState)s {}
 - (void)peerConnection:(RTCPeerConnection *)pc didChangeIceGatheringState:(RTCIceGatheringState)s {
-  if (s == RTCIceGatheringStateComplete)
+  if (s == RTCIceGatheringStateComplete) {
     dispatch_semaphore_signal(self.gathered);
+  }
 }
 - (void)peerConnection:(RTCPeerConnection *)pc didGenerateIceCandidate:(RTCIceCandidate *)c {}
 - (void)peerConnection:(RTCPeerConnection *)pc didRemoveIceCandidates:(NSArray<RTCIceCandidate *> *)c {}
 - (void)peerConnection:(RTCPeerConnection *)pc didOpenDataChannel:(RTCDataChannel *)c {}
 - (void)peerConnection:(RTCPeerConnection *)pc didChangeConnectionState:(RTCPeerConnectionState)s {
   const char *names[] = { "new", "connecting", "connected", "disconnected", "failed", "closed" };
-  if ((NSUInteger)s < 6)
+  if ((NSUInteger)s < 6) {
     printf("connection: %s\n", names[s]);
+  }
 }
 - (void)dataChannelDidChangeState:(RTCDataChannel *)c {
-  if (c.readyState == RTCDataChannelStateOpen)
+  if (c.readyState == RTCDataChannelStateOpen) {
     dispatch_semaphore_signal(self.opened);
+  }
 }
 - (void)dataChannel:(RTCDataChannel *)c didReceiveMessageWithBuffer:(RTCDataBuffer *)b {
   NSDictionary *m = [NSJSONSerialization JSONObjectWithData:b.data options:0 error:NULL];
-  if ([m[@"t"] isEqual:@"screen"])
+  if ([m[@"t"] isEqual:@"screen"]) {
     self.screen = m;
-  else if ([m[@"t"] isEqual:@"text"])
+  } else if ([m[@"t"] isEqual:@"text"]) {
     self.text = m;
+  }
   printf("message: %s\n", [[NSString alloc] initWithData:b.data encoding:NSUTF8StringEncoding].UTF8String);
 }
 - (void)send:(NSDictionary *)m {
@@ -81,15 +87,18 @@ static NSDictionary *HTTP(NSString *url, NSString *key, NSDictionary *body, NSIn
   dispatch_semaphore_t done = dispatch_semaphore_create(0);
   [[NSURLSession.sharedSession dataTaskWithRequest:r completionHandler:^(NSData *d, NSURLResponse *resp, NSError *e) {
     st = [(NSHTTPURLResponse *)resp statusCode];
-    if (d)
+    if (d) {
       out = [NSJSONSerialization JSONObjectWithData:d options:0 error:NULL];
-    if (e)
+    }
+    if (e) {
       fprintf(stderr, "remotetest: %s\n", e.localizedDescription.UTF8String);
+    }
     dispatch_semaphore_signal(done);
   }] resume];
   dispatch_semaphore_wait(done, DISPATCH_TIME_FOREVER);
-  if (status)
+  if (status) {
     *status = st;
+  }
   return out;
 }
 
@@ -97,8 +106,9 @@ static void Stats(RTCPeerConnection *pc) {
   dispatch_semaphore_t done = dispatch_semaphore_create(0);
   [pc statisticsWithCompletionHandler:^(RTCStatisticsReport *report) {
     for (RTCStatistics *s in report.statistics.allValues) {
-      if (![s.type isEqualToString:@"inbound-rtp"] || ![s.values[@"kind"] isEqual:@"video"])
+      if (![s.type isEqualToString:@"inbound-rtp"] || ![s.values[@"kind"] isEqual:@"video"]) {
         continue;
+      }
       RTCStatistics *codec = report.statistics[(NSString *)s.values[@"codecId"]];
       printf("stats: %s %s, decoded %s, %sx%s, %s fps, %s bytes, decoder %s\n", [codec.values[@"mimeType"] description].UTF8String,
              [codec.values[@"sdpFmtpLine"] description].UTF8String, [s.values[@"framesDecoded"] description].UTF8String,
@@ -124,26 +134,30 @@ int main(int argc, char **argv) {
     float drag[4] = {0};
     BOOL dragging = NO;
     for (int i = 3; i < argc; i++) {
-      if (!strcmp(argv[i], "--app") && i + 1 < argc)
+      if (!strcmp(argv[i], "--app") && i + 1 < argc) {
         app = atoi(argv[++i]);
-      else if (!strcmp(argv[i], "--seconds") && i + 1 < argc)
+      } else if (!strcmp(argv[i], "--seconds") && i + 1 < argc) {
         seconds = atof(argv[++i]);
-      else if (!strcmp(argv[i], "--full"))
+      } else if (!strcmp(argv[i], "--full")) {
         full = YES;
-      else if (!strcmp(argv[i], "--drag") && i + 1 < argc)
+      } else if (!strcmp(argv[i], "--drag") && i + 1 < argc) {
         dragging = sscanf(argv[++i], "%f,%f,%f,%f", &drag[0], &drag[1], &drag[2], &drag[3]) == 4;
+      }
     }
     NSInteger status = 0;
     NSDictionary *bad = HTTP([base stringByAppendingString:@"/api/apps"], @"wrong", nil, &status);
     printf("wrong key: HTTP %ld %s\n", (long)status, [bad[@"error"] description].UTF8String);
-    if (status != 401)
+    if (status != 401) {
       return 1;
+    }
     NSDictionary *apps = HTTP([base stringByAppendingString:@"/api/apps"], key, nil, &status);
     printf("apps: HTTP %ld %s\n", (long)status, [apps description].UTF8String);
-    if (status != 200)
+    if (status != 200) {
       return 1;
-    if (!app)
+    }
+    if (!app) {
       app = [[apps[@"apps"] firstObject][@"id"] intValue];
+    }
     if (!app) {
       fprintf(stderr, "remotetest: no app\n");
       return 1;
@@ -159,8 +173,9 @@ int main(int argc, char **argv) {
     c.sdpSemantics = RTCSdpSemanticsUnifiedPlan;
     c.bundlePolicy = RTCBundlePolicyMaxBundle;
     NSMutableArray *ice = [NSMutableArray array];
-    for (NSDictionary *s in apps[@"iceServers"])
+    for (NSDictionary *s in apps[@"iceServers"]) {
       [ice addObject:[[RTCIceServer alloc] initWithURLStrings:s[@"urls"]]];
+    }
     c.iceServers = ice;
     RTCMediaConstraints *none = [[RTCMediaConstraints alloc] initWithMandatoryConstraints:nil optionalConstraints:nil];
     v.pc = [factory peerConnectionWithConfiguration:c constraints:none delegate:v];
@@ -188,15 +203,19 @@ int main(int argc, char **argv) {
                                 @{ @"sdp": v.pc.localDescription.sdp, @"full": @(full) }, &status);
     printf("connect: HTTP %ld after %.0f ms%s%s\n", (long)status, (Now() - t0) * 1000, answer[@"error"] ? ": " : "",
            [answer[@"error"] description].UTF8String ?: "");
-    if (status != 200)
+    if (status != 200) {
       return 1;
-    for (NSString *l in [answer[@"sdp"] componentsSeparatedByString:@"\r\n"])
-      if ([l hasPrefix:@"a=candidate"] || [l containsString:@"H264"] || [l containsString:@"profile-level-id"])
+    }
+    for (NSString *l in [answer[@"sdp"] componentsSeparatedByString:@"\r\n"]) {
+      if ([l hasPrefix:@"a=candidate"] || [l containsString:@"H264"] || [l containsString:@"profile-level-id"]) {
         printf("  answer: %s\n", l.UTF8String);
+      }
+    }
     [v.pc setRemoteDescription:[[RTCSessionDescription alloc] initWithType:RTCSdpTypeAnswer sdp:answer[@"sdp"]]
              completionHandler:^(NSError *e) {
-      if (e)
+      if (e) {
         fprintf(stderr, "remotetest: answer: %s\n", e.localizedDescription.UTF8String);
+      }
       dispatch_semaphore_signal(step);
     }];
     dispatch_semaphore_wait(step, DISPATCH_TIME_FOREVER);

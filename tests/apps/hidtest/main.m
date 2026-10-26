@@ -39,7 +39,7 @@ static UIImage *TileMap(CGFloat side) {
     CGFloat t = side / n;
     NSDictionary *attrs = @{ NSFontAttributeName: [UIFont monospacedDigitSystemFontOfSize:18 weight:UIFontWeightSemibold],
                              NSForegroundColorAttributeName: UIColor.whiteColor };
-    for (int r = 0; r < n; r++)
+    for (int r = 0; r < n; r++) {
       for (int c = 0; c < n; c++) {
         [[UIColor colorWithHue:(r * n + c) / (CGFloat)(n * n) saturation:0.55 brightness:0.85 alpha:1] setFill];
         UIRectFill(CGRectMake(c * t, r * t, t, t));
@@ -47,6 +47,7 @@ static UIImage *TileMap(CGFloat side) {
         CGSize ls = [label sizeWithAttributes:attrs];
         [label drawAtPoint:CGPointMake(c * t + (t - ls.width) / 2, r * t + (t - ls.height) / 2) withAttributes:attrs];
       }
+    }
     [UIColor.whiteColor setStroke];
     UIBezierPath *grid = [UIBezierPath bezierPath];
     grid.lineWidth = 2;
@@ -173,23 +174,26 @@ static UIImage *TileMap(CGFloat side) {
     CGFloat s = 2 * MAX(z.zoomScale, 0.5);
     CGSize sz = CGSizeMake(z.bounds.size.width / s, z.bounds.size.height / s);
     [z zoomToRect:CGRectMake(p.x - sz.width / 2, p.y - sz.height / 2, sz.width, sz.height) animated:YES];
-  } else
+  } else {
     [z setZoomScale:0.5 animated:YES];
+  }
   NSLog(@"[app] ZOOM double tap");
 }
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)g shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)o {
   return YES;
 }
 - (void)rotate:(UIRotationGestureRecognizer *)g {
-  if (g.state == UIGestureRecognizerStateBegan || g.state == UIGestureRecognizerStateEnded)
+  if (g.state == UIGestureRecognizerStateBegan || g.state == UIGestureRecognizerStateEnded) {
     NSLog(@"[app] ROTATE %@ rotation=%.1fdeg touches=%lu", g.state == UIGestureRecognizerStateBegan ? @"began" : @"ended", g.rotation * 180 / M_PI, (unsigned long)g.numberOfTouches);
+  }
 }
 - (void)doubleTap:(UITapGestureRecognizer *)g {
   NSLog(@"[app] DOUBLE TAP recognized at %@", NSStringFromCGPoint([g locationInView:self.view]));
 }
 - (void)pinch:(UIPinchGestureRecognizer *)g {
-  if (g.state == UIGestureRecognizerStateBegan || g.state == UIGestureRecognizerStateEnded)
+  if (g.state == UIGestureRecognizerStateBegan || g.state == UIGestureRecognizerStateEnded) {
     NSLog(@"[app] PINCH %@ scale=%.2f touches=%lu", g.state == UIGestureRecognizerStateBegan ? @"began" : @"ended", g.scale, (unsigned long)g.numberOfTouches);
+  }
 }
 - (void)bgTap:(UITapGestureRecognizer *)g {
   NSLog(@"[app] TAP GESTURE recognized at %@", NSStringFromCGPoint([g locationInView:self.view]));
@@ -207,30 +211,34 @@ static UIImage *TileMap(CGFloat side) {
 }
 // The table logs as "SCROLL", the zoom view as "ZOOM" (with both offsets: it pans both ways).
 - (void)scrollViewWillBeginDragging:(UIScrollView *)sv {
-  if (sv == self.zoom)
+  if (sv == self.zoom) {
     NSLog(@"[app] ZOOM willBeginDragging offset=%@", NSStringFromCGPoint(sv.contentOffset));
-  else
+  } else {
     NSLog(@"[app] SCROLL willBeginDragging offset=%@", NSStringFromCGPoint(sv.contentOffset));
+  }
 }
 - (void)scrollViewDidScroll:(UIScrollView *)sv {
-  if (sv != self.table)
+  if (sv != self.table) {
     return;
+  }
   if (fabs(sv.contentOffset.y - self.lastLoggedOffset) >= 50) {
     self.lastLoggedOffset = sv.contentOffset.y;
     NSLog(@"[app] SCROLL didScroll offset.y=%.1f", sv.contentOffset.y);
   }
 }
 - (void)scrollViewDidEndDragging:(UIScrollView *)sv willDecelerate:(BOOL)d {
-  if (sv == self.zoom)
+  if (sv == self.zoom) {
     NSLog(@"[app] ZOOM didEndDragging offset=%@ decelerate=%d", NSStringFromCGPoint(sv.contentOffset), d);
-  else
+  } else {
     NSLog(@"[app] SCROLL didEndDragging offset.y=%.1f decelerate=%d", sv.contentOffset.y, d);
+  }
 }
 - (void)scrollViewDidEndDecelerating:(UIScrollView *)sv {
-  if (sv == self.zoom)
+  if (sv == self.zoom) {
     NSLog(@"[app] ZOOM didEndDecelerating offset=%@", NSStringFromCGPoint(sv.contentOffset));
-  else
+  } else {
     NSLog(@"[app] SCROLL didEndDecelerating offset.y=%.1f", sv.contentOffset.y);
+  }
 }
 - (void)textFieldDidBeginEditing:(UITextField *)tf {
   NSLog(@"[app] TEXTFIELD didBeginEditing (isFirstResponder=%d)", tf.isFirstResponder);
@@ -249,8 +257,9 @@ static UIImage *TileMap(CGFloat side) {
   return YES;
 }
 - (void)pressesBegan:(NSSet<UIPress *> *)presses withEvent:(UIPressesEvent *)e {
-  for (UIPress *p in presses)
+  for (UIPress *p in presses) {
     NSLog(@"[app] pressesBegan key=%@ hid=0x%lx mods=0x%lx", p.key.characters, (long)p.key.keyCode, (long)p.key.modifierFlags);
+  }
   [super pressesBegan:presses withEvent:e];
 }
 - (BOOL)canBecomeFirstResponder {
@@ -260,8 +269,9 @@ static UIImage *TileMap(CGFloat side) {
   UIKeyCommand *down = [UIKeyCommand keyCommandWithInput:UIKeyInputDownArrow modifierFlags:0 action:@selector(arrow:)];
   UIKeyCommand *up = [UIKeyCommand keyCommandWithInput:UIKeyInputUpArrow modifierFlags:0 action:@selector(arrow:)];
   UIKeyCommand *cmdK = [UIKeyCommand keyCommandWithInput:@"k" modifierFlags:UIKeyModifierCommand action:@selector(cmdK:)];
-  for (UIKeyCommand *k in @[down, up, cmdK])
+  for (UIKeyCommand *k in @[down, up, cmdK]) {
     k.wantsPriorityOverSystemBehavior = YES;
+  }
   return @[down, up, cmdK];
 }
 - (void)arrow:(UIKeyCommand *)k {

@@ -116,8 +116,9 @@ static void file_pull(float *out, UInt32 frames, Float64 rate) {
     done += n;
     rewound = NO;
   }
-  if (done < frames)
+  if (done < frames) {
     memset(out + done * 2, 0, (frames - done) * 8);
+  }
 }
 
 // What the Mac plays: a tap's IO proc fills a ring, input IO procs drain it (converted when the rates differ).
@@ -133,15 +134,17 @@ static Float64 gConverterRate;
 
 static OSStatus tap_io(AudioObjectID dev, const AudioTimeStamp *now, const AudioBufferList *in, const AudioTimeStamp *inTime,
                        AudioBufferList *out, const AudioTimeStamp *outTime, void *ctx) {
-  if (!in || !in->mNumberBuffers)
+  if (!in || !in->mNumberBuffers) {
     return 0;
+  }
   const AudioBuffer *b = &in->mBuffers[in->mNumberBuffers - 1];   // the tap's stream (the device has nothing else)
   UInt32 ch = b->mNumberChannels ?: 1, frames = b->mDataByteSize / (4 * ch);
   const float *x = b->mData;
   uint64_t w = atomic_load_explicit(&gRingWrite, memory_order_relaxed), r = atomic_load_explicit(&gRingRead, memory_order_acquire);
   UInt32 room = RING_FRAMES - (UInt32)(w - r);
-  if (frames > room)
+  if (frames > room) {
     frames = room;   // the app isn't reading: drop what doesn't fit
+  }
   for (UInt32 i = 0; i < frames; i++) {
     float *o = &gRing[((w + i) & (RING_FRAMES - 1)) * 2];
     o[0] = x[i * ch];
@@ -159,8 +162,9 @@ static void ring_read(float *out, UInt32 frames) {
     out[i * 2] = s[0];
     out[i * 2 + 1] = s[1];
   }
-  if (n < frames)
+  if (n < frames) {
     memset(out + n * 2, 0, (frames - n) * 8);   // not there yet: silence
+  }
   atomic_store_explicit(&gRingRead, r + n, memory_order_release);
 }
 
@@ -195,21 +199,24 @@ static void system_pull(float *out, UInt32 frames, Float64 rate) {
       return;
     }
   }
-  if (w - r > most)
+  if (w - r > most) {
     atomic_store_explicit(&gRingRead, w - target, memory_order_release);
+  }
   if (rate == gTapRate) {
     ring_read(out, frames);
     return;
   }
   if (rate != gConverterRate) {
-    if (gConverter)
+    if (gConverter) {
       AudioConverterDispose(gConverter);
+    }
     AudioStreamBasicDescription in = { gTapRate, kAudioFormatLinearPCM, kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked, 8, 1, 8, 2, 32, 0 };
     AudioStreamBasicDescription o = in;
     o.mSampleRate = rate;
     gConverter = NULL;
-    if (AudioConverterNew(&in, &o, &gConverter))
+    if (AudioConverterNew(&in, &o, &gConverter)) {
       gConverter = NULL;
+    }
     gConverterRate = rate;
     LOG("AUDIO_INPUT=system: converting %.0f Hz to %.0f Hz\n", gTapRate, rate);
   }
@@ -219,10 +226,12 @@ static void system_pull(float *out, UInt32 frames, Float64 rate) {
   }
   UInt32 n = frames;
   AudioBufferList l = { 1, { { 2, frames * 8, out } } };
-  if (AudioConverterFillComplexBuffer(gConverter, convert_input, NULL, &n, &l, NULL))
+  if (AudioConverterFillComplexBuffer(gConverter, convert_input, NULL, &n, &l, NULL)) {
     n = 0;
-  if (n < frames)
+  }
+  if (n < frames) {
     memset(out + n * 2, 0, (frames - n) * 8);
+  }
 }
 
 // The tap: every process's output but ours, as stereo, private to this process, read through a private aggregate
@@ -255,12 +264,14 @@ static void system_open(void) {
   NSDictionary *agg = @{ @"name": [d valueForKey:@"name"], @"uid": NSUUID.UUID.UUIDString, @"private": @YES,
                          @"tapautostart": @YES, @"taps": @[ @{ @"uid": tapUID, @"drift": @YES } ] };
   st = AudioHardwareCreateAggregateDevice((__bridge CFDictionaryRef)agg, &gTapDevice);
-  if (!st)
+  if (!st) {
     st = AudioDeviceCreateIOProcID(gTapDevice, tap_io, NULL, &gTapProc);
+  }
   if (st) {
     fprintf(stderr, "[audio] AUDIO_INPUT=system: can't read the Mac's audio (%d); the app records silence\n", (int)st);
-    if (gTapDevice)
+    if (gTapDevice) {
       AudioHardwareDestroyAggregateDevice(gTapDevice);
+    }
     gTapDevice = 0;
     return;
   }
@@ -291,11 +302,13 @@ static pthread_mutex_t gInputsLock = PTHREAD_MUTEX_INITIALIZER;   // them, and t
 static Float64 input_rate(AudioObjectID dev) {
   AudioObjectPropertyAddress a = { kAudioDevicePropertyStreams, kAudioObjectPropertyScopeInput, kAudioObjectPropertyElementMain };
   UInt32 sz = 0;
-  if (AudioObjectGetPropertyDataSize(dev, &a, 0, NULL, &sz) || !sz)
+  if (AudioObjectGetPropertyDataSize(dev, &a, 0, NULL, &sz) || !sz) {
     return 0;
+  }
   AudioObjectID streams[sz / sizeof(AudioObjectID)];
-  if (AudioObjectGetPropertyData(dev, &a, 0, NULL, &sz, streams))
+  if (AudioObjectGetPropertyData(dev, &a, 0, NULL, &sz, streams)) {
     return 0;
+  }
   Float64 rate = 0;
   for (UInt32 i = 0; i < sz / sizeof(AudioObjectID); i++) {
     AudioStreamBasicDescription f = {0};
@@ -313,10 +326,11 @@ static Float64 input_rate(AudioObjectID dev) {
 
 static void pull(float *out, UInt32 frames, Float64 rate) {
   os_unfair_lock_lock(&gPullLock);
-  if (gMode == kInputFile)
+  if (gMode == kInputFile) {
     file_pull(out, frames, rate);
-  else
+  } else {
     system_pull(out, frames, rate);
+  }
   os_unfair_lock_unlock(&gPullLock);
 }
 
@@ -324,9 +338,11 @@ static OSStatus wrapped_io(AudioObjectID dev, const AudioTimeStamp *now, const A
                            AudioBufferList *out, const AudioTimeStamp *outTime, void *ctx) {
   SRWrap *w = ctx;
   if (in && in->mNumberBuffers && !gInputAllowed) {   // not allowed (yet): silence, as on a device
-    for (UInt32 b = 0; b < in->mNumberBuffers; b++)
-      if (in->mBuffers[b].mData)
+    for (UInt32 b = 0; b < in->mNumberBuffers; b++) {
+      if (in->mBuffers[b].mData) {
         memset(in->mBuffers[b].mData, 0, in->mBuffers[b].mDataByteSize);
+      }
+    }
   } else if (in && in->mNumberBuffers && w->rate > 0 && gMode != kInputMac) {
     AudioBufferList *l = (AudioBufferList *)in;   // the HAL's buffers, ours to write before the app reads them
     UInt32 ch0 = l->mBuffers[0].mNumberChannels ?: 1, frames = l->mBuffers[0].mDataByteSize / (4 * ch0);
@@ -335,8 +351,9 @@ static OSStatus wrapped_io(AudioObjectID dev, const AudioTimeStamp *now, const A
       pull(w->scratch, n, w->rate);
       for (UInt32 b = 0; b < l->mNumberBuffers; b++) {
         UInt32 ch = l->mBuffers[b].mNumberChannels ?: 1, size = l->mBuffers[b].mDataByteSize / (4 * ch);
-        if (at >= size)
+        if (at >= size) {
           continue;
+        }
         UInt32 k = MIN(n, size - at);
         float *x = (float *)l->mBuffers[b].mData + at * ch;
         for (UInt32 i = 0; i < k; i++) {
@@ -347,8 +364,9 @@ static OSStatus wrapped_io(AudioObjectID dev, const AudioTimeStamp *now, const A
           }
           x[i * ch] = L;
           x[i * ch + 1] = R;
-          for (UInt32 c = 2; c < ch; c++)
+          for (UInt32 c = 2; c < ch; c++) {
             x[i * ch + c] = M;
+          }
         }
       }
     }
@@ -359,11 +377,13 @@ static OSStatus wrapped_io(AudioObjectID dev, const AudioTimeStamp *now, const A
 static SRWrap *find_wrap(AudioObjectID dev, SRIOProcID procID, BOOL unlink) {
   os_unfair_lock_lock(&gWrapsLock);
   SRWrap **p = &gWraps;
-  while (*p && !((*p)->device == dev && (*p)->procID == procID))
+  while (*p && !((*p)->device == dev && (*p)->procID == procID)) {
     p = &(*p)->next;
+  }
   SRWrap *w = *p;
-  if (w && unlink)
+  if (w && unlink) {
     *p = w->next;
+  }
   os_unfair_lock_unlock(&gWrapsLock);
   return w;
 }
@@ -400,10 +420,12 @@ static void source_open(void);
 // The app's permission settled: its input is heard, or silenced. The source (a tap needs SimRun's permission, and
 // making one without it would have macOS ask) is opened the first time it is allowed.
 static void input_allowed(BOOL allowed) {
-  if (atomic_exchange(&gInputAllowed, allowed) == allowed)
+  if (atomic_exchange(&gInputAllowed, allowed) == allowed) {
     return;
-  if (allowed && gMode != kInputMac)
+  }
+  if (allowed && gMode != kInputMac) {
     source_open();
+  }
   pthread_mutex_lock(&gInputsLock);
   tap_update();
   pthread_mutex_unlock(&gInputsLock);
@@ -413,13 +435,15 @@ static void input_allowed(BOOL allowed) {
 // long the tap runs. The source starts over when it starts, in case the app records in a way we don't see below.
 // As on a device, an app that hasn't asked for the microphone is asked then.
 static void input_started(SRWrap *w) {
-  if (w->started || w->rate <= 0)
+  if (w->started || w->rate <= 0) {
     return;
+  }
   w->started = YES;
   pthread_mutex_lock(&gInputsLock);
   BOOL first = gInputsRunning++ == 0;
-  if (first && gMode != kInputMac)
+  if (first && gMode != kInputMac) {
     source_restart();
+  }
   tap_update();
   pthread_mutex_unlock(&gInputsLock);
   LOG("AUDIO_INPUT: input on device %u started at %.0f Hz\n", w->device, w->rate);
@@ -429,8 +453,9 @@ static void input_started(SRWrap *w) {
   }
 }
 static void input_stopped(SRWrap *w) {
-  if (!w->started)
+  if (!w->started) {
     return;
+  }
   w->started = NO;
   pthread_mutex_lock(&gInputsLock);
   gInputsRunning--;
@@ -451,27 +476,33 @@ static os_unfair_lock gRecordersLock = OS_UNFAIR_LOCK_INIT;
 static BOOL list_add(const void **list, const void *key) {
   int slot = -1;
   for (int i = 0; i < MAX_RECORDERS; i++) {
-    if (list[i] == key)
+    if (list[i] == key) {
       return NO;
-    if (!list[i] && slot < 0)
+    }
+    if (!list[i] && slot < 0) {
       slot = i;
+    }
   }
-  if (slot >= 0)
+  if (slot >= 0) {
     list[slot] = key;
+  }
   return slot >= 0;
 }
 static BOOL list_remove(const void **list, const void *key) {
-  for (int i = 0; i < MAX_RECORDERS; i++)
+  for (int i = 0; i < MAX_RECORDERS; i++) {
     if (list[i] == key) {
       list[i] = NULL;
       return YES;
     }
+  }
   return NO;
 }
 static BOOL list_empty(const void **list) {
-  for (int i = 0; i < MAX_RECORDERS; i++)
-    if (list[i])
+  for (int i = 0; i < MAX_RECORDERS; i++) {
+    if (list[i]) {
       return NO;
+    }
+  }
   return YES;
 }
 
@@ -480,31 +511,36 @@ static void recorder_started(const void *key, const char *what) {
   BOOL first = list_empty(gRecorders);
   BOOL added = list_add(gRecorders, key);
   os_unfair_lock_unlock(&gRecordersLock);
-  if (!added)
+  if (!added) {
     return;
+  }
   LOG("AUDIO_INPUT: %s %p started recording%s\n", what, key, first ? "; the input starts over" : "");
-  if (first)
+  if (first) {
     source_restart();
+  }
 }
 static void recorder_stopped(const void *key) {
   os_unfair_lock_lock(&gRecordersLock);
   BOOL removed = list_remove(gRecorders, key);
   os_unfair_lock_unlock(&gRecordersLock);
-  if (removed)
+  if (removed) {
     LOG("AUDIO_INPUT: %p stopped recording\n", key);
+  }
 }
 
 static BOOL is_input_queue(AudioQueueRef q) {
   os_unfair_lock_lock(&gRecordersLock);
   BOOL found = NO;
-  for (int i = 0; i < MAX_RECORDERS && !found; i++)
+  for (int i = 0; i < MAX_RECORDERS && !found; i++) {
     found = gInputQueues[i] == q;
+  }
   os_unfair_lock_unlock(&gRecordersLock);
   return found;
 }
 static void input_queue_made(OSStatus st, AudioQueueRef *q) {
-  if (st || !q || !*q || gMode == kInputMac)
+  if (st || !q || !*q || gMode == kInputMac) {
     return;
+  }
   os_unfair_lock_lock(&gRecordersLock);
   list_add(gInputQueues, *q);
   os_unfair_lock_unlock(&gRecordersLock);
@@ -532,21 +568,25 @@ static OSStatus my_AudioQueueNewInputWithDispatchQueue(AudioQueueRef *q, const A
 }
 static OSStatus my_AudioQueueStart(AudioQueueRef q, const AudioTimeStamp *t) {
   BOOL input = gMode != kInputMac && is_input_queue(q);
-  if (input)
+  if (input) {
     recorder_started(q, "audio queue");   // before it takes its first buffer
+  }
   OSStatus st = AudioQueueStart(q, t);
-  if (input && st)
+  if (input && st) {
     recorder_stopped(q);
+  }
   return st;
 }
 static OSStatus my_AudioQueuePause(AudioQueueRef q) {
-  if (gMode != kInputMac)
+  if (gMode != kInputMac) {
     recorder_stopped(q);
+  }
   return AudioQueuePause(q);
 }
 static OSStatus my_AudioQueueStop(AudioQueueRef q, Boolean immediate) {
-  if (gMode != kInputMac)
+  if (gMode != kInputMac) {
     recorder_stopped(q);
+  }
   return AudioQueueStop(q, immediate);
 }
 static OSStatus my_AudioQueueDispose(AudioQueueRef q, Boolean immediate) {
@@ -561,18 +601,21 @@ static OSStatus my_AudioQueueDispose(AudioQueueRef q, Boolean immediate) {
 
 static OSStatus my_AudioOutputUnitStart(AudioUnit u) {
   UInt32 input = 0, sz = sizeof input;
-  if (gMode != kInputMac && !AudioUnitGetProperty(u, kAudioOutputUnitProperty_EnableIO, kAudioUnitScope_Input, 1, &input, &sz) && input)
+  if (gMode != kInputMac && !AudioUnitGetProperty(u, kAudioOutputUnitProperty_EnableIO, kAudioUnitScope_Input, 1, &input, &sz) && input) {
     recorder_started(u, "IO unit");
+  }
   return AudioOutputUnitStart(u);
 }
 static OSStatus my_AudioOutputUnitStop(AudioUnit u) {
-  if (gMode != kInputMac)
+  if (gMode != kInputMac) {
     recorder_stopped(u);
+  }
   return AudioOutputUnitStop(u);
 }
 static OSStatus my_AudioComponentInstanceDispose(AudioComponentInstance u) {
-  if (gMode != kInputMac)
+  if (gMode != kInputMac) {
     recorder_stopped(u);
+  }
   return AudioComponentInstanceDispose(u);
 }
 
@@ -581,19 +624,23 @@ static OSStatus my_AudioComponentInstanceDispose(AudioComponentInstance u) {
 static void swizzle_hardware(Class cls) {
   Method start = class_getInstanceMethod(cls, @selector(startHardwareAndReturnError:));
   Method stop = class_getInstanceMethod(cls, @selector(stopHardware));
-  if (!start || !stop)
+  if (!start || !stop) {
     return;
+  }
   BOOL (*origStart)(id, SEL, NSError **) = (void *)method_getImplementation(start);
   void (*origStop)(id, SEL) = (void *)method_getImplementation(stop);
-  if (class_getSuperclass(cls) && class_getInstanceMethod(class_getSuperclass(cls), @selector(startHardwareAndReturnError:)) == start)
+  if (class_getSuperclass(cls) && class_getInstanceMethod(class_getSuperclass(cls), @selector(startHardwareAndReturnError:)) == start) {
     return;
+  }
   method_setImplementation(start, imp_implementationWithBlock(^BOOL(AUAudioUnit *u, NSError **e) {
     BOOL input = [u respondsToSelector:@selector(isInputEnabled)] && u.inputEnabled;
-    if (input)
+    if (input) {
       recorder_started((__bridge void *)u, "audio unit");
+    }
     BOOL ok = origStart(u, @selector(startHardwareAndReturnError:), e);
-    if (input && !ok)
+    if (input && !ok) {
       recorder_stopped((__bridge void *)u);
+    }
     return ok;
   }));
   method_setImplementation(stop, imp_implementationWithBlock(^(AUAudioUnit *u) {
@@ -606,17 +653,19 @@ static void swizzle_hardware(Class cls) {
 static dispatch_once_t gSourceOnce;
 static void source_open(void) {
   dispatch_once(&gSourceOnce, ^{
-    if (gMode == kInputFile)
+    if (gMode == kInputFile) {
       file_open();
-    else
+    } else {
       system_open();
+    }
   });
 }
 
 static OSStatus my_AudioDeviceCreateIOProcID(AudioObjectID dev, SRIOProc proc, void *client, SRIOProcID *outID) {
   Float64 rate = proc && outID && SRModuleOn(SRModuleAudio) ? input_rate(dev) : 0;
-  if (rate <= 0)
+  if (rate <= 0) {
     return AudioDeviceCreateIOProcID(dev, proc, client, outID);   // no input
+  }
   SRWrap *w = calloc(1, sizeof *w);
   w->proc = proc;
   w->client = client;
@@ -641,19 +690,22 @@ static OSStatus my_AudioDeviceStart(AudioObjectID dev, SRIOProcID procID) {
   SRWrap *w = gWraps && procID ? find_wrap(dev, procID, NO) : NULL;
   if (w && !w->started) {
     Float64 rate = input_rate(dev);   // it may have changed since the proc was made
-    if (rate > 0)
+    if (rate > 0) {
       w->rate = rate;
+    }
   }
   OSStatus st = AudioDeviceStart(dev, procID);
-  if (w && !st)
+  if (w && !st) {
     input_started(w);
+  }
   return st;
 }
 static OSStatus my_AudioDeviceStop(AudioObjectID dev, SRIOProcID procID) {
   SRWrap *w = gWraps && procID ? find_wrap(dev, procID, NO) : NULL;
   OSStatus st = AudioDeviceStop(dev, procID);
-  if (w)
+  if (w) {
     input_stopped(w);
+  }
   return st;
 }
 static OSStatus my_AudioDeviceDestroyIOProcID(AudioObjectID dev, SRIOProcID procID) {
@@ -692,11 +744,12 @@ void SRAudioStart(void) {
   SRMuteStart();
   SRTCCRegister(&kMicrophone);
   const char *in = getenv("AUDIO_INPUT");
-  if (!in || !*in || !strcmp(in, "mac"))
+  if (!in || !*in || !strcmp(in, "mac")) {
     return;
-  if (!strcmp(in, "system"))
+  }
+  if (!strcmp(in, "system")) {
     gMode = kInputSystem;
-  else {
+  } else {
     gMode = kInputFile;
     gPath = strdup(in);
   }
@@ -705,7 +758,9 @@ void SRAudioStart(void) {
   LOG("AUDIO_INPUT=%s%s\n", in, gLoop ? " (looping)" : "");
   // the IO unit's class on iOS 18.5 to 27.1 (and AUAudioUnit's own, should one move there; a scan of every class for
   // others takes ~250 ms at launch)
-  for (NSString *name in @[ @"AUAudioUnit", @"AUHALOutputUnit" ])
-    if (NSClassFromString(name))
+  for (NSString *name in @[ @"AUAudioUnit", @"AUHALOutputUnit" ]) {
+    if (NSClassFromString(name)) {
       swizzle_hardware(NSClassFromString(name));
+    }
+  }
 }

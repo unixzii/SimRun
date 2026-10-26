@@ -26,8 +26,9 @@
   BOOL _dragged;
 }
 - (instancetype)initWithFrame:(NSRect)r {
-  if (!(self = [super initWithFrame:r]))
+  if (!(self = [super initWithFrame:r])) {
     return nil;
+  }
   self.layer = [CALayer layer];   // layer-hosting: set before wantsLayer
   self.wantsLayer = YES;
   self.layer.backgroundColor = [NSColor colorWithWhite:0.93 alpha:1].CGColor;
@@ -41,8 +42,9 @@
 - (void)setFrameSize:(NSSize)size {
   [super setFrameSize:size];
   [self refit];
-  if (self.onResize)
+  if (self.onResize) {
     self.onResize(size);
+  }
 }
 - (void)layout {
   [super layout];
@@ -50,13 +52,15 @@
   if (inset != _topInset) {
     _topInset = inset;
     [self refit];
-    if (self.onResize)
+    if (self.onResize) {
       self.onResize(self.bounds.size);
+    }
   }
 }
 - (void)refit {
-  if (!_screenSize.width || !_screenSize.height)
+  if (!_screenSize.width || !_screenSize.height) {
     return;
+  }
   NSSize b = self.bounds.size;
   CGFloat visible = b.height - _topInset;   // fit below the toolbar
   CGFloat s = MAX(0.05, MIN((b.width - 24) / _screenSize.width, (visible - 24) / _screenSize.height));
@@ -73,24 +77,29 @@
   _dragged = NO;
 }
 - (void)mouseDragged:(NSEvent *)e {
-  if (!_dragged && hypot(e.locationInWindow.x - _down.x, e.locationInWindow.y - _down.y) < 3)
+  if (!_dragged && hypot(e.locationInWindow.x - _down.x, e.locationInWindow.y - _down.y) < 3) {
     return;
+  }
   _dragged = YES;
-  if (self.onDrag)
+  if (self.onDrag) {
     self.onDrag(e.deltaX, e.deltaY);
+  }
 }
 - (void)mouseUp:(NSEvent *)e {
   // a layer-hosting view's coordinates are its layer's
-  if (!_dragged && self.onClick)
+  if (!_dragged && self.onClick) {
     self.onClick(NSPointToCGPoint([self convertPoint:e.locationInWindow fromView:nil]), e.clickCount);
+  }
 }
 - (void)scrollWheel:(NSEvent *)e {
-  if (self.onScroll)
+  if (self.onScroll) {
     self.onScroll(e.scrollingDeltaX, e.scrollingDeltaY);
+  }
 }
 - (void)magnifyWithEvent:(NSEvent *)e {
-  if (self.onMagnify)
+  if (self.onMagnify) {
     self.onMagnify(e.magnification);
+  }
 }
 @end
 
@@ -130,8 +139,9 @@ static const CGFloat kYaw = -0.55, kPitch = 0.3;   // the 3D view's starting ang
 }
 
 + (void)showForSession:(SRSession *)session {
-  if (!gWindows)
+  if (!gWindows) {
     gWindows = [NSMapTable weakToStrongObjectsMapTable];
+  }
   SRLayerWindow *w = [gWindows objectForKey:session];
   if (!w) {
     w = [[self alloc] initWithSession:session];
@@ -140,8 +150,9 @@ static const CGFloat kYaw = -0.55, kPitch = 0.3;   // the 3D view's starting ang
       return;
     }
     [gWindows setObject:w forKey:session];
-    if (!gOpen)
+    if (!gOpen) {
       gOpen = [NSMutableSet set];
+    }
     [gOpen addObject:w];
   }
   [w showWindow:nil];
@@ -167,8 +178,9 @@ static NSButton *Check(NSString *title, id target, SEL action, NSString *tip) {
   win.title = [NSString stringWithFormat:@"%@ — Layers", session.title];
   win.releasedWhenClosed = NO;
   win.minSize = NSMakeSize(760, 420);
-  if (!(self = [super initWithWindow:win]))
+  if (!(self = [super initWithWindow:win])) {
     return nil;
+  }
   _session = session;
   win.delegate = self;
 
@@ -269,8 +281,9 @@ static NSButton *Check(NSString *title, id target, SEL action, NSString *tip) {
   __weak SRLayerWindow *weakSelf = self;
   _canvas.onResize = ^(NSSize size) {
     SRLayerWindow *s = weakSelf;
-    if (!s)
+    if (!s) {
       return;
+    }
     s->_scene.topInset = s->_canvas.topInset;
     [s->_scene layoutInSize:size];
   };
@@ -279,36 +292,41 @@ static NSButton *Check(NSString *title, id target, SEL action, NSString *tip) {
   };
   _canvas.onDrag = ^(CGFloat dx, CGFloat dy) {
     SRLayerWindow *s = weakSelf;
-    if (!s || !s->_threeD)
+    if (!s || !s->_threeD) {
       return;
+    }
     s->_scene.yaw += dx * 0.01;
     s->_scene.pitch += dy * 0.01;
   };
   _canvas.onScroll = ^(CGFloat dx, CGFloat dy) {
     SRLayerWindow *s = weakSelf;
-    if (s && s->_threeD)
+    if (s && s->_threeD) {
       s->_scene.pan = CGPointMake(s->_scene.pan.x + dx, s->_scene.pan.y - dy);
+    }
   };
   _canvas.onMagnify = ^(CGFloat m) {
     SRLayerWindow *s = weakSelf;
-    if (s && s->_threeD)
+    if (s && s->_threeD) {
       s->_scene.zoom *= 1 + m;
+    }
   };
   _tree.onSelect = ^(NSNumber *nid) {
     [weakSelf select:nid fromTree:YES];
   };
   __weak SRSession *weakSession = session;
   _inspector.onEdit = ^(NSNumber *nid, NSString *key, id value) {   // into the app; it comes back as a batch
-    if (![weakSession editLayer:nid key:key value:value])
+    if (![weakSession editLayer:nid key:key value:value]) {
       NSBeep();
+    }
   };
   [_inspector showNode:nil of:nil];
 
   _token = [session addLayerObserver:^(SRLayerMirror *mirror, NSDictionary *changes) {
     [weakSelf mirror:mirror changed:changes];
   }];
-  if (!_token)
+  if (!_token) {
     return nil;
+  }
   [win setFrameTopLeftPoint:NSMakePoint(NSMaxX(appFrame) + 16, NSMaxY(appFrame))];   // beside the app's window
   return self;
 }
@@ -323,8 +341,9 @@ static NSButton *Check(NSString *title, id target, SEL action, NSString *tip) {
   return [self toolbarDefaultItemIdentifiers:t];
 }
 - (NSToolbarItem *)toolbar:(NSToolbar *)t itemForItemIdentifier:(NSToolbarItemIdentifier)ident willBeInsertedIntoToolbar:(BOOL)flag {
-  if (![ident isEqual:@"mode"])
+  if (![ident isEqual:@"mode"]) {
     return nil;
+  }
   NSToolbarItem *item = [[NSToolbarItem alloc] initWithItemIdentifier:ident];
   item.view = _mode;
   item.label = @"Mode";
@@ -349,10 +368,11 @@ static NSButton *Check(NSString *title, id target, SEL action, NSString *tip) {
     return;
   }
   [self show:mirror changes:changes];
-  if (_updatesLeft && changes.count && --_updatesLeft == 0)
+  if (_updatesLeft && changes.count && --_updatesLeft == 0) {
     [self freezeNow];
-  else if (_updatesLeft)
+  } else if (_updatesLeft) {
     [self showFreezeState];
+  }
 }
 - (void)show:(SRLayerMirror *)mirror changes:(NSDictionary *)changes {
   if (mirror != _mirror) {   // the first copy, or the live one again after a freeze (the camera stays where it was)
@@ -365,15 +385,17 @@ static NSButton *Check(NSString *title, id target, SEL action, NSString *tip) {
     _mirror.showsPlaceholders = _placeholders.state == NSControlStateValueOn;
     [_canvas.fit addSublayer:mirror.rootLayer];
     _tree.mirror = mirror;
-    if (_threeD)
+    if (_threeD) {
       [self showSceneFrom:old];
+    }
   } else if (_scene) {
     if (_threeD) {   // a full batch may choose a new spacing
       [_scene updateWithChanges:changes];
       _spacing.doubleValue = _scene.spacing;
     }
-    else
+    else {
       _sceneStale = YES;
+    }
   }
   NSSize screen = mirror.rootLayer.bounds.size;
   if (!NSEqualSizes(screen, _canvas.screenSize)) {
@@ -382,12 +404,13 @@ static NSButton *Check(NSString *title, id target, SEL action, NSString *tip) {
     [_scene layoutInSize:_canvas.bounds.size];
   }
   [_tree mirrorChanged:changes];
-  if (_selected && !mirror.nodes[_selected])
+  if (_selected && !mirror.nodes[_selected]) {
     [self select:nil fromTree:NO];
-  else {
+  } else {
     [self showSelection];
-    if (_selected && ([changes[@"full"] isEqual:@YES] || changes[@"changed"][_selected] || !changes.count))
+    if (_selected && ([changes[@"full"] isEqual:@YES] || changes[@"changed"][_selected] || !changes.count)) {
       [_inspector showNode:_selected of:_mirror];
+    }
   }
 }
 
@@ -397,8 +420,9 @@ static NSButton *Check(NSString *title, id target, SEL action, NSString *tip) {
 }
 // `old`: a scene of another copy, whose camera and spacing the new one takes (no swing round)
 - (void)showSceneFrom:(SRLayerScene *)old {
-  if (!_mirror)
+  if (!_mirror) {
     return;
+  }
   if (!_scene) {
     _scene = [[SRLayerScene alloc] initWithMirror:_mirror];
     _scene.clipsContent = _clip.state == NSControlStateValueOn;
@@ -407,14 +431,16 @@ static NSButton *Check(NSString *title, id target, SEL action, NSString *tip) {
     _scene.selectedNode = _selected;
     _scene.topInset = _canvas.topInset;
     _spacing.doubleValue = _scene.spacing;
-  } else if (_sceneStale)
+  } else if (_sceneStale) {
     [_scene updateWithChanges:@{ @"full": @YES }];
+  }
   _sceneStale = NO;
   _spacing.doubleValue = _scene.spacing;
   [CATransaction begin];
   [CATransaction setDisableActions:YES];
-  if (!_scene.cameraLayer.superlayer)
+  if (!_scene.cameraLayer.superlayer) {
     [_canvas.layer addSublayer:_scene.cameraLayer];
+  }
   _canvas.fit.hidden = YES;
   _scene.cameraLayer.hidden = NO;
   if (old) {
@@ -432,17 +458,18 @@ static NSButton *Check(NSString *title, id target, SEL action, NSString *tip) {
   }
   [_scene layoutInSize:_canvas.bounds.size];
   [CATransaction commit];
-  if (!old)
+  if (!old) {
     [_scene animate:^{
       self->_scene.yaw = kYaw;
       self->_scene.pitch = kPitch;
     }];   // swing round from straight on
+  }
 }
 - (void)modeChanged:(NSSegmentedControl *)c {
   _threeD = c.selectedSegment == 1;
-  if (_threeD)
+  if (_threeD) {
     [self showScene];
-  else {
+  } else {
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
     _scene.cameraLayer.hidden = YES;
@@ -453,8 +480,9 @@ static NSButton *Check(NSString *title, id target, SEL action, NSString *tip) {
   [self showSelection];
 }
 - (void)updateControls {
-  for (NSControl *c in @[ _spacing, _clip, _wireframes ])
+  for (NSControl *c in @[ _spacing, _clip, _wireframes ]) {
     c.enabled = _threeD;
+  }
 }
 - (void)spacingChanged:(NSSlider *)s {
   _scene.spacing = s.doubleValue;
@@ -488,8 +516,9 @@ static NSButton *Check(NSString *title, id target, SEL action, NSString *tip) {
 // From the view: the tree selects the row for it (the nearest layer above it with a row, when only views are listed),
 // and that is the selection. From the tree: as it is.
 - (void)select:(NSNumber *)nid fromTree:(BOOL)fromTree {
-  if (!fromTree)
+  if (!fromTree) {
     nid = [_tree selectNode:nid] ?: nid;   // nil deselects; a layer the tree can't show (filtered out) stays selected
+  }
   _selected = nid;
   _scene.selectedNode = nid;
   [self showSelection];
@@ -506,14 +535,16 @@ static NSButton *Check(NSString *title, id target, SEL action, NSString *tip) {
       _highlight.borderColor = NSColor.systemBlueColor.CGColor;
       _highlight.backgroundColor = [NSColor.systemBlueColor colorWithAlphaComponent:0.15].CGColor;
     }
-    if (_highlight.superlayer != _canvas.fit)
+    if (_highlight.superlayer != _canvas.fit) {
       [_canvas.fit addSublayer:_highlight];
+    }
     _highlight.frame = [_canvas.fit convertRect:r fromLayer:_mirror.rootLayer];
     CGFloat scale = _canvas.fit.transform.m11 ?: 1;
     _highlight.borderWidth = 2 / scale;
     _highlight.hidden = NO;
-  } else
+  } else {
     _highlight.hidden = YES;
+  }
   [CATransaction commit];
   NSString *line = _selected ? [_mirror describeNode:_selected] : nil;
   _status.stringValue = line ?: [NSString stringWithFormat:@"%lu layers · %lu updates%@", (unsigned long)_mirror.nodeCount,
@@ -555,9 +586,9 @@ static NSButton *Check(NSString *title, id target, SEL action, NSString *tip) {
     [self freezeNow];
     return;
   }
-  if (when == SRFreezeAfterUpdates)
+  if (when == SRFreezeAfterUpdates) {
     _updatesLeft = count;
-  else {
+  } else {
     _freezeAt = [NSDate dateWithTimeIntervalSinceNow:count];
     __weak SRLayerWindow *weakSelf = self;
     _freezeTimer = [NSTimer scheduledTimerWithTimeInterval:0.1 repeats:YES block:^(NSTimer *t) {
@@ -566,10 +597,11 @@ static NSButton *Check(NSString *title, id target, SEL action, NSString *tip) {
         [t invalidate];
         return;
       }
-      if (s->_freezeAt.timeIntervalSinceNow <= 0)
+      if (s->_freezeAt.timeIntervalSinceNow <= 0) {
         [s freezeNow];
-      else
+      } else {
         [s showFreezeState];
+      }
     }];
   }
   [self showFreezeState];
@@ -589,8 +621,9 @@ static NSButton *Check(NSString *title, id target, SEL action, NSString *tip) {
     return;
   }
   SRSession *s = _session;
-  if (s.layerMirror == _mirror)
+  if (s.layerMirror == _mirror) {
     [s detachLayerMirror];
+  }
   _live = s.layerMirror;
   _frozen = YES;
   _missed = 0;
@@ -604,8 +637,9 @@ static NSButton *Check(NSString *title, id target, SEL action, NSString *tip) {
 }
 // Back to the live copy, as it is now.
 - (void)unfreeze {
-  if (!_frozen)
+  if (!_frozen) {
     return;
+  }
   _frozen = NO;
   SRLayerMirror *live = _live ?: _session.layerMirror;
   _live = nil;
@@ -613,8 +647,9 @@ static NSButton *Check(NSString *title, id target, SEL action, NSString *tip) {
   _inspector.editable = YES;
   if (live && live != _mirror) {
     [self show:live changes:@{ @"full": @YES }];
-    if (_selected)
+    if (_selected) {
       [self select:_selected fromTree:NO];
+    }
   } else {   // the app has gone: the frozen copy is the last there is; let its animations go on
     CALayer *root = _mirror.rootLayer;
     CFTimeInterval paused = root.timeOffset;
@@ -634,15 +669,17 @@ static NSButton *Check(NSString *title, id target, SEL action, NSString *tip) {
   if (_frozen) {
     NSString *at = [NSDateFormatter localizedStringFromDate:_frozenAt dateStyle:NSDateFormatterNoStyle timeStyle:NSDateFormatterMediumStyle];
     sub = [NSString stringWithFormat:@"Frozen at %@", at];
-    if (_missed)
+    if (_missed) {
       sub = [sub stringByAppendingFormat:@" · %lu update%@ since", (unsigned long)_missed, _missed == 1 ? @"" : @"s"];
+    }
   } else if (_updatesLeft) {
     sub = [NSString stringWithFormat:@"Freezing after %ld more update%@", (long)_updatesLeft, _updatesLeft == 1 ? @"" : @"s"];
   } else if (_freezeTimer) {
     sub = [NSString stringWithFormat:@"Freezing in %.0f s", ceil(MAX(_freezeAt.timeIntervalSinceNow, 0))];
   }
-  if (![self.window.subtitle isEqual:sub])
+  if (![self.window.subtitle isEqual:sub]) {
     self.window.subtitle = sub;
+  }
 }
 
 - (void)windowWillClose:(NSNotification *)n {
@@ -650,8 +687,9 @@ static NSButton *Check(NSString *title, id target, SEL action, NSString *tip) {
   [_session removeLayerObserver:_token];   // the last watcher stops the stream
   _token = nil;
   SRSession *s = _session;
-  if (s)
+  if (s) {
     [gWindows removeObjectForKey:s];
+  }
   dispatch_async(dispatch_get_main_queue(), ^{
     [gOpen removeObject:self];
   });

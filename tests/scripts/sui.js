@@ -13,8 +13,9 @@ const step = async (name, f) => {
 await step('reading order: navigation bar, then each section header before its rows', async () => {
   const lines = (await app.snapshot()).split('\n');
   const at = s => lines.findIndex(l => l.includes(s));
-  if (!(at('navigationBar') === 0 && at('"Counter"') < at('Increment') && at('Increment') < at('"Rows"') && at('"Rows"') < at('"Row 0"')))
+  if (!(at('navigationBar') === 0 && at('"Counter"') < at('Increment') && at('Increment') < at('"Rows"') && at('"Rows"') < at('"Row 0"'))) {
     throw new Error(`unexpected order:\n${lines.join('\n')}`);
+  }
 });
 
 await step('stepper buttons', async () => {

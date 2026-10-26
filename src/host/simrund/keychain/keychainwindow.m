@@ -17,17 +17,20 @@
 static NSString *Hex(NSData *d, NSUInteger max) {
   NSMutableString *s = [NSMutableString string];
   const uint8_t *b = d.bytes;
-  for (NSUInteger i = 0; i < d.length && i < max; i++)
+  for (NSUInteger i = 0; i < d.length && i < max; i++) {
     [s appendFormat:@"%02x", b[i]];
-  if (d.length > max)
+  }
+  if (d.length > max) {
     [s appendFormat:@"… (%lu bytes)", (unsigned long)d.length];
+  }
   return s;
 }
 // Data that is really text (tags, generic attributes) shown as text, the rest as hex.
 static NSString *DataString(NSData *d) {
   NSString *s = [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding];
-  if (s.length && [s rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location == NSNotFound)
+  if (s.length && [s rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location == NSNotFound) {
     return s;
+  }
   return Hex(d, 64);
 }
 static NSString *ValueString(id v) {
@@ -37,24 +40,31 @@ static NSString *ValueString(id v) {
     df.dateStyle = NSDateFormatterMediumStyle;
     df.timeStyle = NSDateFormatterMediumStyle;
   }
-  if ([v isKindOfClass:NSString.class])
+  if ([v isKindOfClass:NSString.class]) {
     return v;
-  if ([v isKindOfClass:NSData.class])
+  }
+  if ([v isKindOfClass:NSData.class]) {
     return DataString(v);
-  if ([v isKindOfClass:NSDate.class])
+  }
+  if ([v isKindOfClass:NSDate.class]) {
     return [df stringFromDate:v];
-  if ([v isKindOfClass:NSNumber.class])
+  }
+  if ([v isKindOfClass:NSNumber.class]) {
     return CFGetTypeID((__bridge CFTypeRef)v) == CFBooleanGetTypeID() ? ([v boolValue] ? @"yes" : @"no") : [v stringValue];
+  }
   return [v description] ?: @"";
 }
 
 static NSString *Kind(NSString *cls, NSDictionary *a) {
-  if ([cls isEqual:@"genp"])
+  if ([cls isEqual:@"genp"]) {
     return @"Password";
-  if ([cls isEqual:@"inet"])
+  }
+  if ([cls isEqual:@"inet"]) {
     return @"Internet Password";
-  if ([cls isEqual:@"cert"])
+  }
+  if ([cls isEqual:@"cert"]) {
     return @"Certificate";
+  }
   if ([cls isEqual:@"keys"]) {
     NSString *k = [a[@"kcls"] description];
     return [k isEqual:@"0"] ? @"Public Key" : [k isEqual:@"1"] ? @"Private Key" : [k isEqual:@"2"] ? @"Symmetric Key" : @"Key";
@@ -70,21 +80,23 @@ static SRKCRow *RowFor(NSDictionary *item) {
   r.item = item;
   r.uuid = [item[@"uuid"] description] ?: @"";
   r.kind = Kind(cls, a);
-  if ([cls isEqual:@"inet"])
+  if ([cls isEqual:@"inet"]) {
     r.service = a[@"port"] && [a[@"port"] integerValue] ? [NSString stringWithFormat:@"%@:%@", ValueString(a[@"srvr"]), a[@"port"]] : ValueString(a[@"srvr"]);
-  else if (password)
+  } else if (password) {
     r.service = ValueString(a[@"svce"]);
-  else
+  } else {
     r.service = ValueString(a[@"labl"]);
+  }
   r.account = password ? ValueString(a[@"acct"]) : a[@"atag"] ? ValueString(a[@"atag"]) : @"";
   id v = item[@"value"];
   r.editable = password && (!v || [v isKindOfClass:NSString.class]);
-  if ([v isKindOfClass:NSString.class])
+  if ([v isKindOfClass:NSString.class]) {
     r.value = v;
-  else if (password && [v isKindOfClass:NSData.class])
+  } else if (password && [v isKindOfClass:NSData.class]) {
     r.value = Hex(v, 32);
-  else
+  } else {
     r.value = [v isKindOfClass:NSData.class] ? [NSString stringWithFormat:@"‹%lu bytes›", (unsigned long)[v length]] : @"";
+  }
   r.group = ValueString(a[@"agrp"]);
   r.creator = [item[@"creator"] description] ?: @"";
   r.modified = [a[@"mdat"] isKindOfClass:NSDate.class] ? a[@"mdat"] : NSDate.distantPast;
@@ -120,8 +132,9 @@ static NSString *Describe(NSDictionary *item) {
   [s appendString:@"\n"];
   for (NSString *k in [a.allKeys sortedArrayUsingSelector:@selector(compare:)]) {
     NSString *val = ValueString(a[k]);
-    if ([k isEqual:@"pdmn"] && accessible[val])
+    if ([k isEqual:@"pdmn"] && accessible[val]) {
       val = [NSString stringWithFormat:@"%@ (%@)", val, accessible[val]];
+    }
     line([NSString stringWithFormat:@"%@ (%@)", names[k] ?: k, k], val);
   }
   return s;
@@ -134,10 +147,11 @@ static NSString *Describe(NSDictionary *item) {
 @implementation SRKeychainTable
 - (void)keyDown:(NSEvent *)e {
   unichar c = e.charactersIgnoringModifiers.length ? [e.charactersIgnoringModifiers characterAtIndex:0] : 0;
-  if ((c == NSDeleteCharacter || c == NSDeleteFunctionKey) && self.selectedRowIndexes.count && self.onDelete)
+  if ((c == NSDeleteCharacter || c == NSDeleteFunctionKey) && self.selectedRowIndexes.count && self.onDelete) {
     self.onDelete();
-  else
+  } else {
     [super keyDown:e];
+  }
 }
 @end
 
@@ -167,8 +181,9 @@ static NSString *Describe(NSDictionary *item) {
 }
 
 - (void)showWithFilter:(NSString *)filter {
-  if (!_window)
+  if (!_window) {
     [self buildWindow];
+  }
   if (filter) {
     _search.stringValue = filter;
     [self applyFilter];
@@ -198,8 +213,9 @@ static NSString *Describe(NSDictionary *item) {
   _window.releasedWhenClosed = NO;
   _window.minSize = NSMakeSize(560, 320);
   _window.frameAutosaveName = @"SRKeychainWindow";
-  if (![_window setFrameUsingName:@"SRKeychainWindow"])
+  if (![_window setFrameUsingName:@"SRKeychainWindow"]) {
     [_window center];
+  }
   NSView *root = _window.contentView;
 
   _search = [NSSearchField new];
@@ -292,8 +308,9 @@ static NSString *Describe(NSDictionary *item) {
   NSString *dir = _path.stringByDeletingLastPathComponent;
   [NSFileManager.defaultManager createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
   int fd = open(dir.fileSystemRepresentation, O_EVTONLY);
-  if (fd < 0)
+  if (fd < 0) {
     return;
+  }
   _watch = dispatch_source_create(DISPATCH_SOURCE_TYPE_VNODE, fd, DISPATCH_VNODE_WRITE | DISPATCH_VNODE_DELETE | DISPATCH_VNODE_RENAME, dispatch_get_main_queue());
   __weak SRKeychainWindow *weakSelf = self;
   dispatch_source_set_event_handler(_watch, ^{
@@ -309,8 +326,9 @@ static NSString *Describe(NSDictionary *item) {
   struct stat st = {0};
   stat(_path.fileSystemRepresentation, &st);
   if (st.st_ino == _seen.st_ino && st.st_size == _seen.st_size && st.st_mtimespec.tv_sec == _seen.st_mtimespec.tv_sec &&
-      st.st_mtimespec.tv_nsec == _seen.st_mtimespec.tv_nsec)
+      st.st_mtimespec.tv_nsec == _seen.st_mtimespec.tv_nsec) {
     return;
+  }
   [self reload];
 }
 
@@ -322,8 +340,9 @@ static NSString *Describe(NSDictionary *item) {
   stat(_path.fileSystemRepresentation, &_seen);
   NSMutableArray *rows = [NSMutableArray array];
   _damaged = !srkc_transact(_path, NO, ^BOOL(NSMutableArray<NSMutableDictionary *> *items) {
-    for (NSDictionary *it in items)
+    for (NSDictionary *it in items) {
       [rows addObject:RowFor(it)];
+    }
     return NO;
   });
   _all = rows;
@@ -334,19 +353,23 @@ static NSString *Describe(NSDictionary *item) {
   NSSet *selected = [NSSet setWithArray:[[_rows objectsAtIndexes:_table.selectedRowIndexes] valueForKey:@"uuid"] ?: @[]];
   NSString *f = [_search.stringValue stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
   NSArray *rows = _all;
-  if (f.length)
+  if (f.length) {
     rows = [_all filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(SRKCRow *r, NSDictionary *b) {
-      for (NSString *s in @[ r.kind, r.service, r.account, r.group, r.creator, ValueString(r.item[@"attributes"][@"labl"]) ])
-        if ([s rangeOfString:f options:NSCaseInsensitiveSearch].location != NSNotFound)
+      for (NSString *s in @[ r.kind, r.service, r.account, r.group, r.creator, ValueString(r.item[@"attributes"][@"labl"]) ]) {
+        if ([s rangeOfString:f options:NSCaseInsensitiveSearch].location != NSNotFound) {
           return YES;
+        }
+      }
       return NO;
     }]];
+  }
   _rows = [rows sortedArrayUsingDescriptors:_table.sortDescriptors];
   [_table reloadData];
   NSMutableIndexSet *sel = [NSMutableIndexSet indexSet];
   [_rows enumerateObjectsUsingBlock:^(SRKCRow *r, NSUInteger i, BOOL *stop) {
-    if ([selected containsObject:r.uuid])
+    if ([selected containsObject:r.uuid]) {
       [sel addIndex:i];
+    }
   }];
   [_table selectRowIndexes:sel byExtendingSelection:NO];
   [self updateDetail];
@@ -370,13 +393,16 @@ static NSString *Describe(NSDictionary *item) {
 - (void)modifyItems:(NSSet<NSString *> *)uuids with:(BOOL (^)(NSMutableArray<NSMutableDictionary *> *items, NSMutableDictionary *item))change {
   BOOL ok = srkc_transact(_path, YES, ^BOOL(NSMutableArray<NSMutableDictionary *> *items) {
     BOOL changed = NO;
-    for (NSMutableDictionary *it in [items copy])
-      if ([uuids containsObject:it[@"uuid"]])
+    for (NSMutableDictionary *it in [items copy]) {
+      if ([uuids containsObject:it[@"uuid"]]) {
         changed |= change(items, it);
+      }
+    }
     return changed;
   });
-  if (!ok)
+  if (!ok) {
     NSBeep();
+  }
   [self reload];
 }
 
@@ -391,23 +417,26 @@ static NSString *Describe(NSDictionary *item) {
 
 - (NSArray<SRKCRow *> *)targetRows {
   NSInteger clicked = _table.clickedRow;
-  if (clicked >= 0 && ![_table.selectedRowIndexes containsIndex:clicked])
+  if (clicked >= 0 && ![_table.selectedRowIndexes containsIndex:clicked]) {
     return @[ _rows[clicked] ];
+  }
   return [_rows objectsAtIndexes:_table.selectedRowIndexes];
 }
 
 - (void)copyPassword:(id)sender {
   SRKCRow *r = [self targetRows].firstObject;
-  if (!r.editable)
+  if (!r.editable) {
     return;
+  }
   [NSPasteboard.generalPasteboard clearContents];
   [NSPasteboard.generalPasteboard setString:r.value forType:NSPasteboardTypeString];
 }
 
 - (void)deleteSelected:(id)sender {
   NSArray<SRKCRow *> *rows = [self targetRows];
-  if (!rows.count)
+  if (!rows.count) {
     return;
+  }
   NSAlert *al = [NSAlert new];
   al.messageText = rows.count == 1 ? [NSString stringWithFormat:@"Delete the %@ “%@”?", rows[0].kind.lowercaseString, rows[0].account.length ? rows[0].account : rows[0].service]
                                    : [NSString stringWithFormat:@"Delete %lu keychain items?", (unsigned long)rows.count];
@@ -416,8 +445,9 @@ static NSString *Describe(NSDictionary *item) {
   [al addButtonWithTitle:@"Cancel"];
   NSSet *uuids = [NSSet setWithArray:[rows valueForKey:@"uuid"]];
   [al beginSheetModalForWindow:_window completionHandler:^(NSModalResponse resp) {
-    if (resp != NSAlertFirstButtonReturn)
+    if (resp != NSAlertFirstButtonReturn) {
       return;
+    }
     [self modifyItems:uuids with:^BOOL(NSMutableArray<NSMutableDictionary *> *items, NSMutableDictionary *item) {
       [items removeObjectIdenticalTo:item];
       return YES;
@@ -427,22 +457,26 @@ static NSString *Describe(NSDictionary *item) {
 
 - (void)editPassword:(id)sender {
   NSInteger row = _table.clickedRow;
-  if (row < 0 || row >= (NSInteger)_rows.count || !_rows[row].editable)
+  if (row < 0 || row >= (NSInteger)_rows.count || !_rows[row].editable) {
     return;
+  }
   [_table editColumn:[_table columnWithIdentifier:@"value"] row:row withEvent:nil select:YES];
 }
 - (void)commitPassword:(NSTextField *)field {
   NSInteger row = [_table rowForView:field];
-  if (row < 0 || row >= (NSInteger)_rows.count)
+  if (row < 0 || row >= (NSInteger)_rows.count) {
     return;
+  }
   SRKCRow *r = _rows[row];
   NSString *pw = field.stringValue;
-  if ([pw isEqual:r.value])
+  if ([pw isEqual:r.value]) {
     return;
+  }
   [self modifyItems:[NSSet setWithObject:r.uuid] with:^BOOL(NSMutableArray<NSMutableDictionary *> *items, NSMutableDictionary *item) {
     item[@"value"] = pw;
-    if ([item[@"attributes"] isKindOfClass:NSMutableDictionary.class])
+    if ([item[@"attributes"] isKindOfClass:NSMutableDictionary.class]) {
       item[@"attributes"][@"mdat"] = [NSDate date];
+    }
     return YES;
   }];
 }
@@ -461,10 +495,12 @@ static NSString *Describe(NSDictionary *item) {
 - (void)menuNeedsUpdate:(NSMenu *)menu {
   [menu removeAllItems];
   NSArray<SRKCRow *> *rows = [self targetRows];
-  if (!rows.count)
+  if (!rows.count) {
     return;
-  if (rows.count == 1 && rows[0].editable)
+  }
+  if (rows.count == 1 && rows[0].editable) {
     [menu addItemWithTitle:@"Copy Password" action:@selector(copyPassword:) keyEquivalent:@""].target = self;
+  }
   [menu addItemWithTitle:rows.count == 1 ? @"Delete" : [NSString stringWithFormat:@"Delete %lu Items", (unsigned long)rows.count]
                   action:@selector(deleteSelected:) keyEquivalent:@""].target = self;
 }
@@ -481,8 +517,9 @@ static NSString *Describe(NSDictionary *item) {
     NSTextField *f = [NSTextField labelWithString:@""];
     f.lineBreakMode = NSLineBreakByTruncatingTail;
     f.translatesAutoresizingMaskIntoConstraints = NO;
-    if ([c.identifier isEqual:@"value"])
+    if ([c.identifier isEqual:@"value"]) {
       f.delegate = self;
+    }
     [cell addSubview:f];
     cell.textField = f;
     [NSLayoutConstraint activateConstraints:@[
@@ -492,10 +529,11 @@ static NSString *Describe(NSDictionary *item) {
   }
   SRKCRow *r = _rows[row];
   NSTextField *f = cell.textField;
-  if ([c.identifier isEqual:@"modified"])
+  if ([c.identifier isEqual:@"modified"]) {
     f.stringValue = [r.modified isEqual:NSDate.distantPast] ? @"" : ValueString(r.modified);
-  else
+  } else {
     f.stringValue = [r valueForKey:c.identifier] ?: @"";
+  }
   f.toolTip = f.stringValue;
   if ([c.identifier isEqual:@"value"]) {
     f.editable = r.editable;

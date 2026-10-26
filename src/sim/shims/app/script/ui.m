@@ -12,10 +12,12 @@
 UIWindowScene *SRActiveScene(void) {
   UIWindowScene *any = nil;
   for (UIScene *s in UIApplication.sharedApplication.connectedScenes) {
-    if (![s isKindOfClass:UIWindowScene.class])
+    if (![s isKindOfClass:UIWindowScene.class]) {
       continue;
-    if (s.activationState == UISceneActivationStateForegroundActive)
+    }
+    if (s.activationState == UISceneActivationStateForegroundActive) {
       return (UIWindowScene *)s;
+    }
     any = (UIWindowScene *)s;
   }
   return any;
@@ -30,14 +32,17 @@ static NSString *SRRect(CGRect r) {
   return [NSString stringWithFormat:@"(%.0f,%.0f %.0fx%.0f)", r.origin.x, r.origin.y, r.size.width, r.size.height];
 }
 static void SRDumpView(UIView *v, int depth, NSMutableString *out) {
-  if (v.hidden || v.alpha == 0)
+  if (v.hidden || v.alpha == 0) {
     return;
+  }
   [out appendFormat:@"%*s%@ %@", depth * 2, "", NSStringFromClass(v.class), SRRect([v convertRect:v.bounds toView:nil])];
-  if (v.accessibilityIdentifier.length)
+  if (v.accessibilityIdentifier.length) {
     [out appendFormat:@" id=%@", v.accessibilityIdentifier];
+  }
   [out appendString:@"\n"];
-  for (UIView *s in v.subviews)
+  for (UIView *s in v.subviews) {
     SRDumpView(s, depth + 1, out);
+  }
 }
 
 static uint64_t (*SRFrameCountFunction(void))(void) {
@@ -47,8 +52,9 @@ static uint64_t (*SRFrameCountFunction(void))(void) {
     const char *fw = getenv("SIMULATOR_FRAMEBUFFER_FRAMEWORK");
     void *h = fw ? dlopen(fw, RTLD_NOW | RTLD_NOLOAD) : NULL;
     f = h ? dlsym(h, "SimRunFBFrameCount") : NULL;
-    if (!f)
+    if (!f) {
       VLOG("no SimRunFBFrameCount: settling falls back to waiting");
+    }
   });
   return f;
 }
@@ -64,8 +70,9 @@ void SRInstallUIBindings(JSValue *native) {
   // crown(dy): on a watch, the Digital Crown turned as a scroll of dy points would (hid.h, content-follows direction:
   // dy < 0 scrolls down); false elsewhere
   ui[@"crown"] = ^BOOL(double dy) {
-    if (!SRIsWatch())
+    if (!SRIsWatch()) {
       return NO;
+    }
     SRHIDScroll(0, 0, 0, (float)dy);
     return YES;
   };
@@ -106,8 +113,9 @@ void SRInstallUIBindings(JSValue *native) {
   };
   ui[@"views"] = ^NSString *(void) {
     NSMutableString *out = [NSMutableString string];
-    for (UIWindow *w in SRWindows())
+    for (UIWindow *w in SRWindows()) {
       SRDumpView(w, 0, out);
+    }
     return out;
   };
   native[@"ui"] = ui;

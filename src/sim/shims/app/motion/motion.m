@@ -22,7 +22,12 @@
 #import "app.h"
 
 static int gVerbose;
-#define LOG(...) do { if (gVerbose) fprintf(stderr, "[motion] " __VA_ARGS__); } while (0)
+#define LOG(...) \
+  do { \
+    if (gVerbose) { \
+      fprintf(stderr, "[motion] " __VA_ARGS__); \
+    } \
+  } while (0)
 
 // ---------------------------------------------------------------- CoreMotion's samples
 typedef struct {
@@ -101,9 +106,10 @@ static id make_device_motion(SRQuat attitude, SRFloat3 userAcceleration, SRFloat
     .doingBiasEstimation = true, .isInitialized = true, .heading = -1, .sensorLocation = CMDeviceMotionSensorLocationDefault,
   };
   SRDeviceMotionInternal internal = { .headingAccuracy = -1 };
-  if (gInternal27)
+  if (gInternal27) {
     return ((id (*)(id, SEL, SRDeviceMotionSample, SRDeviceMotionInternal27, double))objc_msgSend)(
       [gDeviceMotion alloc], gDeviceMotionInit, m, (SRDeviceMotionInternal27){ internal }, t);
+  }
   return ((id (*)(id, SEL, SRDeviceMotionSample, SRDeviceMotionInternal, double))objc_msgSend)(
     [gDeviceMotion alloc], gDeviceMotionInit, m, internal, t);
 }
@@ -177,8 +183,9 @@ static SRLid gLid;            // the last readings, oldest first; on gHostQ
 static double gLastT;         // the latest motion sample's time
 static void lid_reading(double t, double angle) {
   LOG("lid %.0f° at %.3f, %.3f s before the last motion sample\n", angle * 180 / M_PI, t, gLastT - t);
-  if (gLid.n && t <= gLid.t[gLid.n - 1])
+  if (gLid.n && t <= gLid.t[gLid.n - 1]) {
     return;
+  }
   if (gLid.n == LID_READINGS) {
     memmove(gLid.t, gLid.t + 1, (LID_READINGS - 1) * sizeof *gLid.t);
     memmove(gLid.angle, gLid.angle + 1, (LID_READINGS - 1) * sizeof *gLid.angle);
@@ -192,20 +199,22 @@ static void lid_reading(double t, double angle) {
 // is known.
 static BOOL device_pose(double t, SRQuat *pose, double *lidRate) {
   double angle = M_PI / 2, rate = 0;
-  if (gPose == kPoseFlat)
+  if (gPose == kPoseFlat) {
     angle = M_PI;
-  else if (gPose == kPoseScreen && gHasLid) {
-    if (!gLid.n)
+  } else if (gPose == kPoseScreen && gHasLid) {
+    if (!gLid.n) {
       return NO;
+    }
     double at = t - LID_LAG;
     int i = 1;
-    while (i < gLid.n && gLid.t[i] < at)
+    while (i < gLid.n && gLid.t[i] < at) {
       i++;
-    if (at >= gLid.t[gLid.n - 1])
+    }
+    if (at >= gLid.t[gLid.n - 1]) {
       angle = gLid.angle[gLid.n - 1];   // the lid stands still (or its readings stopped)
-    else if (at <= gLid.t[0])
+    } else if (at <= gLid.t[0]) {
       angle = gLid.angle[0];                 // just started
-    else {                                                           // between readings i - 1 and i
+    } else {                                                           // between readings i - 1 and i
       rate = (gLid.angle[i] - gLid.angle[i - 1]) / (gLid.t[i] - gLid.t[i - 1]);
       angle = gLid.angle[i - 1] + rate * (at - gLid.t[i - 1]);
     }
@@ -220,8 +229,9 @@ static BOOL device_pose(double t, SRQuat *pose, double *lidRate) {
 // for a device standing upright): its x across the horizontal plane, else its y (x pointing up or down).
 static SRQuat level_reference(SRQuat q) {
   V3 x = q_rotate(q, (V3){ 1, 0, 0 });
-  if (hypot(x.x, x.y) < 0.2)
+  if (hypot(x.x, x.y) < 0.2) {
     x = q_rotate(q, (V3){ 0, 1, 0 }), x = (V3){ x.y, -x.x, 0 };   // y, turned back to where x would be
+  }
   double yaw = atan2(x.y, x.x);
   return (SRQuat){ cos(-yaw / 2), 0, 0, sin(-yaw / 2) };
 }
@@ -248,16 +258,18 @@ static SRFusion gFusion;   // on gHostQ
 static SRQuat q_from_gravity(V3 a) {
   V3 n = v3_scale(a, 1 / v3_len(a));
   double d = v3_dot(n, kDown);
-  if (d < -0.999999)
+  if (d < -0.999999) {
     return (SRQuat){ 0, 1, 0, 0 };   // face down: half a turn about x
+  }
   V3 c = v3_cross(n, kDown);
   return q_normalize((SRQuat){ 1 + d, c.x, c.y, c.z });
 }
 
 static void fusion_update(V3 gyro, double t) {
   SRFusion *f = &gFusion;
-  if (!f->haveAccel)
+  if (!f->haveAccel) {
     return;
+  }
   double accelG = v3_len(f->accel);
   if (!f->started || t - f->t > 0.1 || t < f->t) {   // start, or start again after a gap
     f->q = q_from_gravity(f->accel);
@@ -269,10 +281,11 @@ static void fusion_update(V3 gyro, double t) {
   double dt = t - f->t;
   f->t = t;
   V3 w = v3_sub(gyro, f->bias);
-  if (v3_len(w) < STILL_RATE && fabs(accelG - 1) < STILL_G)
+  if (v3_len(w) < STILL_RATE && fabs(accelG - 1) < STILL_G) {
     f->still += dt;
-  else
+  } else {
     f->still = 0;
+  }
   if (f->still > STILL_TIME) {
     f->learnt += dt;
     double k = fmin(1, dt / fmin(BIAS_TIME, 0.25 + f->learnt));
@@ -319,9 +332,11 @@ static const char *const kStreamName[kStreams] = { "accelerometer", "gyro", "dev
   return self;
 }
 - (BOOL)anyActive {
-  for (SRMotionStream *s in _streams)
-    if (s.active)
+  for (SRMotionStream *s in _streams) {
+    if (s.active) {
       return YES;
+    }
+  }
   return NO;
 }
 @end
@@ -355,10 +370,11 @@ static void connect_host(void) {
   static dispatch_once_t once;
   dispatch_once(&once, ^{
     gHost = SRHostConnect(SRMO_SERVICE, gHostQ, ^(xpc_object_t e) {
-      if (xpc_get_type(e) == XPC_TYPE_DICTIONARY)
+      if (xpc_get_type(e) == XPC_TYPE_DICTIONARY) {
         host_samples(e);
-      else if (e == XPC_ERROR_CONNECTION_INTERRUPTED)
+      } else if (e == XPC_ERROR_CONNECTION_INTERRUPTED) {
         gSubscribed = NO;   // SimRun went away; nothing comes back
+      }
     });
     if (!gHost) {
       fprintf(stderr, "[motion] no %s in this SimRun: no motion sensors\n", SRMO_SERVICE);
@@ -388,8 +404,9 @@ static void host_op(const char *op) {
   xpc_dictionary_set_string(m, "op", op);
   xpc_connection_send_message_with_reply(gHost, m, gHostQ, ^(xpc_object_t r) {
     const char *error = xpc_get_type(r) == XPC_TYPE_DICTIONARY ? xpc_dictionary_get_string(r, "error") : "no reply";
-    if (error)
+    if (error) {
       fprintf(stderr, "[motion] %s: %s\n", op, error);
+    }
   });
 }
 
@@ -402,8 +419,9 @@ static BOOL any_running(void) {
 // On gHostQ: have samples while some manager runs a stream, and only then.
 static void update_subscription(void) {
   BOOL want = any_running();
-  if (want == gSubscribed)
+  if (want == gSubscribed) {
     return;
+  }
   gSubscribed = want;
   if (want) {
     gFusion.started = NO;
@@ -416,20 +434,23 @@ static void update_subscription(void) {
 
 // Hands a sample to a stream that is due one; YES if it took it (`make` is only called then).
 static BOOL deliver(SRMotionStream *s, double interval, double t, id (^make)(void)) {
-  if (!s.active)
+  if (!s.active) {
     return NO;
+  }
   double period = 1.0 / SRMO_RATE;
-  if (s.due && t < s.due - period / 2)
+  if (s.due && t < s.due - period / 2) {
     return NO;
+  }
   interval = fmax(interval, period);
   s.due = s.due && t < s.due + interval ? s.due + interval : t + interval;
   id sample = make();
   s.latest = sample;
   void (^handler)(id, NSError *) = s.handler;
-  if (handler)
+  if (handler) {
     [s.queue addOperationWithBlock:^{
       handler(sample, nil);
     }];
+  }
   return YES;
 }
 
@@ -447,8 +468,9 @@ static void host_samples(xpc_object_t m) {
   size_t length = 0;
   const void *bytes = xpc_dictionary_get_data(m, "samples", &length);
   size_t n = bytes ? length / sizeof(SRMotionSample) : 0;
-  if (!n || !gSubscribed)
+  if (!n || !gSubscribed) {
     return;
+  }
   os_unfair_lock_lock(&gLock);
   NSArray *managers = gManagers.allObjects;
   os_unfair_lock_unlock(&gLock);
@@ -458,14 +480,16 @@ static void host_samples(xpc_object_t m) {
   }
   // the intervals: the managers' own getters, outside our lock
   NSMutableArray<NSArray<NSNumber *> *> *intervals = [NSMutableArray array];
-  for (id mgr in managers)
+  for (id mgr in managers) {
     [intervals addObject:@[ @(interval_of(mgr, kAccelerometer)), @(interval_of(mgr, kGyro)), @(interval_of(mgr, kDeviceMotion)) ]];
+  }
   for (size_t i = 0; i < n; i++) {
     SRMotionSample s;
     memcpy(&s, (const char *)bytes + i * sizeof s, sizeof s);
     V3 v = { s.x, s.y, s.z };   // the base's
-    if (s.sensor != SRMO_LID)
+    if (s.sensor != SRMO_LID) {
       gLastT = s.t;
+    }
     __block id shared = nil;   // one CM…Data for every manager
     if (s.sensor == SRMO_ACCELEROMETER) {
       gFusion.accel = v;
@@ -473,20 +497,23 @@ static void host_samples(xpc_object_t m) {
     } else if (s.sensor == SRMO_GYRO) {
       fusion_update(v, s.t);
     } else {
-      if (s.sensor == SRMO_LID)
+      if (s.sensor == SRMO_LID) {
         lid_reading(s.t, s.x);
+      }
       continue;
     }
     SRQuat pose;
     double lidRate;
-    if (!device_pose(s.t, &pose, &lidRate))
+    if (!device_pose(s.t, &pose, &lidRate)) {
       continue;
+    }
     SRQuat toDevice = q_conj(pose);
     V3 lidTurn = { -lidRate, 0, 0 };
     int stream = s.sensor == SRMO_ACCELEROMETER ? kAccelerometer : kGyro;
     V3 d = q_rotate(toDevice, v);
-    if (stream == kGyro)
+    if (stream == kGyro) {
       d = v3_add(d, lidTurn);
+    }
     s.x = d.x;
     s.y = d.y;
     s.z = d.z;
@@ -502,8 +529,9 @@ static void host_samples(xpc_object_t m) {
       deliver(st.streams[stream], intervals[k][stream].doubleValue, s.t, ^id {
         return shared ?: (shared = stream == kAccelerometer ? make_accelerometer(s) : make_gyro(s));
       });
-      if (!motion || !st.streams[kDeviceMotion].active)
+      if (!motion || !st.streams[kDeviceMotion].active) {
         continue;
+      }
       deliver(st.streams[kDeviceMotion], intervals[k][kDeviceMotion].doubleValue, s.t, ^id {
         if (!st.haveReference) {   // this manager's x: the device's when it started device motion
           st.reference = level_reference(attitude);
@@ -539,8 +567,9 @@ static void start_stream(id manager, int stream, NSOperationQueue *queue, id han
     st.frame = frame;
     st.haveReference = NO;
   }
-  if (!gManagers)
+  if (!gManagers) {
     gManagers = [NSHashTable weakObjectsHashTable];
+  }
   [gManagers addObject:manager];
   os_unfair_lock_unlock(&gLock);
   LOG("%p: %s updates%s, every %.3f s\n", manager, kStreamName[stream], handler ? "" : " (pulled)", interval_of(manager, stream));
@@ -551,19 +580,22 @@ static void start_stream(id manager, int stream, NSOperationQueue *queue, id han
 
 static void stop_stream(id manager, int stream) {
   SRMotionState *st = objc_getAssociatedObject(manager, kStateKey);
-  if (!st)
+  if (!st) {
     return;
+  }
   os_unfair_lock_lock(&gLock);
   SRMotionStream *s = st.streams[stream];
   BOOL was = s.active;
   s.active = NO;
   s.handler = nil;
   s.queue = nil;
-  if (![st anyActive])
+  if (![st anyActive]) {
     [gManagers removeObject:manager];
+  }
   os_unfair_lock_unlock(&gLock);
-  if (!was)
+  if (!was) {
     return;
+  }
   LOG("%p: %s updates stopped\n", manager, kStreamName[stream]);
   dispatch_async(gHostQ, ^{
     update_subscription();
@@ -572,8 +604,9 @@ static void stop_stream(id manager, int stream) {
 
 static BOOL stream_active(id manager, int stream) {
   SRMotionState *st = objc_getAssociatedObject(manager, kStateKey);
-  if (!st)
+  if (!st) {
     return NO;
+  }
   os_unfair_lock_lock(&gLock);
   BOOL active = st.streams[stream].active;
   os_unfair_lock_unlock(&gLock);
@@ -581,8 +614,9 @@ static BOOL stream_active(id manager, int stream) {
 }
 static id stream_latest(id manager, int stream) {
   SRMotionState *st = objc_getAssociatedObject(manager, kStateKey);
-  if (!st)
+  if (!st) {
     return nil;
+  }
   os_unfair_lock_lock(&gLock);
   id latest = st.streams[stream].latest;
   os_unfair_lock_unlock(&gLock);
@@ -658,8 +692,9 @@ static void image_loaded(const struct mach_header *mh, intptr_t slide) {
   Class c = done ? Nil : objc_getClass("CMMotionManager");
   if (c) {
     done = YES;
-    if (samples_known())
+    if (samples_known()) {
       patch_manager(c);
+    }
   }
   os_unfair_lock_unlock(&lock);
 }

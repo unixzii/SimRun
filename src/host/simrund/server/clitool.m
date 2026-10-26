@@ -21,20 +21,24 @@ static NSString *Helper(void) {
 // What's at /usr/local/bin/simrun now; for something else there, *what says what it is.
 static SRLinkState Existing(NSString *helper, NSString **what) {
   struct stat st;
-  if (lstat(kLink.fileSystemRepresentation, &st) != 0)
+  if (lstat(kLink.fileSystemRepresentation, &st) != 0) {
     return SRLinkNone;
-  if (S_ISDIR(st.st_mode))
+  }
+  if (S_ISDIR(st.st_mode)) {
     return SRLinkFolder;
+  }
   if (!S_ISLNK(st.st_mode)) {
     *what = @"It's a file, not a link to SimRun's simrun.";
     return SRLinkOther;
   }
   char a[PATH_MAX], b[PATH_MAX];   // realpath: the same simrun however the link gets there
-  if (realpath(kLink.fileSystemRepresentation, a) && realpath(helper.fileSystemRepresentation, b) && !strcmp(a, b))
+  if (realpath(kLink.fileSystemRepresentation, a) && realpath(helper.fileSystemRepresentation, b) && !strcmp(a, b)) {
     return SRLinkOurs;
+  }
   NSString *dest = [NSFileManager.defaultManager destinationOfSymbolicLinkAtPath:kLink error:nil] ?: @"?";
-  if (!dest.isAbsolutePath)
+  if (!dest.isAbsolutePath) {
     dest = [kBinDir stringByAppendingPathComponent:dest].stringByStandardizingPath;
+  }
   BOOL dangling = stat(kLink.fileSystemRepresentation, &st) != 0;
   *what = [NSString stringWithFormat:@"It links to %@%@.", dest.stringByAbbreviatingWithTildeInPath, dangling ? @", which no longer exists" : @""];
   return SRLinkOther;
@@ -42,12 +46,14 @@ static SRLinkState Existing(NSString *helper, NSString **what) {
 
 // Links it as the user: a new link renamed over the old one. Returns 0 or the errno.
 static int LinkDirectly(NSString *helper) {
-  if (mkdir(kBinDir.fileSystemRepresentation, 0755) != 0 && errno != EEXIST)
+  if (mkdir(kBinDir.fileSystemRepresentation, 0755) != 0 && errno != EEXIST) {
     return errno;
+  }
   NSString *tmp = [kBinDir stringByAppendingPathComponent:[NSString stringWithFormat:@".simrun.%d", getpid()]];
   unlink(tmp.fileSystemRepresentation);
-  if (symlink(helper.fileSystemRepresentation, tmp.fileSystemRepresentation) != 0)
+  if (symlink(helper.fileSystemRepresentation, tmp.fileSystemRepresentation) != 0) {
     return errno;
+  }
   if (rename(tmp.fileSystemRepresentation, kLink.fileSystemRepresentation) != 0) {
     int e = errno;
     unlink(tmp.fileSystemRepresentation);
@@ -72,10 +78,12 @@ static NSString *LinkAsAdmin(NSString *helper) {
                    ScriptQuoted(@"SimRun wants to install the simrun command in /usr/local/bin.")];
   NSDictionary *err = nil;
   [[[NSAppleScript alloc] initWithSource:src] executeAndReturnError:&err];
-  if (!err)
+  if (!err) {
     return nil;
-  if ([err[NSAppleScriptErrorNumber] integerValue] == -128)
+  }
+  if ([err[NSAppleScriptErrorNumber] integerValue] == -128) {
     return @"";   // userCanceledErr
+  }
   return err[NSAppleScriptErrorMessage] ?: @"The administrator script failed.";
 }
 
@@ -96,8 +104,9 @@ static void Report(NSString *title, NSString *text, NSAlertStyle style) {
 
 + (void)install {
   NSString *helper = Helper();
-  if (!helper || gInstalling)
+  if (!helper || gInstalling) {
     return;
+  }
   NSString *what = nil;
   switch (Existing(helper, &what)) {
     case SRLinkNone:
@@ -114,8 +123,9 @@ static void Report(NSString *title, NSString *text, NSAlertStyle style) {
       al.informativeText = [NSString stringWithFormat:@"%@ already exists. %@\n\nReplacing it links it to the simrun in this copy of SimRun.", kLink, what];
       [al addButtonWithTitle:@"Replace"];
       [al addButtonWithTitle:@"Cancel"];
-      if ([al runModal] != NSAlertFirstButtonReturn)
+      if ([al runModal] != NSAlertFirstButtonReturn) {
         return;
+      }
     }
   }
 
@@ -133,10 +143,11 @@ static void Report(NSString *title, NSString *text, NSAlertStyle style) {
     NSString *failure = LinkAsAdmin(helper);
     dispatch_async(dispatch_get_main_queue(), ^{
       gInstalling = NO;
-      if (!failure)
+      if (!failure) {
         [self reportInstalled];
-      else if (failure.length)
+      } else if (failure.length) {
         Report(@"Couldn't install the simrun command", failure, NSAlertStyleWarning);
+      }
     });
   });
 }

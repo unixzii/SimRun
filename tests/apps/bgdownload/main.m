@@ -51,8 +51,9 @@ static NSString *const kSession = @"dev.simrun.bgdownload.session";
     [self show:[NSString stringWithFormat:@"downloaded HTTP %ld, %@ bytes", (long)((NSHTTPURLResponse *)t.response).statusCode, size]];
 }
 - (void)URLSession:(NSURLSession *)s task:(NSURLSessionTask *)t didCompleteWithError:(NSError *)e {
-    if (e)
+    if (e) {
         [self show:[@"failed: " stringByAppendingString:e.description]];
+    }
 }
 @end
 @interface SD : UIResponder <UIWindowSceneDelegate> @property (nonatomic, strong) UIWindow *window;

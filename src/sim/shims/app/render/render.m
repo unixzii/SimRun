@@ -35,8 +35,9 @@ static void LOGF(NSString *fmt, ...) {
 }
 
 static void host_layers(NSArray<NSNumber *> *ids) {
-  if ([ids isEqual:gHosted])
+  if ([ids isEqual:gHosted]) {
     return;
+  }
   gHosted = [ids mutableCopy];
   if (!gHostCtx) {
     gHostCtx = [CAContext remoteContextWithOptions:@{ kCAContextDisplayable: @YES }];
@@ -69,8 +70,9 @@ static void host_layers(NSArray<NSNumber *> *ids) {
 
 static void layers_cb(const uint32_t *ids, const double *levels, size_t n, void *ctx) {
   NSMutableArray *a = [NSMutableArray array];
-  for (size_t i = 0; i < n; i++)
+  for (size_t i = 0; i < n; i++) {
     [a addObject:@(ids[i])];
+  }
   dispatch_async(dispatch_get_main_queue(), ^{
     host_layers(a);
   });
@@ -83,13 +85,15 @@ void SRRenderStart(void) {
   [(NSValue *)[md valueForKey:@"bounds"] getValue:&b size:sizeof b];
   gPixels = b.size.width > 0 ? b.size : CGSizeMake(1206, 2622);
   NSNumber *ps = [md valueForKey:@"pointScale"];
-  if (ps.doubleValue > 0)
+  if (ps.doubleValue > 0) {
     gScale = ps.doubleValue;
+  }
   LOGF(@"render server %@ main display %@ %gx%g", gServer, [md valueForKey:@"name"], gPixels.width, gPixels.height);
   SRScenesSetLayersCallback(layers_cb, NULL);
   dispatch_async(dispatch_get_main_queue(), ^{
     uint32_t cid = SRScenesGetMainContextID();
-    if (cid)
+    if (cid) {
       host_layers(@[@(cid)]);
+    }
   });
 }

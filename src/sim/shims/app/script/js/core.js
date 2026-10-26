@@ -12,12 +12,14 @@ const isPlain = v => {
 };
 const jsonReplacer = (key, v) => {
   if (v && typeof v === 'object') {
-    if (internal.Locator && v instanceof internal.Locator)
+    if (internal.Locator && v instanceof internal.Locator) {
       return v.toString();
+    }
     if (!isPlain(v)) {
       const d = native.objc.describe(v);
-      if (d)
+      if (d) {
         return d;
+      }
     }
   }
   return v;
@@ -25,16 +27,20 @@ const jsonReplacer = (key, v) => {
 
 // A value as `simrun eval` prints it: strings as they are, undefined as nothing, the rest as JSON.
 internal.formatValue = v => {
-  if (v === undefined)
+  if (v === undefined) {
     return '';
-  if (typeof v === 'string')
+  }
+  if (typeof v === 'string') {
     return v;
-  if (typeof v === 'function')
+  }
+  if (typeof v === 'function') {
     return v.toString();
+  }
   try {
     const s = JSON.stringify(v, jsonReplacer, 2);
-    if (s !== undefined)
+    if (s !== undefined) {
       return s;
+    }
   } catch (e) {}
   return String(v);
 };
@@ -42,14 +48,16 @@ internal.formatValue = v => {
 // What an exception says: the error and where it came from in the script ("script.js" frames; the API's own frames are
 // left out), or what was thrown. prefix: how many characters of wrapper precede the script on its first line.
 internal.formatError = (e, prefix) => {
-  if (!(e instanceof Error))
+  if (!(e instanceof Error)) {
     return `Uncaught ${internal.formatValue(e)}`;
+  }
   const at = (l, c) => `script.js:${l}` + (c === undefined ? '' : `:${l == 1 ? c - prefix : c}`);
   const frames = String(e.stack || '').split('\n')
     .map(f => f.match(/^(.*?)@?script\.js:(\d+):(\d+)$/)).filter(m => m)
     .map(([, fn, l, c]) => `    at ${fn ? `${fn} (${at(l, +c)})` : at(l, +c)}`);
-  if (!frames.length && e.line && e.sourceURL === 'script.js')
+  if (!frames.length && e.line && e.sourceURL === 'script.js') {
     frames.push(`    at ${at(e.line, e.column)}`);
+  }
   return [String(e), ...frames].join('\n');
 };
 
@@ -57,13 +65,15 @@ internal.formatError = (e, prefix) => {
 // answer either way (callers say what was being waited for when it isn't done).
 internal.poll = async (probe, timeout, interval = 60) => {
   // the first look at the elements in an app loads its accessibility support (seconds, once): not part of the wait
-  if (internal.ready)
+  if (internal.ready) {
     await internal.ready();
+  }
   const deadline = Date.now() + timeout;
   for (;;) {
     const r = await probe();
-    if (r.done || Date.now() >= deadline)
+    if (r.done || Date.now() >= deadline) {
       return r;
+    }
     await sleep(interval);
   }
 };
@@ -85,9 +95,9 @@ internal.waitForIdle = async ({ quiet = 100, timeout = 2000 } = {}) => {
     if (n !== last || now - tick > 50) {   // drawing, or the main thread was busy
       last = n;
       since = now;
-    }
-    else if (now - since >= quiet)
+    } else if (now - since >= quiet) {
       return true;
+    }
     tick = now;
   }
   return false;
@@ -104,8 +114,9 @@ internal.tapAt = async (x, y, hold = 50) => {
 internal.crown = async (delta, duration = 300) => {
   const steps = Math.max(1, Math.round(duration / 16));
   for (let i = 0; i < steps; i++) {
-    if (!native.ui.crown(-delta / steps))
+    if (!native.ui.crown(-delta / steps)) {
       throw new Error('app.crown: only a watchOS app has a Digital Crown');
+    }
     await sleep(duration / steps);
   }
 };

@@ -45,11 +45,12 @@ static inline uint32_t sr_surface_checksum(IOSurfaceRef s) {
   IOSurfaceLock(s, kIOSurfaceLockReadOnly, NULL);
   const uint8_t *px = (const uint8_t *)IOSurfaceGetBaseAddress(s);
   uint32_t hash = 2166136261u;
-  for (size_t gy = 0; gy < 128; gy++)
+  for (size_t gy = 0; gy < 128; gy++) {
     for (size_t gx = 0; gx < 64; gx++) {
       uint32_t v = *(const uint32_t *)(px + (gy * h / 128) * bpr + (gx * w / 64) * 4);
       hash = (hash ^ v) * 16777619u;
     }
+  }
   IOSurfaceUnlock(s, kIOSurfaceLockReadOnly, NULL);
   return hash;
 }

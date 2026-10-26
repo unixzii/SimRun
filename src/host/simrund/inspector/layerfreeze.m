@@ -182,10 +182,12 @@ static NSTextField *Label(NSString *s) {
 }
 
 - (void)freeze:(id)sender {
-  if (_count.currentEditor)
+  if (_count.currentEditor) {
     [self setCount:_count.integerValue];   // typed but not yet entered
+  }
   SRFreezeWhen when = self.selectedWhen;
-  if (self.onFreeze)
+  if (self.onFreeze) {
     self.onFreeze(when, when == SRFreezeNow ? 0 : self.savedCount);
+  }
 }
 @end

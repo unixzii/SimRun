@@ -70,8 +70,9 @@ function status(state) {
 async function api(path, options = {}) {
   const r = await fetch(path, { ...options, headers: { ...(options.headers || {}), Authorization: "Bearer " + key } });
   const body = await r.json().catch(() => ({}));
-  if (!r.ok)
+  if (!r.ok) {
     throw new Error(body.error || r.statusText);
+  }
   return body;
 }
 
@@ -116,8 +117,9 @@ $("retry").onclick = () => {
 // ---------------------------------------------------------------- WebRTC
 function disconnect() {
   clearInterval(statsTimer);
-  if (channel)
+  if (channel) {
     channel.onclose = null;
+  }
   if (pc) {
     pc.onconnectionstatechange = null;
     pc.close();
@@ -131,8 +133,9 @@ async function connect(id) {
   current = id;
   history.replaceState(null, "", `#${key}&app=${id}`);
   const app = apps.find(a => a.id === id);
-  if (app)
+  if (app) {
     setScreen(app.width, app.height);
+  }
   status("");
   notice("Connecting…");
   const conn = pc = new RTCPeerConnection({ iceServers, bundlePolicy: "max-bundle" });
@@ -156,10 +159,12 @@ async function connect(id) {
   };
   conn.ontrack = e => {
     video.srcObject = e.streams[0] || new MediaStream([e.track]);
-    if ("jitterBufferTarget" in e.receiver)
+    if ("jitterBufferTarget" in e.receiver) {
       e.receiver.jitterBufferTarget = 0;   // lowest latency
-    if ("playoutDelayHint" in e.receiver)
+    }
+    if ("playoutDelayHint" in e.receiver) {
       e.receiver.playoutDelayHint = 0;
+    }
   };
   conn.onconnectionstatechange = () => {
     if (conn.connectionState === "connected") {
@@ -174,20 +179,23 @@ async function connect(id) {
   };
   await conn.setLocalDescription(await conn.createOffer());
   await gathered(conn, 2000);
-  if (pc !== conn)
+  if (pc !== conn) {
     return;
+  }
   const r = await api(`/api/connect?app=${id}`, { method: "POST", headers: { "Content-Type": "application/json" },
                                                   body: JSON.stringify({ sdp: conn.localDescription.sdp, full: $("full").checked }) });
-  if (pc !== conn)
+  if (pc !== conn) {
     return;
+  }
   await conn.setRemoteDescription({ type: "answer", sdp: r.sdp });
   statsTimer = setInterval(() => showStats(conn), 1000);
 }
 
 // SimRun takes the offer with every candidate in it (no trickle ICE)
 function gathered(conn, timeout) {
-  if (conn.iceGatheringState === "complete")
+  if (conn.iceGatheringState === "complete") {
     return Promise.resolve();
+  }
   return new Promise(resolve => {
     const t = setTimeout(resolve, timeout);
     conn.addEventListener("icegatheringstatechange", () => {
@@ -203,8 +211,9 @@ let lastBytes = 0, lastTime = 0;
 async function showStats(conn) {
   const report = await conn.getStats();
   report.forEach(s => {
-    if (s.type !== "inbound-rtp" || s.kind !== "video")
+    if (s.type !== "inbound-rtp" || s.kind !== "video") {
       return;
+    }
     const codec = s.codecId && report.get(s.codecId);
     const mbps = lastTime ? (s.bytesReceived - lastBytes) * 8 / ((s.timestamp - lastTime) * 1000) : 0;
     lastBytes = s.bytesReceived;
@@ -215,35 +224,38 @@ async function showStats(conn) {
 }
 
 function send(message) {
-  if (channel && channel.readyState === "open")
+  if (channel && channel.readyState === "open") {
     channel.send(JSON.stringify(message));
+  }
 }
 
 function onMessage(m) {
-  if (m.t === "screen")
+  if (m.t === "screen") {
     setScreen(m.w, m.h);
-  else if (m.t === "text") {
+  } else if (m.t === "text") {
     const was = textFocused;
     textFocused = !!m.focused;
     caret = { x: m.x, y: m.y, w: m.w, h: m.h };
     placeInput();
-    if (was && !textFocused)
+    if (was && !textFocused) {
       hideKeyboard();
-  }
-  else if (m.t === "bye") {
+    }
+  } else if (m.t === "bye") {
     const conn = pc;
     disconnect();
     status("bad");
     notice(m.reason, true);
-    if (conn)
+    if (conn) {
       conn.close();
+    }
   }
 }
 
 // ---------------------------------------------------------------- the screen: its size, and where points are
 function setScreen(w, h) {
-  if (!w || !h)
+  if (!w || !h) {
     return;
+  }
   screenSize = { w, h };
   screenEl.style.aspectRatio = `${w} / ${h}`;
   screenEl.style.visibility = "visible";
@@ -251,8 +263,9 @@ function setScreen(w, h) {
 }
 function layout() {   // as large as the stage allows, at the screen's aspect ratio
   const stage = $("stage").getBoundingClientRect(), pad = 32;
-  if (!screenSize.w)
+  if (!screenSize.w) {
     return;
+  }
   const s = Math.min((stage.width - pad) / screenSize.w, (stage.height - pad) / screenSize.h);
   screenEl.style.width = `${Math.max(0, screenSize.w * s)}px`;
   screenEl.style.height = `${Math.max(0, screenSize.h * s)}px`;
@@ -260,8 +273,9 @@ function layout() {   // as large as the stage allows, at the screen's aspect ra
 }
 addEventListener("resize", layout);
 // and when the stage changes size without the window (the header wraps once the stats line is there)
-if (window.ResizeObserver)
+if (window.ResizeObserver) {
   new ResizeObserver(() => layout()).observe($("stage"));
+}
 // The page fills what's visible: when a soft keyboard comes up (iOS Safari leaves the layout viewport as it is and
 // pans it), the app's screen shrinks to fit above it instead of going under it.
 if (window.visualViewport) {
@@ -285,8 +299,9 @@ function pointsPerPixel() {
 // ---------------------------------------------------------------- pointer: one finger
 let finger = null;
 screenEl.addEventListener("pointerdown", e => {
-  if (finger !== null || !screenSize.w || (e.pointerType === "mouse" && e.button !== 0))
+  if (finger !== null || !screenSize.w || (e.pointerType === "mouse" && e.button !== 0)) {
     return;
+  }
   e.preventDefault();
   finger = e.pointerId;
   screenEl.setPointerCapture(e.pointerId);
@@ -294,18 +309,22 @@ screenEl.addEventListener("pointerdown", e => {
   focusInput();
 });
 screenEl.addEventListener("pointermove", e => {
-  if (e.pointerId !== finger)
+  if (e.pointerId !== finger) {
     return;
-  for (const c of (e.getCoalescedEvents ? e.getCoalescedEvents() : null) || [e])
+  }
+  for (const c of (e.getCoalescedEvents ? e.getCoalescedEvents() : null) || [e]) {
     send({ t: "touch", p: 1, ...toPoint(c) });
+  }
 });
-for (const type of ["pointerup", "pointercancel"])
+for (const type of ["pointerup", "pointercancel"]) {
   screenEl.addEventListener(type, e => {
-    if (e.pointerId !== finger)
+    if (e.pointerId !== finger) {
       return;
+    }
     finger = null;
     send({ t: "touch", p: 2, ...toPoint(e) });
   });
+}
 // iOS follows a tap with mouse events of its own, whose mousedown would take focus from the input (and the keyboard
 // with it) while the app's text input still has it
 screenEl.addEventListener("mousedown", e => e.preventDefault());
@@ -314,8 +333,9 @@ screenEl.addEventListener("mousedown", e => e.preventDefault());
 let pinching = false, pinchEnd = null;
 screenEl.addEventListener("wheel", e => {
   e.preventDefault();
-  if (!screenSize.w)
+  if (!screenSize.w) {
     return;
+  }
   const p = toPoint(e);
   if (e.ctrlKey) {
     send({ t: "pinch", ...p, m: -e.deltaY / 100, p: pinching ? 4 : 1 });
@@ -353,46 +373,58 @@ const MODIFIER_KEYS = /^(Shift|Control|Alt|Meta|OS|CapsLock)/;
 const MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 function modifiers(e) {   // NSEvent.modifierFlags; elsewhere than on a Mac, Ctrl is ⌘ (copy, paste, undo)
   let m = 0;
-  if (e.getModifierState && e.getModifierState("CapsLock"))
+  if (e.getModifierState && e.getModifierState("CapsLock")) {
     m |= 1 << 16;
-  if (e.shiftKey)
+  }
+  if (e.shiftKey) {
     m |= 1 << 17;
-  if (e.altKey)
+  }
+  if (e.altKey) {
     m |= 1 << 19;
-  if (e.ctrlKey)
+  }
+  if (e.ctrlKey) {
     m |= MAC ? 1 << 18 : 1 << 20;
-  if (e.metaKey)
+  }
+  if (e.metaKey) {
     m |= MAC ? 1 << 20 : 1 << 18;
+  }
   return m;
 }
 const keysDown = new Map();   // code -> key code sent down
 ime.addEventListener("keydown", e => {
-  if (e.isComposing || e.keyCode === 229 || MODIFIER_KEYS.test(e.code))
+  if (e.isComposing || e.keyCode === 229 || MODIFIER_KEYS.test(e.code)) {
     return;   // modifiers ride on each key's flags
+  }
   const code = KEYS[e.code];
-  if (code === undefined)
+  if (code === undefined) {
     return;
+  }
   const shortcut = e.metaKey || e.ctrlKey;
-  if (textFocused && !shortcut && e.key.length === 1)
+  if (textFocused && !shortcut && e.key.length === 1) {
     return;   // it types: it comes as text (the input event)
+  }
   e.preventDefault();
-  if (e.repeat)
+  if (e.repeat) {
     return;   // UIKit repeats held keys itself
+  }
   keysDown.set(e.code, code);
   send({ t: "key", d: 1, k: code, m: modifiers(e) });
 });
 ime.addEventListener("keyup", e => {
-  if (!keysDown.has(e.code))
+  if (!keysDown.has(e.code)) {
     return;
+  }
   send({ t: "key", d: 0, k: keysDown.get(e.code), m: modifiers(e) });
   keysDown.delete(e.code);
 });
 function releaseInput() {
-  for (const k of keysDown.values())
+  for (const k of keysDown.values()) {
     send({ t: "key", d: 0, k, m: 0 });
+  }
   keysDown.clear();
-  if (finger !== null)
+  if (finger !== null) {
     finger = null;
+  }
 }
 addEventListener("blur", releaseInput);
 
@@ -403,40 +435,45 @@ function sendText(kind, text, sel = 0) {
     send({ t: "text", k: kind, s: text, l: sel, n: 0 });
     return;
   }
-  for (let i = 0; i < chars.length; i += 200)
+  for (let i = 0; i < chars.length; i += 200) {
     send({ t: "text", k: 1, s: chars.slice(i, i + 200).join(""), l: 0, n: 0 });
+  }
 }
 let composing = false;
 ime.addEventListener("compositionstart", () => {
   composing = true;
 });
 ime.addEventListener("compositionupdate", e => {
-  if (textFocused)
+  if (textFocused) {
     sendText(2, e.data || "", (e.data || "").length);
+  }
 });
 ime.addEventListener("compositionend", e => {
   composing = false;
-  if (textFocused)
+  if (textFocused) {
     sendText(1, e.data || "");
+  }
   resetInput();
 });
 ime.addEventListener("beforeinput", e => {
-  if (!textFocused || composing)
+  if (!textFocused || composing) {
     return;
+  }
   if (e.inputType === "deleteContentBackward") {   // soft keyboards: no key event
     e.preventDefault();
     tapKey(0x33);
-  }
-  else if (e.inputType === "insertLineBreak") {
+  } else if (e.inputType === "insertLineBreak") {
     e.preventDefault();
     tapKey(0x24);
   }
 });
 ime.addEventListener("input", e => {
-  if (composing || e.isComposing)
+  if (composing || e.isComposing) {
     return;
-  if (textFocused && e.inputType && e.inputType.startsWith("insert") && !/Composition/.test(e.inputType))
+  }
+  if (textFocused && e.inputType && e.inputType.startsWith("insert") && !/Composition/.test(e.inputType)) {
     sendText(1, e.data ?? ime.value.replaceAll(SENTINEL, ""));
+  }
   resetInput();
 });
 function tapKey(code) {
@@ -458,8 +495,9 @@ function placeInput() {
   ime.style.height = `${Math.max(16, caret.h * k)}px`;
 }
 function focusInput() {
-  if (!TOUCH)
+  if (!TOUCH) {
     ime.focus({ preventScroll: true });
+  }
 }
 
 // Touch screens: the Keyboard button, shown while a text input in the app has focus, brings up the soft keyboard (a
@@ -468,8 +506,9 @@ const TOUCH = matchMedia("(pointer: coarse)").matches;
 const SENTINEL = "\u200b";   // something for Backspace to delete: Android keyboards send nothing for it in an empty field
 function resetInput() {
   ime.value = TOUCH ? SENTINEL : "";
-  if (TOUCH && document.activeElement === ime)
+  if (TOUCH && document.activeElement === ime) {
     ime.setSelectionRange(ime.value.length, ime.value.length);
+  }
 }
 function showKeyboard() {
   if (document.activeElement !== ime) {
@@ -480,21 +519,24 @@ function showKeyboard() {
   placeInput();
 }
 function hideKeyboard() {
-  if (!TOUCH || document.activeElement !== ime)
+  if (!TOUCH || document.activeElement !== ime) {
     return;
+  }
   ime.blur();
   placeInput();
 }
 // focused without its keyboard (the user put it away): blurred and focused again, in the tap
 $("keyboard").onclick = () => {
-  if (document.activeElement === ime)
+  if (document.activeElement === ime) {
     ime.blur();
+  }
   showKeyboard();
 };
 ime.addEventListener("blur", placeInput);
 document.addEventListener("pointerdown", e => {
-  if (!screenEl.contains(e.target) && e.target.tagName !== "SELECT")
+  if (!screenEl.contains(e.target) && e.target.tagName !== "SELECT") {
     setTimeout(focusInput);
+  }
 });
 
 addEventListener("hashchange", () => location.reload());   // another link (another key) pasted over this one

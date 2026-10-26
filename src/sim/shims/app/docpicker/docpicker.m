@@ -27,22 +27,29 @@
 @end
 
 static int gVerbose;
-#define LOG(...) do { if (gVerbose) fprintf(stderr, "[docpicker] " __VA_ARGS__); } while (0)
+#define LOG(...) \
+  do { \
+    if (gVerbose) { \
+      fprintf(stderr, "[docpicker] " __VA_ARGS__); \
+    } \
+  } while (0)
 
 static xpc_connection_t gHost;                         // SRDP_SERVICE; NULL: a SimRun without it, pickers cancel at once
 static __weak UIDocumentPickerViewController *gActive; // the picker whose panel is up
 
 static void host_open(void) {
   gHost = SRHostConnect(SRDP_SERVICE, dispatch_get_main_queue(), ^(xpc_object_t e) {
-    if (xpc_get_type(e) == XPC_TYPE_ERROR)
+    if (xpc_get_type(e) == XPC_TYPE_ERROR) {
       LOG("host connection: %s\n", xpc_dictionary_get_string(e, XPC_ERROR_KEY_DESCRIPTION) ?: "?");
+    }
   });
 }
 
 static xpc_object_t string_array(NSArray<NSString *> *a) {
   xpc_object_t x = xpc_array_create(NULL, 0);
-  for (NSString *s in a)
+  for (NSString *s in a) {
     xpc_array_set_string(x, XPC_ARRAY_APPEND, s.UTF8String);
+  }
   return x;
 }
 
@@ -53,16 +60,18 @@ static NSArray<NSString *> *declared_extensions(NSArray<NSString *> *types) {
   NSDictionary *info = NSBundle.mainBundle.infoDictionary;
   for (NSString *key in @[ @"UTExportedTypeDeclarations", @"UTImportedTypeDeclarations" ]) {
     for (NSDictionary *decl in info[key]) {
-      if (![decl isKindOfClass:NSDictionary.class] || ![decl[@"UTTypeIdentifier"] isKindOfClass:NSString.class])
+      if (![decl isKindOfClass:NSDictionary.class] || ![decl[@"UTTypeIdentifier"] isKindOfClass:NSString.class]) {
         continue;
+      }
       NSUInteger i = [types indexOfObjectPassingTest:^BOOL(NSString *t, NSUInteger i, BOOL *stop) {
         return [t caseInsensitiveCompare:decl[@"UTTypeIdentifier"]] == NSOrderedSame;
       }];
       id tags = i == NSNotFound ? nil : decl[@"UTTypeTagSpecification"][@"public.filename-extension"];
-      if ([tags isKindOfClass:NSString.class])
+      if ([tags isKindOfClass:NSString.class]) {
         [exts addObject:tags];
-      else if ([tags isKindOfClass:NSArray.class])
+      } else if ([tags isKindOfClass:NSArray.class]) {
         [exts addObjectsFromArray:tags];
+      }
     }
   }
   return exts;
@@ -88,8 +97,9 @@ static NSURL *file_url(NSString *path) {
 static NSURL *transfer(NSURL *from, NSURL *to, BOOL move) {
   NSFileManager *fm = NSFileManager.defaultManager;
   NSError *e = nil;
-  if ([fm fileExistsAtPath:to.path] && ![from.URLByStandardizingPath isEqual:to.URLByStandardizingPath])
+  if ([fm fileExistsAtPath:to.path] && ![from.URLByStandardizingPath isEqual:to.URLByStandardizingPath]) {
     [fm removeItemAtURL:to error:NULL];
+  }
   BOOL ok = move ? [fm moveItemAtURL:from toURL:to error:&e] : [fm copyItemAtURL:from toURL:to error:&e];
   if (!ok) {
     fprintf(stderr, "[docpicker] %s %s to %s: %s\n", move ? "move" : "copy", from.path.UTF8String, to.path.UTF8String, e.localizedDescription.UTF8String);
@@ -111,14 +121,16 @@ static NSArray<NSURL *> *deliver(UIDocumentPickerViewController *p, NSArray<NSSt
     [NSFileManager.defaultManager createDirectoryAtURL:inbox withIntermediateDirectories:YES attributes:nil error:NULL];
     for (NSString *path in paths) {
       NSURL *u = transfer(file_url(path), unique_url(inbox, path.lastPathComponent), NO);
-      if (u)
+      if (u) {
         [out addObject:u];
+      }
     }
     break;
   }
   case UIDocumentPickerModeOpen:
-    for (NSString *path in paths)
+    for (NSString *path in paths) {
       [out addObject:file_url(path)];
+    }
     break;
   case UIDocumentPickerModeExportToService:
   case UIDocumentPickerModeMoveToService: {
@@ -126,14 +138,16 @@ static NSArray<NSURL *> *deliver(UIDocumentPickerViewController *p, NSArray<NSSt
     NSArray<NSURL *> *files = p.uploadURLs;
     if (files.count == 1) {   // a save panel: its path, which the user agreed to replace
       NSURL *u = transfer(files[0], file_url(paths.firstObject), move);
-      if (u)
+      if (u) {
         [out addObject:u];
+      }
     } else {                  // a folder to put them in
       NSURL *dir = [NSURL fileURLWithPath:paths.firstObject isDirectory:YES];
       for (NSURL *f in files) {
         NSURL *u = transfer(f, unique_url(dir, f.lastPathComponent), move);
-        if (u)
+        if (u) {
           [out addObject:u];
+        }
       }
     }
     break;
@@ -143,14 +157,16 @@ static NSArray<NSURL *> *deliver(UIDocumentPickerViewController *p, NSArray<NSSt
 }
 
 static void finish(UIDocumentPickerViewController *p, NSArray<NSString *> *paths) {
-  if (gActive == p)
+  if (gActive == p) {
     gActive = nil;
+  }
   NSArray<NSURL *> *urls = paths.count ? deliver(p, paths) : @[];
   LOG("%s\n", urls.count ? [@"picked " stringByAppendingString:[[urls valueForKey:@"path"] componentsJoinedByString:@", "]].UTF8String : "cancelled");
-  if (urls.count)
+  if (urls.count) {
     [p documentBrowser:nil didPickDocumentURLs:urls];
-  else
+  } else {
     [p documentManagerWasCancelled:nil];
+  }
 }
 
 // The picker is on screen: pick on the Mac.
@@ -182,10 +198,11 @@ static void choose(UIDocumentPickerViewController *p) {
       UTType *u = [UTType typeWithIdentifier:t];
       BOOL folder = [t isEqualToString:UTTypeFolder.identifier] || [t isEqualToString:UTTypeDirectory.identifier] ||
                     (u && [u conformsToType:UTTypeDirectory] && ![u conformsToType:UTTypePackage]);
-      if (folder)
+      if (folder) {
         folders = YES;
-      else
+      } else {
         files = YES;
+      }
     }
     xpc_dictionary_set_string(m, "panel", "open");
     xpc_dictionary_set_bool(m, "files", files || !folders);
@@ -194,27 +211,31 @@ static void choose(UIDocumentPickerViewController *p) {
     xpc_dictionary_set_value(m, "types", string_array(types));
     xpc_dictionary_set_value(m, "extensions", string_array(declared_extensions(types)));
   }
-  if (p.directoryURL.isFileURL)
+  if (p.directoryURL.isFileURL) {
     xpc_dictionary_set_string(m, "directory", p.directoryURL.path.UTF8String);
+  }
   LOG("mode %lu: asking the Mac (%s panel)\n", (unsigned long)mode, xpc_dictionary_get_string(m, "panel"));
 
   gActive = p;
   __weak UIDocumentPickerViewController *weak = p;
   xpc_connection_send_message_with_reply(gHost, m, dispatch_get_main_queue(), ^(xpc_object_t r) {
     UIDocumentPickerViewController *p = weak;
-    if (!p || gActive != p)
+    if (!p || gActive != p) {
       return;   // dismissed by the app before the user chose (the panel was cancelled for it)
+    }
     NSMutableArray<NSString *> *paths = [NSMutableArray array];
     xpc_object_t a = xpc_get_type(r) == XPC_TYPE_DICTIONARY ? xpc_dictionary_get_value(r, "paths") : NULL;
-    if (a && xpc_get_type(a) == XPC_TYPE_ARRAY)
+    if (a && xpc_get_type(a) == XPC_TYPE_ARRAY) {
       xpc_array_apply(a, ^bool(size_t i, xpc_object_t s) {
-        if (xpc_get_type(s) == XPC_TYPE_STRING)
+        if (xpc_get_type(s) == XPC_TYPE_STRING) {
           [paths addObject:@(xpc_string_get_string_ptr(s))];
+        }
         return true;
       });
-    else
+    } else {
       fprintf(stderr, "[docpicker] no Mac panel: %s\n", xpc_get_type(r) == XPC_TYPE_DICTIONARY ? xpc_dictionary_get_string(r, "error") ?: "?"
                                                          : xpc_dictionary_get_string(r, XPC_ERROR_KEY_DESCRIPTION) ?: "?");
+    }
     finish(p, paths);
   });
 }
@@ -242,18 +263,21 @@ static void patch_picker(void) {
   }), "v@:B");
   SEL initiate = sel_registerName("_viewControllerPresentationDidInitiate");
   IMP initiateSuper = super_imp(initiate);
-  if (class_getInstanceMethod(C, initiate))
+  if (class_getInstanceMethod(C, initiate)) {
     class_replaceMethod(C, initiate, imp_implementationWithBlock(^(UIViewController *self) {
-      if (initiateSuper)
+      if (initiateSuper) {
         ((void (*)(id, SEL))initiateSuper)(self, initiate);
+      }
     }), "v@:");
+  }
 
   // On screen: pick on the Mac (once).
   IMP didAppear = class_getMethodImplementation(C, @selector(viewDidAppear:));
   class_replaceMethod(C, @selector(viewDidAppear:), imp_implementationWithBlock(^(UIDocumentPickerViewController *self, BOOL animated) {
     ((void (*)(id, SEL, BOOL))didAppear)(self, @selector(viewDidAppear:), animated);
-    if (objc_getAssociatedObject(self, kStarted))
+    if (objc_getAssociatedObject(self, kStarted)) {
       return;
+    }
     objc_setAssociatedObject(self, kStarted, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     choose(self);
   }), "v@:B");
@@ -262,8 +286,9 @@ static void patch_picker(void) {
   IMP didDisappear = class_getMethodImplementation(C, @selector(viewDidDisappear:));
   class_replaceMethod(C, @selector(viewDidDisappear:), imp_implementationWithBlock(^(UIDocumentPickerViewController *self, BOOL animated) {
     ((void (*)(id, SEL, BOOL))didDisappear)(self, @selector(viewDidDisappear:), animated);
-    if (gActive != self || !(self.isBeingDismissed || !self.presentingViewController))
+    if (gActive != self || !(self.isBeingDismissed || !self.presentingViewController)) {
       return;
+    }
     gActive = nil;
     LOG("picker dismissed while choosing: cancelling the Mac panel\n");
     xpc_object_t m = xpc_dictionary_create(NULL, NULL, 0);

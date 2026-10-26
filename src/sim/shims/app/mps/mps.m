@@ -20,7 +20,12 @@
 #import "app.h"
 
 static int gVerbose;
-#define LOG(fmt, ...) do { if (gVerbose) fprintf(stderr, "[mps] " fmt "\n", ##__VA_ARGS__); } while (0)
+#define LOG(fmt, ...) \
+  do { \
+    if (gVerbose) { \
+      fprintf(stderr, "[mps] " fmt "\n", ##__VA_ARGS__); \
+    } \
+  } while (0)
 
 static NSString *const kArchitecture = @"h13g";
 
@@ -30,8 +35,9 @@ static void patch_heaps(void);
 static IMP gDescriptorInit;
 static id descriptor_init(id self, SEL _cmd, id graphDevice) {
   patch_heaps();   // the Metal device exists by now, so MTLSimDriver is loaded
-  if (((uint32_t (*)(id, SEL))objc_msgSend)(graphDevice, @selector(type)) == 0)   // MPSGraphDeviceTypeMetal
+  if (((uint32_t (*)(id, SEL))objc_msgSend)(graphDevice, @selector(type)) == 0) {   // MPSGraphDeviceTypeMetal
     return ((id (*)(id, SEL, long long, NSString *))objc_msgSend)(self, @selector(initMetalDeviceWithGPUCoreCount:architecture:), -1, kArchitecture);
+  }
   return ((id (*)(id, SEL, id))gDescriptorInit)(self, _cmd, graphDevice);
 }
 static BOOL descriptor_has_ane(id self, SEL _cmd) {
@@ -63,31 +69,36 @@ static MTLResourceOptions private_options(MTLResourceOptions o) {
   return (o & ~(MTLResourceOptions)(0xF << MTLResourceStorageModeShift)) | MTLResourceStorageModePrivate;
 }
 static MTLTextureDescriptor *private_texture(MTLTextureDescriptor *d) {
-  if (d.storageMode == MTLStorageModePrivate)
+  if (d.storageMode == MTLStorageModePrivate) {
     return d;
+  }
   d = [d copy];
   d.storageMode = MTLStorageModePrivate;
   return d;
 }
 
 static id heap_buffer(id self, SEL _cmd, NSUInteger length, MTLResourceOptions o) {
-  if (made_private(self))
+  if (made_private(self)) {
     o = private_options(o);
+  }
   return ((id (*)(id, SEL, NSUInteger, MTLResourceOptions))gHeapBuffer)(self, _cmd, length, o);
 }
 static id heap_buffer_at(id self, SEL _cmd, NSUInteger length, MTLResourceOptions o, NSUInteger offset) {
-  if (made_private(self))
+  if (made_private(self)) {
     o = private_options(o);
+  }
   return ((id (*)(id, SEL, NSUInteger, MTLResourceOptions, NSUInteger))gHeapBufferAt)(self, _cmd, length, o, offset);
 }
 static id heap_texture(id self, SEL _cmd, MTLTextureDescriptor *d) {
-  if (made_private(self))
+  if (made_private(self)) {
     d = private_texture(d);
+  }
   return ((id (*)(id, SEL, id))gHeapTexture)(self, _cmd, d);
 }
 static id heap_texture_at(id self, SEL _cmd, MTLTextureDescriptor *d, NSUInteger offset) {
-  if (made_private(self))
+  if (made_private(self)) {
     d = private_texture(d);
+  }
   return ((id (*)(id, SEL, id, NSUInteger))gHeapTextureAt)(self, _cmd, d, offset);
 }
 static IMP replace(Class c, SEL sel, IMP imp) {

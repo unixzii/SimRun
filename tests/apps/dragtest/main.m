@@ -91,8 +91,9 @@ static void at(double t, dispatch_block_t b) {
 // ---- DRAGTEST_AUTO
 - (void)viewDidAppear:(BOOL)animated {
   [super viewDidAppear:animated];
-  if (!getenv("DRAGTEST_AUTO"))
+  if (!getenv("DRAGTEST_AUTO")) {
     return;
+  }
   void (*touch)(int, float, float) = dlsym(RTLD_DEFAULT, "SRHIDTouch");
   if (!touch) {
     printf("FAIL: no SRHIDTouch (SimRun's app.dylib)\n");
@@ -107,10 +108,11 @@ static void at(double t, dispatch_block_t b) {
     at(t0, ^{
       touch(1, from.x, from.y);
     });
-    for (int i = 1; i <= 30; i++)
+    for (int i = 1; i <= 30; i++) {
       at(t0 + hold + i * 0.03, ^{
         touch(2, from.x + (to.x - from.x) * i / 30, from.y + (to.y - from.y) * i / 30);
       });
+    }
     at(t0 + hold + 1.2, ^{
       touch(3, to.x, to.y);
     });
@@ -130,11 +132,12 @@ static void at(double t, dispatch_block_t b) {
     NSArray *want = @[ @"source: began", @"source: ended, operation 0", @"source: began", @"target: entered",
                        @"source: ended, operation 2", @"target: dropped \"dragged text\"", @"target: dropped \"Select me and drag\"" ];
     BOOL ok = YES;
-    for (NSString *e in want)
+    for (NSString *e in want) {
       if (![self.events containsObject:e]) {
         printf("missing: %s\n", e.UTF8String);
         ok = NO;
       }
+    }
     printf("%s (%s)\n", ok ? "PASS" : "FAIL", [[self.events componentsJoinedByString:@"; "] UTF8String]);
     exit(ok ? 0 : 1);
   });

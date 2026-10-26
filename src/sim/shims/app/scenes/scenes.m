@@ -104,8 +104,9 @@ static id gCurrentSettings; // last settings we sent (immutable FBSSceneSettings
 
 // ---------------------------------------------------------------- fake host (<FBSWorkspaceServiceClientInterface>)
 static void SRCallBlockWithNils(id blk) {
-  if (!blk)
+  if (!blk) {
     return;
+  }
   ((void (^)(id, id))blk)(nil, nil); // completion blocks here take (error) or (response, error); extra nil is harmless
 }
 
@@ -130,8 +131,9 @@ static void SRReportLayers(void) {
   double lv[16];
   size_t n = 0;
   for (id l in layers) {
-    if (n == 16)
+    if (n == 16) {
       break;
+    }
     if ([l respondsToSelector:@selector(contextID)]) {
       ids[n] = [l contextID];
       lv[n] = ((double (*)(id, SEL))objc_msgSend)(l, @selector(level));
@@ -139,11 +141,13 @@ static void SRReportLayers(void) {
     }
   }
   uint32_t main = n ? ids[0] : 0;
-  if (main != gMainContextID)
+  if (main != gMainContextID) {
     LOG("scene layers: %zu, main CAContext id 0x%x", n, main);
+  }
   gMainContextID = main;
-  if (gLayersCB)
+  if (gLayersCB) {
     gLayersCB(ids, lv, n, gLayersCtx);
+  }
 }
 
 @interface SRFakeHost : NSObject
@@ -153,11 +157,13 @@ static void SRReportLayers(void) {
   LOG("host <- handshakeWithRemnants: %s", [[remnants description] UTF8String]);
 }
 - (void)sceneID:(id)sid didUpdateClientSettingsWithDiff:(id)diff transitionContext:(id)tc completion:(void (^)(id))c {
-  if (getenv("SCENES_VERBOSE"))
+  if (getenv("SCENES_VERBOSE")) {
     LOG("host <- sceneID:%s didUpdateClientSettingsWithDiff: %s", [[sid description] UTF8String], [[diff description] UTF8String]);
+  }
   SRReportLayers();
-  if (c)
+  if (c) {
     c(nil);
+  }
 }
 - (void)sceneID:(id)sid didReceiveActions:(NSSet *)actions forExtension:(id)ext {
   LOG("host <- sceneID:%s didReceiveActions: %s", [[sid description] UTF8String], [[actions description] UTF8String]);
@@ -201,8 +207,9 @@ static void SRReportLayers(void) {
 @end
 @implementation SRFakeConnection
 - (void)configure:(void (^)(id))block {
-  if (block)
+  if (block) {
     block(self);
+  }
 }
 - (void)activate {
   LOG("conn activate");
@@ -232,8 +239,9 @@ static void SRReportLayers(void) {
 - (void)forwardInvocation:(NSInvocation *)inv {
   LOG("conn <- UNHANDLED %s", sel_getName(inv.selector));
   id nilv = nil;
-  if (inv.methodSignature.methodReturnLength == sizeof(id))
+  if (inv.methodSignature.methodReturnLength == sizeof(id)) {
     [inv setReturnValue:&nilv];
+  }
 }
 @end
 
@@ -264,9 +272,10 @@ static void SRLoadSafeArea(void) {
       gInsetsLandscape = UIEdgeInsetsMake(0, 62, 21, 62);
     }
     gInsetsUpsideDown = pad ? gInsetsPortrait : UIEdgeInsetsMake(gInsetsPortrait.bottom, 0, gInsetsPortrait.top, 0);
-    if (getenv("SCENES_VERBOSE"))
+    if (getenv("SCENES_VERBOSE")) {
       LOG("safe area: portrait %s, landscape %s (%s)", NSStringFromUIEdgeInsets(gInsetsPortrait).UTF8String,
           NSStringFromUIEdgeInsets(gInsetsLandscape).UTF8String, p ? "display edge info" : pad ? "iPad" : homeButton ? "home button" : "default");
+    }
   });
 }
 
@@ -277,10 +286,12 @@ static SRConfigureWatchSceneSettings SRWatchSceneMetrics(void) {
   static SRConfigureWatchSceneSettings f;
   static dispatch_once_t once;
   dispatch_once(&once, ^{
-    if (SRIsWatch())
+    if (SRIsWatch()) {
       f = (SRConfigureWatchSceneSettings)dlsym(RTLD_DEFAULT, "CSLUIKitSceneMetricsConfigureSceneSettingsForCurrentDisplay");
-    if (SRIsWatch() && !f)
+    }
+    if (SRIsWatch() && !f) {
       LOG("no CSLUIKitSceneMetricsConfigureSceneSettingsForCurrentDisplay: the iPhone's safe area");
+    }
   });
   return f;
 }
@@ -331,8 +342,9 @@ static void SRCreateScene(void) {
   // UIScreen.mainScreen is backed by the render server's FBSDisplayConfiguration; the scene must use the same display
   // identity.
   id dc = [[UIScreen mainScreen] displayConfiguration];
-  if (dc)
+  if (dc) {
     [params setDisplay:dc];
+  }
   [params updateSettingsWithBlock:^(id s) {
     SRApplySettings(s, gW, gH, YES, UIInterfaceOrientationPortrait);
   }];
@@ -358,8 +370,9 @@ void SRScenesUpdate(CGFloat w, CGFloat h, BOOL foreground, long orient) {
     [gScenesClient sceneID:gIdentity updateWithSettingsDiff:diff
          transitionContext:SRNewTransitionContext()
                 completion:^(id err) {
-      if (err)
+      if (err) {
         LOG("updateScene err=%s", [[err description] UTF8String]);
+      }
     }];
   });
 }
@@ -372,8 +385,9 @@ static void SRSetIvar(id obj, const char *name, id value) {
 }
 static BOOL SRSetIvarIfPresent(id obj, const char *name, id value) {
   Ivar iv = class_getInstanceVariable(object_getClass(obj), name);
-  if (iv)
+  if (iv) {
     object_setIvarWithStrongDefault(obj, iv, value);
+  }
   return iv != NULL;
 }
 
@@ -381,18 +395,20 @@ static BOOL SRSetIvarIfPresent(id obj, const char *name, id value) {
 // since iOS 26, a plain dispatch queue before (iOS 18).
 static void SRWorkspaceAsync(dispatch_block_t block) {
   id q = [gWorkspace valueForKey:@"_queue"];
-  if ([q respondsToSelector:@selector(performAsync:)])
+  if ([q respondsToSelector:@selector(performAsync:)]) {
     [q performAsync:block];
-  else
+  } else {
     dispatch_async(q, block);
+  }
 }
 
 // ---------------------------------------------------------------- FBSWorkspaceInitialize hook
 extern id FBSWorkspaceInitialize(id options);
 static id my_FBSWorkspaceInitialize(id options) {
   id ws = FBSWorkspaceInitialize(options);
-  if (!SRModuleOn(SRModuleScenes))
+  if (!SRModuleOn(SRModuleScenes)) {
     return ws;
+  }
   gWorkspace = ws;
   id q = [ws valueForKey:@"_queue"];          // "com.apple.frontboardservices.workspace" (SRWorkspaceAsync)
   id cq = [ws valueForKey:@"_callOutQueue"];  // UIKit's main-thread callout queue
@@ -449,15 +465,18 @@ static void SRSetBacklightOn(void) {
   if (r == NOTIFY_STATUS_OK) {
     uint64_t state = 0;
     notify_get_state(token, &state);
-    if (state != 100 && (r = notify_set_state(token, 100)) == NOTIFY_STATUS_OK)
+    if (state != 100 && (r = notify_set_state(token, 100)) == NOTIFY_STATUS_OK) {
       notify_post(name);
+    }
   }
-  if (r != NOTIFY_STATUS_OK)
+  if (r != NOTIFY_STATUS_OK) {
     LOG("backlight state not set (notify status %u)", r);
+  }
 }
 static Boolean my_BKSDisplayServicesStart(void) {
-  if (!SRModuleOn(SRModuleScenes))
+  if (!SRModuleOn(SRModuleScenes)) {
     return BKSDisplayServicesStart();
+  }
   GSSetMainScreenInfo(gW * gScale, gH * gScale, (float)gScale, 0.0f);
   SRSetBacklightOn();
   LOG("BKSDisplayServicesStart stubbed (main screen %gx%g px @%g)", gW * gScale, gH * gScale, gScale);
@@ -488,8 +507,9 @@ static id SRSinkEndpoint(NSString *mach, NSString *service, NSString *instance) 
     q = dispatch_queue_create("dev.simrun.scenes.sink", DISPATCH_QUEUE_SERIAL);
     listener = xpc_connection_create(NULL, q); // anonymous listener, no launchd needed
     xpc_connection_set_event_handler(listener, ^(xpc_object_t peer) {
-      if (xpc_get_type(peer) != XPC_TYPE_CONNECTION)
+      if (xpc_get_type(peer) != XPC_TYPE_CONNECTION) {
         return;
+      }
       [gSinkPeers addObject:peer];
       xpc_connection_set_event_handler(peer, ^(xpc_object_t msg) {
         if (getenv("SCENES_VERBOSE")) {
@@ -542,14 +562,17 @@ static id sr_acquireAssertion(id self, SEL _cmd, id assertion, NSError **error) 
   dispatch_once(&once, ^{
     mach_port_t p = MACH_PORT_NULL;
     missing = bootstrap_look_up(bootstrap_port, "com.apple.runningboard", &p) != KERN_SUCCESS;
-    if (p)
+    if (p) {
       mach_port_deallocate(mach_task_self(), p);
+    }
   });
-  if (!missing)
+  if (!missing) {
     return ((id (*)(id, SEL, id, NSError **))gOrigAcquireAssertion)(self, _cmd, assertion, error);
-  if (error)
+  }
+  if (error) {
     *error = [NSError errorWithDomain:NSCocoaErrorDomain code:NSXPCConnectionInvalid
                                       userInfo:@{ NSLocalizedFailureReasonErrorKey: @"no runningboardd (SimRun)" }];
+  }
   return nil;
 }
 
@@ -568,29 +591,38 @@ void SRScenesStart(void) {
     Method m = class_getClassMethod(NSClassFromString(@"BSServiceConnectionEndpoint"), NSSelectorFromString(@"endpointForMachName:service:instance:"));
     gOrigEndpointForMachName = method_setImplementation(m, (IMP)sr_endpointForMachName);
     Method a = class_getInstanceMethod(NSClassFromString(@"RBSConnection"), NSSelectorFromString(@"acquireAssertion:error:"));
-    if (a)
+    if (a) {
       gOrigAcquireAssertion = method_setImplementation(a, (IMP)sr_acquireAssertion);
+    }
     Method c = class_getInstanceMethod(NSClassFromString(@"UTType"), @selector(conformsToType:));
-    if (c)
+    if (c) {
       gOrigConformsToType = method_setImplementation(c, (IMP)sr_conformsToType);
+    }
   }
   const char *e;
   // the display's size (the device type's screen, in pixels), unless SCENES_* say otherwise
-  if ((e = getenv("SIMULATOR_MAINSCREEN_SCALE")) && atof(e) > 0)
+  if ((e = getenv("SIMULATOR_MAINSCREEN_SCALE")) && atof(e) > 0) {
     gScale = atof(e);
-  if ((e = getenv("SIMULATOR_MAINSCREEN_WIDTH")) && atof(e) > 0)
+  }
+  if ((e = getenv("SIMULATOR_MAINSCREEN_WIDTH")) && atof(e) > 0) {
     gW = atof(e) / gScale;
-  if ((e = getenv("SIMULATOR_MAINSCREEN_HEIGHT")) && atof(e) > 0)
+  }
+  if ((e = getenv("SIMULATOR_MAINSCREEN_HEIGHT")) && atof(e) > 0) {
     gH = atof(e) / gScale;
-  if ((e = getenv("SCENES_W")))
+  }
+  if ((e = getenv("SCENES_W"))) {
     gW = atof(e);
-  if ((e = getenv("SCENES_H")))
+  }
+  if ((e = getenv("SCENES_H"))) {
     gH = atof(e);
-  if ((e = getenv("SCENES_SCALE")))
+  }
+  if ((e = getenv("SCENES_SCALE"))) {
     gScale = atof(e);
+  }
   gSceneID = [NSString stringWithFormat:@"sceneID:%@-default", NSBundle.mainBundle.bundleIdentifier ?: @"app"];
   // watchOS: Carousel's scene identifier is the bundle identifier, and SPApplicationDelegate gives the scene its
   // SPApplicationSceneDelegate (and with it the app's window) only when the session's persistent identifier is that
-  if (SRIsWatch() && NSBundle.mainBundle.bundleIdentifier)
+  if (SRIsWatch() && NSBundle.mainBundle.bundleIdentifier) {
     gSceneID = NSBundle.mainBundle.bundleIdentifier;
+  }
 }

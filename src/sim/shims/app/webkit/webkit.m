@@ -26,7 +26,12 @@
 #include "spi.h"
 
 static int gVerbose;
-#define LOG(fmt, ...) do { if (gVerbose) fprintf(stderr, "[webkit] " fmt "\n", ##__VA_ARGS__); } while (0)
+#define LOG(fmt, ...) \
+  do { \
+    if (gVerbose) { \
+      fprintf(stderr, "[webkit] " fmt "\n", ##__VA_ARGS__); \
+    } \
+  } while (0)
 
 // ---------------------------------------------------------------- app side: spawning an extension
 static NSString *gExtensionsDir;   // $DYLD_ROOT_PATH/System/Library/ExtensionKit/Extensions
@@ -39,13 +44,15 @@ static NSString *executable_for(NSString *bundleID) {
   dispatch_once(&once, ^{
     map = [NSMutableDictionary dictionary];
     for (NSString *appex in [NSFileManager.defaultManager contentsOfDirectoryAtPath:gExtensionsDir error:nil]) {
-      if (![appex.pathExtension isEqualToString:@"appex"])
+      if (![appex.pathExtension isEqualToString:@"appex"]) {
         continue;
+      }
       NSString *dir = [gExtensionsDir stringByAppendingPathComponent:appex];
       NSDictionary *info = [NSDictionary dictionaryWithContentsOfFile:[dir stringByAppendingPathComponent:@"Info.plist"]];
       NSString *point = info[@"EXAppExtensionAttributes"][@"EXExtensionPointIdentifier"];
-      if (![point hasPrefix:@"com.apple.web-browser-engine."] || !info[@"CFBundleIdentifier"] || !info[@"CFBundleExecutable"])
+      if (![point hasPrefix:@"com.apple.web-browser-engine."] || !info[@"CFBundleIdentifier"] || !info[@"CFBundleExecutable"]) {
         continue;
+      }
       map[info[@"CFBundleIdentifier"]] = [dir stringByAppendingPathComponent:info[@"CFBundleExecutable"]];
     }
   });
@@ -60,8 +67,9 @@ static pid_t spawn_extension(NSString *exe, NSString *bundleID, mach_port_t *lis
                  .environment = @[ [@"XPC_SERVICE_NAME=" stringByAppendingString:bundleID] ], .inNamespace = YES,
                  .timeoutSeconds = 30, .tag = "webkit" };
   pid_t pid = SRSpawnHelper(&h, listener);
-  if (pid > 0)
+  if (pid > 0) {
     LOG("%s: pid %d, listener %#x", bundleID.UTF8String, pid, *listener);
+  }
   return pid;
 }
 
@@ -105,8 +113,9 @@ static pid_t spawn_extension(NSString *exe, NSString *bundleID, mach_port_t *lis
     SRWebKitProcess *p = weakSelf;
     LOG("pid %d exited (%s %d)%s", pid, WIFSIGNALED(st) ? "signal" : "status", WIFSIGNALED(st) ? WTERMSIG(st) : WEXITSTATUS(st),
         p && !p.invalidated ? ", interrupted" : "");
-    if (p && !p.invalidated && handler)
+    if (p && !p.invalidated && handler) {
       handler();
+    }
     dispatch_source_cancel(src);
   });
   dispatch_resume(src);
@@ -128,17 +137,20 @@ static pid_t spawn_extension(NSString *exe, NSString *bundleID, mach_port_t *lis
   return [SRWebKitInteraction new];
 }
 - (void)invalidate {
-  if (self.invalidated)
+  if (self.invalidated) {
     return;
+  }
   self.invalidated = YES;
   LOG("invalidate %s pid %d", self.bundleID.UTF8String, self.pid);
   kill(self.pid, SIGKILL);
 }
 - (void)dealloc {
-  if (!self.invalidated)
+  if (!self.invalidated) {
     kill(self.pid, SIGKILL);
-  if (self.listener)
+  }
+  if (self.listener) {
     mach_port_deallocate(mach_task_self(), self.listener);
+  }
 }
 @end
 
@@ -149,8 +161,9 @@ static void launch(NSString *bundleID, void (^interruption)(void), void (^comple
     mach_port_t listener = MACH_PORT_NULL;
     pid_t pid = exe ? spawn_extension(exe, bundleID, &listener) : -1;
     if (pid <= 0) {
-      if (!exe)
+      if (!exe) {
         fprintf(stderr, "[webkit] no extension for %s in %s\n", bundleID.UTF8String, gExtensionsDir.UTF8String);
+      }
       completion(nil, [NSError errorWithDomain:@"com.apple.browserEngineKit" code:1 userInfo:@{ NSLocalizedFailureReasonErrorKey: @"SimRun could not start the extension" }]);
       return;
     }
@@ -178,8 +191,9 @@ static void replace(const char *cls, NSString *defaultID, SEL plain, SEL withID)
 // without holding the runtime lock.)
 static void image_loaded(const struct mach_header *mh, intptr_t slide) {
   static int done;
-  if (done || !objc_getClass("BEWebContentProcess"))
+  if (done || !objc_getClass("BEWebContentProcess")) {
     return;
+  }
   done = 1;
   replace("BEWebContentProcess", @"com.apple.WebKit.WebContent",
           @selector(webContentProcessWithInterruptionHandler:completion:), @selector(webContentProcessWithBundleID:interruptionHandler:completion:));
@@ -198,8 +212,9 @@ static xpc_connection_t gListener;
 // once (both the old observer API and getSystemContentDatabaseObject4WebKit:), and have the receiver ignore it.
 static void fake_launch_services_database(void) {
   Class c = objc_getClass("LSDatabaseContext");
-  if (!c)
+  if (!c) {
     return;
+  }
   method_setImplementation(class_getInstanceMethod(c, @selector(addDatabaseChangeObserver4WebKit:)), imp_implementationWithBlock(^id(id ctx, void (^change)(xpc_object_t)) {
     change(xpc_dictionary_create(NULL, NULL, 0));
     return [NSObject new];
@@ -221,8 +236,9 @@ static void extension_main(void) {
   }
   gListener = xpc_connection_create(NULL, NULL);
   xpc_connection_set_event_handler(gListener, ^(xpc_object_t peer) {
-    if (xpc_get_type(peer) == XPC_TYPE_CONNECTION)
+    if (xpc_get_type(peer) == XPC_TYPE_CONNECTION) {
       handler(peer);
+    }
   });
   xpc_connection_activate(gListener);
   kern_return_t kr = SRHelperCheckIn(gListener);
@@ -231,15 +247,17 @@ static void extension_main(void) {
     _exit(1);
   }
   LOG("%s (pid %d): listener sent to the app", getprogname(), getpid());
-  for (;;)
+  for (;;) {
     CFRunLoopRun();   // WebKit's main RunLoop is the CFRunLoop (dispatch_main would never service it)
+  }
 }
 
 // The appex is linked with NSExtensionMain as its entry point; in an extension we spawned, never enter it.
 extern int NSExtensionMain(int argc, char *argv[]);
 static int my_NSExtensionMain(int argc, char *argv[]) {
-  if (SRProcessRole() == SRRoleExtension)
+  if (SRProcessRole() == SRRoleExtension) {
     extension_main();
+  }
   return NSExtensionMain(argc, argv);
 }
 

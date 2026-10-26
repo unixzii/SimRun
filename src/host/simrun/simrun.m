@@ -101,11 +101,13 @@ static void Print(NSString *s) {
 // ---------------------------------------------------------------- reaching SimRun
 static int TryConnect(const char *path) {
   struct sockaddr_un a;
-  if (simrund_socket_addr(path, &a))
+  if (simrund_socket_addr(path, &a)) {
     exit(2);
+  }
   int s = socket(AF_UNIX, SOCK_STREAM, 0);
-  if (connect(s, (struct sockaddr *)&a, sizeof a) == 0)
+  if (connect(s, (struct sockaddr *)&a, sizeof a) == 0) {
     return s;
+  }
   close(s);
   return -1;
 }
@@ -116,13 +118,15 @@ static NSString *OwnApp(void) {
   char exe[PATH_MAX], real[PATH_MAX];
   uint32_t len = sizeof exe;
   _NSGetExecutablePath(exe, &len);
-  if (!realpath(exe, real))
+  if (!realpath(exe, real)) {
     strlcpy(real, exe, sizeof real);
+  }
   NSString *dir = @(dirname(real));
   for (NSString *rel in @[ @"../..", @"../SimRun.app" ]) {
     NSString *app = [dir stringByAppendingPathComponent:rel].stringByStandardizingPath;
-    if (access([app stringByAppendingPathComponent:@"Contents/MacOS/SimRun"].fileSystemRepresentation, X_OK) == 0)
+    if (access([app stringByAppendingPathComponent:@"Contents/MacOS/SimRun"].fileSystemRepresentation, X_OK) == 0) {
       return app;
+    }
   }
   return nil;
 }
@@ -135,8 +139,9 @@ static int FindServer(char *server, size_t n) {
     return access(server, X_OK);
   }
   NSString *app = OwnApp();
-  if (!app)
+  if (!app) {
     return -1;
+  }
   snprintf(server, n, "%s/Contents/MacOS/SimRun", app.fileSystemRepresentation);
   return 0;
 }
@@ -166,13 +171,16 @@ static int StartServer(void) {
   posix_spawnattr_setflags(&at, POSIX_SPAWN_SETSID | POSIX_SPAWN_CLOEXEC_DEFAULT);   // nothing of ours but stdio
   responsibility_spawnattrs_setdisclaim(&at, 1);
   int ne = 0;
-  while (environ[ne])
+  while (environ[ne]) {
     ne++;
+  }
   char **env = calloc(ne + 1, sizeof(char *));
   int k = 0;
-  for (int i = 0; i < ne; i++)
-    if (strncmp(environ[i], "DYLD_INSERT_LIBRARIES=", 22))
+  for (int i = 0; i < ne; i++) {
+    if (strncmp(environ[i], "DYLD_INSERT_LIBRARIES=", 22)) {
       env[k++] = environ[i];
+    }
+  }
   char *argv[] = { server, "--serve", NULL };
   pid_t pid;
   int r = posix_spawn(&pid, server, &fa, &at, argv, env);
@@ -191,24 +199,29 @@ static int Connect(BOOL start) {
   char path[1024];
   simrund_socket_path(path, sizeof path);
   int s = TryConnect(path);
-  if (s >= 0 || !start)
+  if (s >= 0 || !start) {
     return s;
+  }
   // serialize server start-up between concurrent clients
   char lockp[1100];
   snprintf(lockp, sizeof lockp, "%s.lock", path);
   int lk = open(lockp, O_CREAT | O_RDWR | O_CLOEXEC, 0600);
-  if (lk >= 0)
+  if (lk >= 0) {
     flock(lk, LOCK_EX);
+  }
   s = TryConnect(path);
-  if (s < 0 && StartServer() == 0)
-    for (int i = 0; i < 200 && (s = TryConnect(path)) < 0; i++)
+  if (s < 0 && StartServer() == 0) {
+    for (int i = 0; i < 200 && (s = TryConnect(path)) < 0; i++) {
       usleep(25000);
+    }
+  }
   if (lk >= 0) {
     flock(lk, LOCK_UN);
     close(lk);
   }
-  if (s < 0)
+  if (s < 0) {
     Fail(@"cannot reach SimRun at %s (see ~/Library/Logs/SimRun/simrund.log)", path);
+  }
   return s;
 }
 
@@ -217,13 +230,15 @@ static int Connect(BOOL start) {
 static NSDictionary *Request(NSDictionary *req, BOOL start) {
   int s = Connect(start);
   if (s < 0) {
-    if (!start)
+    if (!start) {
       Fail(@"SimRun isn't running");
+    }
     return nil;
   }
   NSDictionary *reply = nil;
-  if (simrund_send(s, (__bridge CFDictionaryRef)req, NULL, 0) == 0)
+  if (simrund_send(s, (__bridge CFDictionaryRef)req, NULL, 0) == 0) {
     reply = CFBridgingRelease(simrund_recv(s, NULL, NULL));
+  }
   close(s);
   if (!reply) {
     Fail(@"lost connection to SimRun");
@@ -263,55 +278,65 @@ static NSString *ParseOptions(NSArray<NSString *> *args, NSDictionary<NSString *
       a = [a substringToIndex:eq.location];
     }
     NSString *key = names[a];
-    if (!key)
+    if (!key) {
       return [NSString stringWithFormat:@"unknown option %@", a];
+    }
     if ([flags containsObject:a]) {
-      if (value)
+      if (value) {
         return [NSString stringWithFormat:@"%@ takes no value", a];
+      }
       options[key] = @YES;
       continue;
     }
     if (!value) {
-      if (i + 1 >= args.count)
+      if (i + 1 >= args.count) {
         return [NSString stringWithFormat:@"%@ needs a value", a];
+      }
       value = args[++i];
     }
     if ([lists containsObject:a]) {
-      if (!options[key])
+      if (!options[key]) {
         options[key] = [NSMutableArray array];
+      }
       [options[key] addObject:value];
     }
-    else
+    else {
       options[key] = value;
+    }
   }
   return nil;
 }
 
 static NSString *AbsolutePath(NSString *p) {
   char real[PATH_MAX];
-  if (realpath(p.fileSystemRepresentation, real))
+  if (realpath(p.fileSystemRepresentation, real)) {
     return @(real);
+  }
   return p.absolutePath ? p : [NSFileManager.defaultManager.currentDirectoryPath stringByAppendingPathComponent:p];
 }
 
 // Rows of columns, left-aligned, two spaces apart.
 static void PrintTable(NSArray<NSArray<NSString *> *> *rows) {
   NSMutableArray<NSNumber *> *widths = [NSMutableArray array];
-  for (NSArray *row in rows)
+  for (NSArray *row in rows) {
     for (NSUInteger c = 0; c < row.count; c++) {
       NSUInteger w = [row[c] length];
-      if (c >= widths.count)
+      if (c >= widths.count) {
         [widths addObject:@(w)];
-      else if (w > widths[c].unsignedIntegerValue)
+      } else if (w > widths[c].unsignedIntegerValue) {
         widths[c] = @(w);
+      }
     }
+  }
   for (NSArray<NSString *> *row in rows) {
     NSMutableString *line = [NSMutableString string];
     for (NSUInteger c = 0; c < row.count; c++) {
       [line appendString:row[c]];
-      if (c + 1 < row.count)
-        for (NSUInteger k = row[c].length; k < widths[c].unsignedIntegerValue + 2; k++)
+      if (c + 1 < row.count) {
+        for (NSUInteger k = row[c].length; k < widths[c].unsignedIntegerValue + 2; k++) {
           [line appendString:@" "];
+        }
+      }
     }
     Print(line);
   }
@@ -331,74 +356,93 @@ static int Run(NSArray<NSString *> *args) {
     Fail(@"%@", err);
     return Usage();
   }
-  if (!rest.count)
+  if (!rest.count) {
     return Usage();
+  }
   rest[0] = AbsolutePath(rest[0]);   // SimRun has its own working directory
-  if (o[@"insert"])
+  if (o[@"insert"]) {
     o[@"insert"] = AbsolutePath(o[@"insert"]);
-  for (NSUInteger i = 0; i < [o[@"pick"] count]; i++)
+  }
+  for (NSUInteger i = 0; i < [o[@"pick"] count]; i++) {
     o[@"pick"][i] = AbsolutePath(o[@"pick"][i]);
+  }
   const char *headless = getenv("SIMRUN_HEADLESS");   // for every run, e.g. in an agent's or CI's environment
-  if (headless && *headless && strcmp(headless, "0"))
+  if (headless && *headless && strcmp(headless, "0")) {
     o[@"headless"] = @YES;
+  }
   NSString *mic = o[@"mic"];
   BOOL micLoop = [o[@"micLoop"] isEqual:@YES];
   if (mic && ![mic isEqualToString:@"mac"] && ![mic isEqualToString:@"system"]) {
     mic = AbsolutePath(mic);
     BOOL dir = NO;
-    if (![NSFileManager.defaultManager fileExistsAtPath:mic isDirectory:&dir] || dir)
+    if (![NSFileManager.defaultManager fileExistsAtPath:mic isDirectory:&dir] || dir) {
       return Fail(@"--mic takes mac, system or an audio file; there is no file at %@", mic);
-  } else if (micLoop)
+    }
+  } else if (micLoop) {
     return Fail(@"--mic-loop goes with --mic <audio file>");
+  }
   NSMutableArray *env = [NSMutableArray array];
   BOOL mute = [o[@"mute"] isEqual:@YES];
   // the app's own variables (app.dylib's audio module), replacing the terminal's
-  for (char **e = environ; *e; e++)
-    if (!(mute && !strncmp(*e, "AUDIO_MUTE=", 11)) && !(mic && !strncmp(*e, "AUDIO_INPUT=", 12)) && !(micLoop && !strncmp(*e, "AUDIO_INPUT_LOOP=", 17)))
+  for (char **e = environ; *e; e++) {
+    if (!(mute && !strncmp(*e, "AUDIO_MUTE=", 11)) && !(mic && !strncmp(*e, "AUDIO_INPUT=", 12)) && !(micLoop && !strncmp(*e, "AUDIO_INPUT_LOOP=", 17))) {
       [env addObject:@(*e)];
-  if (mute)
+    }
+  }
+  if (mute) {
     [env addObject:@"AUDIO_MUTE=1"];
-  if (mic)
+  }
+  if (mic) {
     [env addObject:[@"AUDIO_INPUT=" stringByAppendingString:mic]];
-  if (micLoop)
+  }
+  if (micLoop) {
     [env addObject:@"AUDIO_INPUT_LOOP=1"];
+  }
   [o removeObjectsForKeys:@[ @"mute", @"mic", @"micLoop" ]];
   NSMutableDictionary *req = [@{ @"action": @"run", @"argv": rest, @"env": env, @"cwd": NSFileManager.defaultManager.currentDirectoryPath } mutableCopy];
   [req addEntriesFromDictionary:o];
 
   int s = Connect(YES);
-  if (s < 0)
+  if (s < 0) {
     return 1;
+  }
   int fds[3] = { 0, 1, 2 };
-  if (simrund_send(s, (__bridge CFDictionaryRef)req, fds, 3))
+  if (simrund_send(s, (__bridge CFDictionaryRef)req, fds, 3)) {
     return Fail(@"send failed");
+  }
   // Ctrl-C / SIGTERM: exiting closes the socket, which makes SimRun terminate the app.
   for (;;) {
     NSDictionary *msg = CFBridgingRelease(simrund_recv(s, NULL, NULL));
-    if (!msg)
+    if (!msg) {
       return Fail(@"lost connection to SimRun");
+    }
     if ([msg[@"exit"] isKindOfClass:NSNumber.class]) {
       int st = [msg[@"exit"] intValue];
       return WIFEXITED(st) ? WEXITSTATUS(st) : 128 + WTERMSIG(st);
     }
-    if ([msg[@"error"] isKindOfClass:NSString.class])
+    if ([msg[@"error"] isKindOfClass:NSString.class]) {
       return Fail(@"%@", msg[@"error"]);
+    }
   }
 }
 
 static int List(NSArray<NSString *> *args) {
-  if (args.count)
+  if (args.count) {
     return Usage();
+  }
   int s = Connect(NO);
-  if (s < 0)
+  if (s < 0) {
     return 0;   // not running: no apps
+  }
   close(s);
   NSDictionary *reply = Request(@{ @"action": @"list" }, NO);
-  if (!reply)
+  if (!reply) {
     return 1;
+  }
   NSArray *list = reply[@"instances"];
-  if (!list.count)
+  if (!list.count) {
     return 0;
+  }
   NSMutableArray *rows = [NSMutableArray arrayWithObject:@[ @"PID", @"APP", @"PROFILE", @"DEVICE", @"RUNTIME" ]];
   for (NSDictionary *i in list) {
     NSString *title = [i[@"headless"] boolValue] ? [i[@"title"] stringByAppendingString:@" (headless)"] : i[@"title"];
@@ -414,36 +458,44 @@ static int Instance(NSString *action, NSArray<NSString *> *args) {
   NSMutableDictionary *o = [NSMutableDictionary dictionary];
   NSMutableArray *rest = [NSMutableArray array];
   NSMutableDictionary *names = [@{ @"-p": @"profile", @"--profile": @"profile" } mutableCopy];
-  if ([action isEqualToString:@"screenshot"])
+  if ([action isEqualToString:@"screenshot"]) {
     [names addEntriesFromDictionary:@{ @"-o": @"output", @"--output": @"output" }];
+  }
   NSString *err = ParseOptions(args, names, nil, nil, NO, o, rest);
   if (err) {
     Fail(@"%@", err);
     return Usage();
   }
-  if (rest.count != 1)
+  if (rest.count != 1) {
     return Usage();
+  }
   NSMutableDictionary *req = [@{ @"action": action, @"instance": rest[0] } mutableCopy];
-  if (o[@"profile"])
+  if (o[@"profile"]) {
     req[@"profile"] = o[@"profile"];
+  }
   NSDictionary *reply = Request(req, NO);
-  if (!reply)
+  if (!reply) {
     return 1;
-  if ([action isEqualToString:@"quit"])
+  }
+  if ([action isEqualToString:@"quit"]) {
     return 0;
+  }
   NSData *png = reply[@"png"];
-  if (![png isKindOfClass:NSData.class])
+  if (![png isKindOfClass:NSData.class]) {
     return Fail(@"no screenshot in SimRun's reply");
+  }
   NSString *out = o[@"output"];
   if (!out) {
     NSString *name = [rest[0] stringByReplacingOccurrencesOfString:@"/" withString:@"_"];
-    if ([name rangeOfCharacterFromSet:NSCharacterSet.decimalDigitCharacterSet.invertedSet].location == NSNotFound)
+    if ([name rangeOfCharacterFromSet:NSCharacterSet.decimalDigitCharacterSet.invertedSet].location == NSNotFound) {
       name = [@"pid-" stringByAppendingString:name];
+    }
     out = [NSString stringWithFormat:@"%@%@.png", name, o[@"profile"] ? [@"-" stringByAppendingString:o[@"profile"]] : @""];
   }
   NSError *e = nil;
-  if (![png writeToFile:out options:NSDataWritingAtomic error:&e])
+  if (![png writeToFile:out options:NSDataWritingAtomic error:&e]) {
     return Fail(@"cannot write %@: %@", out, e.localizedDescription);
+  }
   Print(out);
   return 0;
 }
@@ -460,30 +512,38 @@ static int Eval(NSArray<NSString *> *args) {
     Fail(@"%@", err);
     return Usage();
   }
-  if (rest.count < 1 || rest.count > 2 || (rest.count == 2 && o[@"file"]))
+  if (rest.count < 1 || rest.count > 2 || (rest.count == 2 && o[@"file"])) {
     return Usage();
+  }
   NSString *source = rest.count == 2 ? rest[1] : nil;
   if (!source) {
     NSString *file = o[@"file"] ?: (isatty(0) ? nil : @"-");
-    if (!file)
+    if (!file) {
       return Usage();
+    }
     NSData *data = [file isEqualToString:@"-"] ? [NSFileHandle.fileHandleWithStandardInput readDataToEndOfFile] : [NSData dataWithContentsOfFile:file];
-    if (!data)
+    if (!data) {
       return Fail(@"cannot read %@", file);
+    }
     source = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-    if (!source)
+    if (!source) {
       return Fail(@"%@ isn't UTF-8 text", [file isEqualToString:@"-"] ? @"stdin" : file);
+    }
   }
   NSMutableDictionary *req = [@{ @"action": @"eval", @"instance": rest[0], @"source": source } mutableCopy];
-  if (o[@"profile"])
+  if (o[@"profile"]) {
     req[@"profile"] = o[@"profile"];
-  if (snapshot)
+  }
+  if (snapshot) {
     req[@"snapshot"] = @YES;
+  }
   int s = Connect(NO);
-  if (s < 0)
+  if (s < 0) {
     return Fail(@"SimRun isn't running");
-  if (simrund_send(s, (__bridge CFDictionaryRef)req, NULL, 0))
+  }
+  if (simrund_send(s, (__bridge CFDictionaryRef)req, NULL, 0)) {
     return Fail(@"send failed");
+  }
   __block NSString *screen = nil;   // printed after the outcome
   __block BOOL printed = NO;
   void (^printScreen)(void) = ^{
@@ -494,8 +554,9 @@ static int Eval(NSArray<NSString *> *args) {
   };
   for (;;) {
     NSDictionary *msg = CFBridgingRelease(simrund_recv(s, NULL, NULL));
-    if (!msg)
+    if (!msg) {
       return Fail(@"lost connection to SimRun");
+    }
     if ([msg[@"log"] isKindOfClass:NSString.class]) {
       Print(msg[@"log"]);
       fflush(stdout);
@@ -522,8 +583,9 @@ static int Eval(NSArray<NSString *> *args) {
       printScreen();
       return 1;
     }
-    if ([msg[@"error"] isKindOfClass:NSString.class])
+    if ([msg[@"error"] isKindOfClass:NSString.class]) {
       return Fail(@"%@", msg[@"error"]);
+    }
   }
 }
 
@@ -538,28 +600,37 @@ static int Pick(NSArray<NSString *> *args) {
     return Usage();
   }
   BOOL cancel = [o[@"cancel"] isEqual:@YES];
-  if (rest.count < 1 || (cancel && rest.count > 1))
+  if (rest.count < 1 || (cancel && rest.count > 1)) {
     return Usage();
+  }
   NSMutableDictionary *req = [@{ @"action": @"pick", @"instance": rest[0] } mutableCopy];
-  if (o[@"profile"])
+  if (o[@"profile"]) {
     req[@"profile"] = o[@"profile"];
-  if (o[@"timeout"])
+  }
+  if (o[@"timeout"]) {
     req[@"timeout"] = @([o[@"timeout"] doubleValue]);
-  if (cancel)
+  }
+  if (cancel) {
     req[@"cancel"] = @YES;
+  }
   NSMutableArray *paths = [NSMutableArray array];
-  for (NSString *p in [rest subarrayWithRange:NSMakeRange(1, rest.count - 1)])
+  for (NSString *p in [rest subarrayWithRange:NSMakeRange(1, rest.count - 1)]) {
     [paths addObject:AbsolutePath(p)];
-  if (paths.count)
+  }
+  if (paths.count) {
     req[@"paths"] = paths;
+  }
   NSDictionary *reply = Request(req, NO);
-  if (!reply)
+  if (!reply) {
     return 1;
+  }
   if (paths.count || cancel) {
-    for (NSString *p in reply[@"chosen"])
+    for (NSString *p in reply[@"chosen"]) {
       Print(p);
-    if (cancel)
+    }
+    if (cancel) {
       Print(@"cancelled");
+    }
     return 0;
   }
   NSDictionary *picker = reply[@"picker"];
@@ -584,16 +655,19 @@ static int Inspect(NSArray<NSString *> *args) {
   NSUInteger setAt = [a indexOfObject:@"--set"];
   NSDictionary *set = nil;
   if (setAt != NSNotFound) {
-    if (setAt + 2 >= a.count)
+    if (setAt + 2 >= a.count) {
       return Usage();
+    }
     NSString *nid = a[setAt + 1], *assign = a[setAt + 2];
     NSRange eq = [assign rangeOfString:@"="];
-    if (eq.location == NSNotFound || !nid.integerValue)
+    if (eq.location == NSNotFound || !nid.integerValue) {
       return Usage();
+    }
     NSString *json = [assign substringFromIndex:NSMaxRange(eq)];
     id value = json.length ? [NSJSONSerialization JSONObjectWithData:[json dataUsingEncoding:NSUTF8StringEncoding] options:NSJSONReadingFragmentsAllowed error:NULL] : nil;
-    if (json.length && !value)
+    if (json.length && !value) {
       return Fail(@"--set: %@ isn't JSON (a number, true/false, [r, g, b, a], [x, y]…)", json);
+    }
     set = value ? @{ @"id": @(nid.integerValue), @"key": [assign substringToIndex:eq.location], @"value": value }
                 : @{ @"id": @(nid.integerValue), @"key": [assign substringToIndex:eq.location] };
     [a removeObjectsInRange:NSMakeRange(setAt, 3)];
@@ -603,34 +677,46 @@ static int Inspect(NSArray<NSString *> *args) {
     Fail(@"%@", err);
     return Usage();
   }
-  if (rest.count != 1 || (check && (watch || o[@"png"])) || (explode && !o[@"png"]) || (set && (watch || check || o[@"png"])))
+  if (rest.count != 1 || (check && (watch || o[@"png"])) || (explode && !o[@"png"]) || (set && (watch || check || o[@"png"]))) {
     return Usage();
+  }
   NSMutableDictionary *req = [@{ @"action": @"inspect", @"instance": rest[0] } mutableCopy];
-  if (o[@"profile"])
+  if (o[@"profile"]) {
     req[@"profile"] = o[@"profile"];
-  if (watch)
+  }
+  if (watch) {
     req[@"watch"] = @YES;
-  if (check)
+  }
+  if (check) {
     req[@"check"] = @YES;
-  if (o[@"png"])
+  }
+  if (o[@"png"]) {
     req[@"png"] = @YES;
-  if (explode)
+  }
+  if (explode) {
     req[@"3d"] = @YES;
-  if (set)
+  }
+  if (set) {
     req[@"set"] = set;
+  }
   int s = Connect(NO);
-  if (s < 0)
+  if (s < 0) {
     return Fail(@"SimRun isn't running");
-  if (simrund_send(s, (__bridge CFDictionaryRef)req, NULL, 0))
+  }
+  if (simrund_send(s, (__bridge CFDictionaryRef)req, NULL, 0)) {
     return Fail(@"send failed");
+  }
   for (;;) {
     NSDictionary *msg = CFBridgingRelease(simrund_recv(s, NULL, NULL));
-    if (!msg)
+    if (!msg) {
       return watch ? 0 : Fail(@"lost connection to SimRun");
-    if ([msg[@"error"] isKindOfClass:NSString.class])
+    }
+    if ([msg[@"error"] isKindOfClass:NSString.class]) {
       return Fail(@"%@", msg[@"error"]);
-    if (set && msg[@"ok"])
+    }
+    if (set && msg[@"ok"]) {
       return 0;
+    }
     NSString *tree = [msg[@"tree"] isKindOfClass:NSString.class] ? msg[@"tree"] : nil;
     if (tree && check) {
       NSString *before = [msg[@"before"] isKindOfClass:NSString.class] ? msg[@"before"] : @"";
@@ -654,12 +740,14 @@ static int Inspect(NSArray<NSString *> *args) {
       fflush(stdout);
       if (o[@"png"]) {
         NSData *png = [msg[@"png"] isKindOfClass:NSData.class] ? msg[@"png"] : nil;
-        if (!png || ![png writeToFile:o[@"png"] atomically:YES])
+        if (!png || ![png writeToFile:o[@"png"] atomically:YES]) {
           return Fail(@"cannot write %@", o[@"png"]);
+        }
         fprintf(stderr, "saved %s\n", [o[@"png"] UTF8String]);
       }
-      if (!watch)
+      if (!watch) {
         return 0;
+      }
       continue;
     }
     if ([msg[@"changes"] isKindOfClass:NSString.class]) {
@@ -670,16 +758,18 @@ static int Inspect(NSArray<NSString *> *args) {
 }
 
 static int Profiles(NSArray<NSString *> *args) {
-  if (args.count > 1)
+  if (args.count > 1) {
     return Usage();
+  }
   NSMutableDictionary *req = [@{ @"action": @"profiles" } mutableCopy];
   if (args.count) {
     BOOL exists = [NSFileManager.defaultManager fileExistsAtPath:args[0]];
     req[@"app"] = exists ? AbsolutePath(args[0]) : args[0];
   }
   NSDictionary *reply = Request(req, YES);
-  if (!reply)
+  if (!reply) {
     return 1;
+  }
   for (NSDictionary *a in reply[@"apps"]) {
     NSArray *p = a[@"profiles"];
     Print([NSString stringWithFormat:@"%@: %@", a[@"id"], p.count ? [p componentsJoinedByString:@", "] : @"(none)"]);
@@ -688,14 +778,17 @@ static int Profiles(NSArray<NSString *> *args) {
 }
 
 static int Runtimes(NSArray<NSString *> *args) {
-  if (args.count)
+  if (args.count) {
     return Usage();
+  }
   NSDictionary *reply = Request(@{ @"action": @"runtimes" }, YES);
-  if (!reply)
+  if (!reply) {
     return 1;
+  }
   NSMutableArray *rows = [NSMutableArray array];
-  for (NSDictionary *r in reply[@"runtimes"])
+  for (NSDictionary *r in reply[@"runtimes"]) {
     [rows addObject:@[ [r[@"current"] boolValue] ? @"*" : @" ", r[@"name"], r[@"root"] ]];
+  }
   PrintTable(rows);
   return 0;
 }
@@ -708,26 +801,31 @@ static int Devices(NSArray<NSString *> *args) {
     Fail(@"%@", err);
     return Usage();
   }
-  if (rest.count)
+  if (rest.count) {
     return Usage();
+  }
   NSMutableDictionary *req = [@{ @"action": @"devices" } mutableCopy];
-  if (o[@"runtime"])
+  if (o[@"runtime"]) {
     req[@"runtime"] = o[@"runtime"];
+  }
   NSDictionary *reply = Request(req, YES);
-  if (!reply)
+  if (!reply) {
     return 1;
+  }
   Print([NSString stringWithFormat:@"%@:", reply[@"runtime"]]);
   NSMutableArray *rows = [NSMutableArray array];
-  for (NSDictionary *d in reply[@"devices"])
+  for (NSDictionary *d in reply[@"devices"]) {
     [rows addObject:@[ [d[@"default"] boolValue] ? @"*" : @" ", d[@"name"],
                        [NSString stringWithFormat:@"%@x%@ @%gx", d[@"width"], d[@"height"], [d[@"scale"] doubleValue]], d[@"identifier"] ]];
+  }
   PrintTable(rows);
   return 0;
 }
 
 static int Status(NSArray<NSString *> *args) {
-  if (args.count)
+  if (args.count) {
     return Usage();
+  }
   int s = Connect(NO);
   if (s < 0) {
     Print(@"not running");
@@ -735,29 +833,33 @@ static int Status(NSArray<NSString *> *args) {
   }
   close(s);
   NSDictionary *reply = Request(@{ @"action": @"status" }, NO);
-  if (!reply)
+  if (!reply) {
     return 1;
+  }
   long n = [reply[@"instances"] longValue];
   Print([NSString stringWithFormat:@"running (pid %@), %@, %ld app%s", reply[@"pid"], reply[@"runtime"], n, n == 1 ? "" : "s"]);
   return 0;
 }
 
 static int Remote(NSArray<NSString *> *args) {
-  if (args.count > 1)
+  if (args.count > 1) {
     return Usage();
+  }
   NSString *sub = args.firstObject;
   NSMutableDictionary *req = [@{ @"action": @"remote" } mutableCopy];
-  if ([sub isEqualToString:@"on"])
+  if ([sub isEqualToString:@"on"]) {
     req[@"enable"] = @YES;
-  else if ([sub isEqualToString:@"off"])
+  } else if ([sub isEqualToString:@"off"]) {
     req[@"enable"] = @NO;
-  else if ([sub isEqualToString:@"new-link"])
+  } else if ([sub isEqualToString:@"new-link"]) {
     req[@"reset"] = @YES;
-  else if (sub)
+  } else if (sub) {
     return Usage();
+  }
   NSDictionary *reply = Request(req, [sub isEqualToString:@"on"]);   // turning it on starts SimRun
-  if (!reply)
+  if (!reply) {
     return 1;
+  }
   if (![reply[@"enabled"] boolValue]) {
     Print(@"off");
     return 0;
@@ -769,16 +871,18 @@ static int Remote(NSArray<NSString *> *args) {
 }
 
 static int Stop(NSArray<NSString *> *args) {
-  if (args.count)
+  if (args.count) {
     return Usage();
+  }
   int s = Connect(NO);
   if (s < 0) {
     Print(@"not running");
     return 0;
   }
   close(s);
-  if (!Request(@{ @"action": @"stop" }, NO))
+  if (!Request(@{ @"action": @"stop" }, NO)) {
     return 1;
+  }
   Print(@"stopped");
   return 0;
 }
@@ -795,12 +899,14 @@ static int Skill(NSArray<NSString *> *args) {
   NSFileManager *fm = NSFileManager.defaultManager;
   NSString *app = OwnApp();
   NSString *src = [app stringByAppendingPathComponent:@"Contents/Resources/skills/simrun"];
-  if (!src || !IsSimRunSkill(src))
+  if (!src || !IsSimRunSkill(src)) {
     return Fail(@"the skill isn't in %@", app ?: @"SimRun.app (not found)");
+  }
   NSString *sub = args.firstObject ?: @"print";
   NSMutableArray<NSString *> *rest = [args mutableCopy];
-  if (rest.count)
+  if (rest.count) {
     [rest removeObjectAtIndex:0];
+  }
 
   if ([sub isEqualToString:@"print"] && !rest.count) {
     NSString *text = [NSString stringWithContentsOfFile:[src stringByAppendingPathComponent:@"SKILL.md"] encoding:NSUTF8StringEncoding error:nil];
@@ -812,8 +918,9 @@ static int Skill(NSArray<NSString *> *args) {
     Print(src);
     return 0;
   }
-  if (![sub isEqualToString:@"install"])
+  if (![sub isEqualToString:@"install"]) {
     return Usage();
+  }
 
   BOOL project = [rest containsObject:@"--project"], forClaude = [rest containsObject:@"--claude"];
   [rest removeObject:@"--project"];
@@ -825,8 +932,9 @@ static int Skill(NSArray<NSString *> *args) {
     Fail(@"%@", err);
     return Usage();
   }
-  if (positional.count || ((project || forClaude) && o[@"dir"]))
+  if (positional.count || ((project || forClaude) && o[@"dir"])) {
     return Usage();
+  }
   // The copy goes where agents look for skills, .agents/skills; --claude links Claude Code's skills to it.
   // ~ from $HOME, as the agents read it. Claude Code's own directory: $CLAUDE_CONFIG_DIR, else ~/.claude
   NSDictionary<NSString *, NSString *> *env = NSProcessInfo.processInfo.environment;
@@ -836,17 +944,20 @@ static int Skill(NSArray<NSString *> *args) {
   NSString *dest = [skills stringByAppendingPathComponent:@"simrun"], *shown = dest.stringByAbbreviatingWithTildeInPath;
   // attributesOfItemAtPath doesn't follow links: a link (to a checkout's skills/simrun, say) is the user's to manage
   NSDictionary *attrs = [fm attributesOfItemAtPath:dest error:nil];
-  if ([attrs.fileType isEqualToString:NSFileTypeSymbolicLink])
+  if ([attrs.fileType isEqualToString:NSFileTypeSymbolicLink]) {
     return Fail(@"%@ is a symbolic link; leaving it alone", shown);
-  if (attrs && !IsSimRunSkill(dest))
+  }
+  if (attrs && !IsSimRunSkill(dest)) {
     return Fail(@"%@ exists and isn't SimRun's skill; leaving it alone", shown);
+  }
 
   // copy next to it, then swap it in
   NSString *tmp = [skills stringByAppendingPathComponent:@".simrun.new"];
   NSError *e = nil;
   [fm removeItemAtPath:tmp error:nil];
-  if (![fm createDirectoryAtPath:skills withIntermediateDirectories:YES attributes:nil error:&e] || ![fm copyItemAtPath:src toPath:tmp error:&e])
+  if (![fm createDirectoryAtPath:skills withIntermediateDirectories:YES attributes:nil error:&e] || ![fm copyItemAtPath:src toPath:tmp error:&e]) {
     return Fail(@"cannot copy the skill to %@: %@", skills.stringByAbbreviatingWithTildeInPath, e.localizedDescription);
+  }
   if ((attrs && ![fm removeItemAtPath:dest error:&e]) || ![fm moveItemAtPath:tmp toPath:dest error:&e]) {
     [fm removeItemAtPath:tmp error:nil];
     return Fail(@"cannot replace %@: %@", shown, e.localizedDescription);
@@ -866,8 +977,9 @@ static int Skill(NSArray<NSString *> *args) {
     if ([la.fileType isEqualToString:NSFileTypeSymbolicLink]) {
       NSString *to = [fm destinationOfSymbolicLinkAtPath:link error:nil] ?: @"";
       NSString *resolved = to.isAbsolutePath ? to : [claudeSkills stringByAppendingPathComponent:to];
-      if (![resolved.stringByResolvingSymlinksInPath isEqualToString:dest.stringByResolvingSymlinksInPath])
+      if (![resolved.stringByResolvingSymlinksInPath isEqualToString:dest.stringByResolvingSymlinksInPath]) {
         return Fail(@"%@; %@ is a symbolic link to %@, leaving it alone", done, linkShown, to);
+      }
       linked = YES;
     } else if (la && !IsSimRunSkill(link)) {
       return Fail(@"%@; %@ exists and isn't SimRun's skill, leaving it alone", done, linkShown);
@@ -875,8 +987,9 @@ static int Skill(NSArray<NSString *> *args) {
       return Fail(@"%@; cannot replace %@: %@", done, linkShown, e.localizedDescription);
     }
     if (!linked && (![fm createDirectoryAtPath:claudeSkills withIntermediateDirectories:YES attributes:nil error:&e] ||
-                    ![fm createSymbolicLinkAtPath:link withDestinationPath:target error:&e]))
+                    ![fm createSymbolicLinkAtPath:link withDestinationPath:target error:&e])) {
       return Fail(@"%@; cannot link %@ to it: %@", done, linkShown, e.localizedDescription);
+    }
     done = [done stringByAppendingFormat:@", linked from %@ for Claude Code", linkShown];
   }
   Print([done stringByAppendingString:@". Run this again after updating SimRun to keep it in step."]);
@@ -884,8 +997,9 @@ static int Skill(NSArray<NSString *> *args) {
 }
 
 static int Log(NSArray<NSString *> *args) {
-  if (args.count)
+  if (args.count) {
     return Usage();
+  }
   char log[1024];
   simrund_log_path(log, sizeof log);
   execl("/usr/bin/tail", "tail", "-n", "50", "-f", log, (char *)NULL);
@@ -895,40 +1009,56 @@ static int Log(NSArray<NSString *> *args) {
 int main(int argc, char **argv) {
   @autoreleasepool {
     signal(SIGPIPE, SIG_IGN);
-    if (argc < 2)
+    if (argc < 2) {
       return Usage();
+    }
     NSString *cmd = @(argv[1]);
     NSMutableArray<NSString *> *args = [NSMutableArray array];
-    for (int i = 2; i < argc; i++)
+    for (int i = 2; i < argc; i++) {
       [args addObject:@(argv[i])];
-    if ([cmd isEqualToString:@"run"])
+    }
+    if ([cmd isEqualToString:@"run"]) {
       return Run(args);
-    if ([cmd isEqualToString:@"list"])
+    }
+    if ([cmd isEqualToString:@"list"]) {
       return List(args);
-    if ([cmd isEqualToString:@"quit"] || [cmd isEqualToString:@"screenshot"])
+    }
+    if ([cmd isEqualToString:@"quit"] || [cmd isEqualToString:@"screenshot"]) {
       return Instance(cmd, args);
-    if ([cmd isEqualToString:@"eval"])
+    }
+    if ([cmd isEqualToString:@"eval"]) {
       return Eval(args);
-    if ([cmd isEqualToString:@"inspect"])
+    }
+    if ([cmd isEqualToString:@"inspect"]) {
       return Inspect(args);
-    if ([cmd isEqualToString:@"pick"])
+    }
+    if ([cmd isEqualToString:@"pick"]) {
       return Pick(args);
-    if ([cmd isEqualToString:@"profiles"])
+    }
+    if ([cmd isEqualToString:@"profiles"]) {
       return Profiles(args);
-    if ([cmd isEqualToString:@"runtimes"])
+    }
+    if ([cmd isEqualToString:@"runtimes"]) {
       return Runtimes(args);
-    if ([cmd isEqualToString:@"devices"])
+    }
+    if ([cmd isEqualToString:@"devices"]) {
       return Devices(args);
-    if ([cmd isEqualToString:@"status"])
+    }
+    if ([cmd isEqualToString:@"status"]) {
       return Status(args);
-    if ([cmd isEqualToString:@"remote"])
+    }
+    if ([cmd isEqualToString:@"remote"]) {
       return Remote(args);
-    if ([cmd isEqualToString:@"stop"])
+    }
+    if ([cmd isEqualToString:@"stop"]) {
       return Stop(args);
-    if ([cmd isEqualToString:@"log"])
+    }
+    if ([cmd isEqualToString:@"log"]) {
       return Log(args);
-    if ([cmd isEqualToString:@"skill"])
+    }
+    if ([cmd isEqualToString:@"skill"]) {
       return Skill(args);
+    }
     if ([cmd isEqualToString:@"help"] || [cmd isEqualToString:@"-h"] || [cmd isEqualToString:@"--help"]) {
       fputs(kUsage, stdout);
       return 0;

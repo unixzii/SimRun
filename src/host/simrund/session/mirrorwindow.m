@@ -98,8 +98,9 @@ static BOOL SpringStep(SRSpring *s, CGFloat dt) {   // returns YES while moving
 @end
 @implementation SRTrafficLights
 - (instancetype)initWithStyleMask:(NSWindowStyleMask)style {
-  if (!(self = [super initWithFrame:NSZeroRect]))
+  if (!(self = [super initWithFrame:NSZeroRect])) {
     return nil;
+  }
   CGFloat x = 0, h = 0;
   for (NSNumber *t in @[ @(NSWindowCloseButton), @(NSWindowMiniaturizeButton), @(NSWindowZoomButton) ]) {
     NSButton *b = [NSWindow standardWindowButton:(NSWindowButton)t.integerValue forStyleMask:style];
@@ -115,17 +116,20 @@ static BOOL SpringStep(SRSpring *s, CGFloat dt) {   // returns YES while moving
   return self.mouseInside;
 }
 - (void)setMouseInside:(BOOL)inside {
-  if (_mouseInside == inside)
+  if (_mouseInside == inside) {
     return;
+  }
   _mouseInside = inside;
   NSView *themeFrame = self.window.contentView.superview;
   SEL sel = NSSelectorFromString(inside ? @"mouseEnteredLeftButtonGroup" : @"mouseExitedLeftButtonGroup");
-  if ([themeFrame respondsToSelector:sel])
+  if ([themeFrame respondsToSelector:sel]) {
     ((void (*)(id, SEL))[themeFrame methodForSelector:sel])(themeFrame, sel);
+  }
   SEL refresh = NSSelectorFromString(@"mouseEnteredOrExited");
   for (NSView *b in self.subviews) {
-    if ([b respondsToSelector:refresh])
+    if ([b respondsToSelector:refresh]) {
       ((void (*)(id, SEL))[b methodForSelector:refresh])(b, refresh);
+    }
     b.needsDisplay = YES;
   }
 }
@@ -179,8 +183,9 @@ typedef NS_ENUM(NSInteger, SRResizeAxis) { SRResizeAxisNone, SRResizeAxisWidth, 
 @implementation SRMirrorRootView
 - (void)updateTrackingAreas {
   [super updateTrackingAreas];
-  for (NSTrackingArea *a in self.trackingAreas)
+  for (NSTrackingArea *a in self.trackingAreas) {
     [self removeTrackingArea:a];
+  }
   [self addTrackingArea:[[NSTrackingArea alloc] initWithRect:NSZeroRect
       options:NSTrackingMouseEnteredAndExited | NSTrackingMouseMoved | NSTrackingActiveAlways | NSTrackingInVisibleRect owner:self userInfo:nil]];
 }
@@ -233,8 +238,9 @@ typedef NS_ENUM(NSInteger, SRResizeAxis) { SRResizeAxisNone, SRResizeAxisWidth, 
   NSWindowStyleMask style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable |
                             NSWindowStyleMaskResizable | NSWindowStyleMaskFullSizeContentView;
   NSRect frame = NSMakeRect(0, 0, size.width + 2 * kMargin, size.height + kStrip + kMargin);
-  if (!(self = [super initWithContentRect:frame styleMask:style backing:NSBackingStoreBuffered defer:NO]))
+  if (!(self = [super initWithContentRect:frame styleMask:style backing:NSBackingStoreBuffered defer:NO])) {
     return nil;
+  }
   _size = size;
   _radius = cornerRadius;
   self.titlebarAppearsTransparent = YES;
@@ -265,8 +271,9 @@ typedef NS_ENUM(NSInteger, SRResizeAxis) { SRResizeAxisNone, SRResizeAxisWidth, 
   _strip = [[SRDragView alloc] initWithFrame:NSZeroRect];
   _lights = [[SRTrafficLights alloc] initWithStyleMask:style];
   [_strip addSubview:_lights];
-  for (NSView *v in @[ _material, _screen, _hairline, _strip ])
+  for (NSView *v in @[ _material, _screen, _hairline, _strip ]) {
     [_root addSubview:v];
+  }
   self.contentView = _root;
 
   SpringSetResponse(&_shape, 0.28, 1);
@@ -318,8 +325,9 @@ static NSSize FrameSize(NSSize screen, CGFloat scale) {
   return _size;
 }
 - (void)setScreenSize:(NSSize)size {   // keeps the current scale
-  if (NSEqualSizes(size, _size))
+  if (NSEqualSizes(size, _size)) {
     return;
+  }
   CGFloat scale = self.scale;
   NSPoint topLeft = NSMakePoint(NSMinX(self.frame), NSMaxY(self.frame));   // keep the screen's top-left
   _size = size;
@@ -347,8 +355,9 @@ static NSSize FrameSize(NSSize screen, CGFloat scale) {
   if (axis == SRResizeAxisNone) {
     BOOL w = proposed.width != cur.width, h = proposed.height != cur.height;
     axis = w && h ? SRResizeAxisBoth : h ? SRResizeAxisHeight : SRResizeAxisWidth;
-    if (self.inLiveResize && (w || h))
+    if (self.inLiveResize && (w || h)) {
       _resizeAxis = axis;
+    }
   }
   CGFloat W = _size.width, H = _size.height, pw = proposed.width - 2 * kMargin, ph = proposed.height - kStrip - kMargin;
   CGFloat s = axis == SRResizeAxisWidth ? pw / W : axis == SRResizeAxisHeight ? ph / H : (W * pw + H * ph) / (W * W + H * H);
@@ -396,8 +405,9 @@ static CGFloat Lerp(CGFloat a, CGFloat b, CGFloat t) {
   CGFloat r = self.screenRadius, rTop = Lerp(r, kTopRadius, p), rBottom = Lerp(r, r + kMargin, p);
   CGRect shape = CGRectMake(side, top, NSWidth(b) - 2 * side, NSHeight(b) - top - side);   // top-left origin
   CGPathRef path = CreateContinuousRect(shape, rTop, rTop, rBottom, rBottom, NSHeight(b));
-  if ([self respondsToSelector:@selector(_setCornerPath:)])
+  if ([self respondsToSelector:@selector(_setCornerPath:)]) {
     [self _setCornerPath:path];
+  }
   CGPathRelease(path);
   // the strip slides down by its height while hidden (it then sits, invisible, over the top of the screen)
   [_strip setFrameOrigin:NSMakePoint(0, NSHeight(b) - kStrip - kStrip * (1 - p))];
@@ -409,8 +419,9 @@ static CGFloat Lerp(CGFloat a, CGFloat b, CGFloat t) {
 // ---------------------------------------------------------------- animation
 - (void)setChromeVisible:(BOOL)visible {
   CGFloat target = visible ? 1 : 0;
-  if (_shape.target == target)
+  if (_shape.target == target) {
     return;
+  }
   _shape.target = target;
   _stripAlpha.target = target;
   SpringSetResponse(&_stripAlpha, visible ? 0.7 : 0.14, 1);
@@ -433,26 +444,31 @@ static CGFloat Lerp(CGFloat a, CGFloat b, CGFloat t) {
   }
 }
 - (void)resetWindowShape {
-  if ([self respondsToSelector:@selector(_setNeedsToResetDragMargins:)])
+  if ([self respondsToSelector:@selector(_setNeedsToResetDragMargins:)]) {
     [self _setNeedsToResetDragMargins:YES];
+  }
   [self invalidateShadow];
 }
 
 // ---------------------------------------------------------------- hover
 - (SRHover)hoverForPoint:(NSPoint)p {
   NSRect r = _screen.frame;
-  if (!NSPointInRect(p, _root.bounds))
+  if (!NSPointInRect(p, _root.bounds)) {
     return SRHoverNone;
-  if (p.y >= NSMaxY(r))
+  }
+  if (p.y >= NSMaxY(r)) {
     return SRHoverTitleBar;
-  if (NSPointInRect(p, r))
+  }
+  if (NSPointInRect(p, r)) {
     return p.y >= NSMaxY(r) - kStatusBarZone ? SRHoverStatusBar : SRHoverContent;
+  }
   return SRHoverChrome;
 }
 - (void)hoverAt:(NSPoint)p {
   _lights.mouseInside = !_strip.hidden && NSPointInRect([_strip convertPoint:p fromView:_root], NSInsetRect(_lights.frame, -2, -2));
-  if (NSEvent.pressedMouseButtons)
+  if (NSEvent.pressedMouseButtons) {
     return;   // a drag on the screen is a touch, not hover
+  }
   SRHover h = [self hoverForPoint:p], prev = _hover;
   _hover = h;
   switch (h) {
@@ -465,15 +481,17 @@ static CGFloat Lerp(CGFloat a, CGFloat b, CGFloat t) {
         [self setChromeVisible:NO];
         break;
     case SRHoverChrome:   // the margins keep the chrome only if the pointer came from it or from the top
-      if (prev != SRHoverTitleBar && prev != SRHoverStatusBar && prev != SRHoverChrome)
+      if (prev != SRHoverTitleBar && prev != SRHoverStatusBar && prev != SRHoverChrome) {
         [self setChromeVisible:NO];
+      }
       break;
   }
 }
 - (void)hoverExited {
   _lights.mouseInside = NO;
   _hover = SRHoverNone;
-  if (!NSEvent.pressedMouseButtons)
+  if (!NSEvent.pressedMouseButtons) {
     [self setChromeVisible:NO];
+  }
 }
 @end

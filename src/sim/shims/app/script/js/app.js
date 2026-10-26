@@ -71,5 +71,6 @@ const objc = Object.freeze({
   classes: filter => native.objc.classes(filter ?? ''),
 });
 
-for (const [name, value] of Object.entries({ app, expect: internal.expect, objc, sleep: internal.sleep }))
+for (const [name, value] of Object.entries({ app, expect: internal.expect, objc, sleep: internal.sleep })) {
   Object.defineProperty(globalThis, name, { value, writable: false, enumerable: false, configurable: false });
+}

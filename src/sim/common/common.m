@@ -31,15 +31,17 @@ BOOL SRIsWatch(void) {
 mach_port_t SRSessionPort(void) {
   mach_port_array_t ports = NULL;
   mach_msg_type_number_t n = 0;
-  if (mach_ports_lookup(mach_task_self(), &ports, &n) != KERN_SUCCESS || n <= SR_PORT_SLOT_HOST)
+  if (mach_ports_lookup(mach_task_self(), &ports, &n) != KERN_SUCCESS || n <= SR_PORT_SLOT_HOST) {
     return MACH_PORT_NULL;
+  }
   return MACH_PORT_VALID(ports[SR_PORT_SLOT_HOST]) ? ports[SR_PORT_SLOT_HOST] : MACH_PORT_NULL;
 }
 
 xpc_connection_t SRHostConnect(const char *service, dispatch_queue_t queue, xpc_handler_t events) {
   mach_port_t p = MACH_PORT_NULL;
-  if (bootstrap_look_up(bootstrap_port, service, &p) != KERN_SUCCESS)
+  if (bootstrap_look_up(bootstrap_port, service, &p) != KERN_SUCCESS) {
     return NULL;
+  }
   mach_port_deallocate(mach_task_self(), p);
   xpc_connection_t c = sr_xpc_create_mach_service(service, queue, 0);
   xpc_connection_enable_sim2host_4sim(c);
@@ -67,8 +69,9 @@ static NSString *library_directory(void) {
 static BOOL named(const char *kv, NSArray<NSString *> *names) {
   for (NSString *n in names) {
     size_t l = strlen(n.UTF8String);
-    if (!strncmp(kv, n.UTF8String, l) && kv[l] == '=')
+    if (!strncmp(kv, n.UTF8String, l) && kv[l] == '=') {
       return YES;
+    }
   }
   return NO;
 }
@@ -92,31 +95,40 @@ pid_t SRSpawnHelper(const SRHelper *h, mach_port_t *listener) {
   // the app's environment, but for what we set
   NSMutableArray<NSString *> *set = [NSMutableArray arrayWithArray:h->environment ?: @[]];
   NSMutableArray<NSString *> *libs = [NSMutableArray array];
-  for (NSString *lib in [@(h->insert) componentsSeparatedByString:@":"])
+  for (NSString *lib in [@(h->insert) componentsSeparatedByString:@":"]) {
     [libs addObject:[library_directory() stringByAppendingPathComponent:lib]];
+  }
   [set addObject:[@"DYLD_INSERT_LIBRARIES=" stringByAppendingString:[libs componentsJoinedByString:@":"]]];
   // in null-bootstrap mode: the bootstrap port is our handshake port, not a launchd
-  if (!h->inNamespace)
+  if (!h->inNamespace) {
     [set addObject:@"XPC_FLAGS=0x2"];
+  }
   [set addObject:[NSString stringWithFormat:@ENV_ROLE "=%s", h->role == SRRoleXPCService ? "xpcservice" : "extension"]];
-  if (h->inNamespace)
+  if (h->inNamespace) {
     [set addObject:[NSString stringWithFormat:@ENV_HANDSHAKE "=%s", name]];
+  }
   [set addObject:[NSString stringWithFormat:@ENV_PARENT "=%d", getpid()]];
   NSMutableArray<NSString *> *replaced = [NSMutableArray arrayWithObjects:@ENV_HANDSHAKE, nil];
-  for (NSString *kv in set)
+  for (NSString *kv in set) {
     [replaced addObject:[kv substringToIndex:[kv rangeOfString:@"="].location]];
-  if (!h->inNamespace)
+  }
+  if (!h->inNamespace) {
     [replaced addObject:@"XPC_SIMULATOR_LAUNCHD_NAME"];
+  }
   int n = 0;
-  while (environ[n])
+  while (environ[n]) {
     n++;
+  }
   char **envp = calloc(n + set.count + 1, sizeof(char *));
   int k = 0;
-  for (int i = 0; i < n; i++)
-    if (!named(environ[i], replaced))
+  for (int i = 0; i < n; i++) {
+    if (!named(environ[i], replaced)) {
       envp[k++] = environ[i];
-  for (NSString *kv in set)
+    }
+  }
+  for (NSString *kv in set) {
     envp[k++] = (char *)kv.UTF8String;
+  }
 
   posix_spawnattr_t at;
   posix_spawnattr_init(&at);
@@ -125,8 +137,9 @@ pid_t SRSpawnHelper(const SRHelper *h, mach_port_t *listener) {
   posix_spawnattr_setflags(&at, POSIX_SPAWN_CLOEXEC_DEFAULT);
   posix_spawn_file_actions_t fa;
   posix_spawn_file_actions_init(&fa);
-  for (int i = 0; i < 3; i++)
+  for (int i = 0; i < 3; i++) {
     posix_spawn_file_actions_addinherit_np(&fa, i);
+  }
   char *argv[] = { (char *)h->path, NULL };
   pid_t pid = -1;
   int r = posix_spawn(&pid, h->path, &fa, &at, argv, envp);
@@ -146,8 +159,9 @@ pid_t SRSpawnHelper(const SRHelper *h, mach_port_t *listener) {
   BOOL died = NO;
   for (int i = 0; i < h->timeoutSeconds * 10; i++) {
     kr = mach_msg(&m.m.h, MACH_RCV_MSG | MACH_RCV_TIMEOUT, 0, sizeof m, hs, 100, MACH_PORT_NULL);
-    if (kr != MACH_RCV_TIMED_OUT)
+    if (kr != MACH_RCV_TIMED_OUT) {
       break;
+    }
     if (waitpid(pid, &st, WNOHANG) == pid) {
       died = YES;
       break;
@@ -190,7 +204,8 @@ kern_return_t SRHelperCheckIn(xpc_connection_t l) {
     _exit(0);
   });
   dispatch_resume(appExit);
-  if (kill(ppid, 0) != 0)
+  if (kill(ppid, 0) != 0) {
     _exit(0);
+  }
   return kr;
 }

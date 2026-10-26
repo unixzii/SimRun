@@ -9,8 +9,9 @@
 #include "script.h"
 
 static const char *SRSkipQualifiers(const char *t) {
-  while (*t && strchr("rnNoORV", *t))
+  while (*t && strchr("rnNoORV", *t)) {
     t++;
+  }
   return t;
 }
 
@@ -129,12 +130,15 @@ static JSValue *SRReturnValue(NSInvocation *inv, JSContext *c) {
     case 'd':
       return [V valueWithDouble:RET(double) inContext:c];
     case '{':
-      if (!strncmp(t, "{CGPoint=", 9))
+      if (!strncmp(t, "{CGPoint=", 9)) {
         return [V valueWithPoint:RET(CGPoint) inContext:c];
-      if (!strncmp(t, "{CGSize=", 8))
+      }
+      if (!strncmp(t, "{CGSize=", 8)) {
         return [V valueWithSize:RET(CGSize) inContext:c];
-      if (!strncmp(t, "{CGRect=", 8))
+      }
+      if (!strncmp(t, "{CGRect=", 8)) {
         return [V valueWithRect:RET(CGRect) inContext:c];
+      }
   }
   #undef RET
   return SRThrow([NSString stringWithFormat:@"objc.send: unsupported return type %s", t]);
@@ -143,23 +147,29 @@ static JSValue *SRReturnValue(NSInvocation *inv, JSContext *c) {
 // send(target, "selector:with:", ...args): target is an object from an earlier call, or a class name.
 static JSValue *SRSend(void) {
   NSArray<JSValue *> *a = SRCurrentArguments();
-  if (a.count < 2)
+  if (a.count < 2) {
     return SRThrow(@"objc.send(target, selector, ...args)");
+  }
   id target = a[0].isString ? NSClassFromString([a[0] toString]) : [a[0] toObject];
-  if (!target)
+  if (!target) {
     return SRThrow([NSString stringWithFormat:@"objc.send: no class or object %@", [a[0] toString]]);
+  }
   SEL sel = NSSelectorFromString([a[1] toString]);
   NSMethodSignature *sig = [target methodSignatureForSelector:sel];
-  if (!sig)
+  if (!sig) {
     return SRThrow([NSString stringWithFormat:@"objc.send: %@ doesn't respond to %@", [target class], [a[1] toString]]);
-  if (a.count - 2 != sig.numberOfArguments - 2)
+  }
+  if (a.count - 2 != sig.numberOfArguments - 2) {
     return SRThrow([NSString stringWithFormat:@"objc.send: %@ takes %lu arguments", [a[1] toString], (unsigned long)sig.numberOfArguments - 2]);
+  }
   NSInvocation *inv = [NSInvocation invocationWithMethodSignature:sig];
   inv.target = target;
   inv.selector = sel;
-  for (NSUInteger i = 2; i < sig.numberOfArguments; i++)
-    if (!SRSetArg(inv, i, a[i]))
+  for (NSUInteger i = 2; i < sig.numberOfArguments; i++) {
+    if (!SRSetArg(inv, i, a[i])) {
       return SRThrow([NSString stringWithFormat:@"objc.send: unsupported argument type %s", [sig getArgumentTypeAtIndex:i]]);
+    }
+  }
   [inv invoke];
   return SRReturnValue(inv, SRCurrentContext());
 }
@@ -189,8 +199,9 @@ void SRInstallObjCBindings(JSValue *native) {
       Method *ms = class_copyMethodList(meta ? object_getClass(k) : k, &n);
       for (unsigned i = 0; i < n; i++) {
         NSString *s = NSStringFromSelector(method_getName(ms[i]));
-        if (!f || [s rangeOfString:f options:NSCaseInsensitiveSearch].location != NSNotFound)
+        if (!f || [s rangeOfString:f options:NSCaseInsensitiveSearch].location != NSNotFound) {
           [r addObject:[(meta ? @"+" : @"-") stringByAppendingString:s]];
+        }
       }
       free(ms);
     }
@@ -203,8 +214,9 @@ void SRInstallObjCBindings(JSValue *native) {
     NSMutableArray *r = [NSMutableArray array];
     for (unsigned i = 0; i < n; i++) {
       NSString *s = NSStringFromClass(cs[i]);
-      if (!f.length || [s rangeOfString:f options:NSCaseInsensitiveSearch].location != NSNotFound)
+      if (!f.length || [s rangeOfString:f options:NSCaseInsensitiveSearch].location != NSNotFound) {
         [r addObject:s];
+      }
     }
     free(cs);
     return [r sortedArrayUsingSelector:@selector(compare:)];

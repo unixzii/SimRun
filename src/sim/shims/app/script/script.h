@@ -5,7 +5,12 @@
 
 #define LOG(fmt, ...) fprintf(stderr, "[script] " fmt "\n", ##__VA_ARGS__)
 extern int gSRVerbose;
-#define VLOG(fmt, ...) do { if (gSRVerbose) LOG(fmt, ##__VA_ARGS__); } while (0)
+#define VLOG(fmt, ...) \
+  do { \
+    if (gSRVerbose) { \
+      LOG(fmt, ##__VA_ARGS__); \
+    } \
+  } while (0)
 
 double SRNowMS(void);
 

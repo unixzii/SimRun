@@ -26,8 +26,9 @@ int gSRVerbose;
 
 double SRNowMS(void) {
   static mach_timebase_info_data_t tb;
-  if (!tb.denom)
+  if (!tb.denom) {
     mach_timebase_info(&tb);
+  }
   return (double)mach_absolute_time() * tb.numer / tb.denom / 1e6;
 }
 
@@ -69,8 +70,9 @@ static void SRSendOutput(mach_port_t reply, uint32_t kind, NSString *text) {
   m.kind = kind;
   // SimRun drains replies off its main thread; the timeout only guards against a SimRun that stopped reading
   kern_return_t kr = mach_msg(&m.h, MACH_SEND_MSG | MACH_SEND_TIMEOUT, sizeof m, 0, MACH_PORT_NULL, 5000, MACH_PORT_NULL);
-  if (kr != KERN_SUCCESS)
+  if (kr != KERN_SUCCESS) {
     LOG("couldn't send script output (kind %u): 0x%x", kind, kr);
+  }
 }
 
 static void SRReceive(void) {
@@ -91,13 +93,15 @@ static void SRReceive(void) {
     if (h->msgh_id == SR_MSG_INSPECT_EDIT && (h->msgh_bits & MACH_MSGH_BITS_COMPLEX) && h->msgh_size >= sizeof u.m &&
         u.m.b.msgh_descriptor_count == 1 && u.m.data.type == MACH_MSG_OOL_DESCRIPTOR) {   // inspect.m: change a layer
       NSData *d = [NSData dataWithBytes:u.m.data.address length:u.m.data.size];
-      if (u.m.data.size)
+      if (u.m.data.size) {
         vm_deallocate(mach_task_self(), (vm_address_t)u.m.data.address, u.m.data.size);
+      }
       NSDictionary *edit = [NSPropertyListSerialization propertyListWithData:d options:0 format:NULL error:NULL];
-      if ([edit isKindOfClass:NSDictionary.class])
+      if ([edit isKindOfClass:NSDictionary.class]) {
         dispatch_async(dispatch_get_main_queue(), ^{
           SRInspectEdit(edit);
         });
+      }
       continue;
     }
     if (h->msgh_id == MACH_NOTIFY_DEAD_NAME) {   // the port of an inspect watcher that has gone
@@ -113,15 +117,17 @@ static void SRReceive(void) {
       continue;
     }
     NSString *src = [[NSString alloc] initWithBytes:u.m.data.address length:u.m.data.size encoding:NSUTF8StringEncoding] ?: @"";
-    if (u.m.data.size)
+    if (u.m.data.size) {
       vm_deallocate(mach_task_self(), (vm_address_t)u.m.data.address, u.m.data.size);
+    }
     mach_port_t reply = h->msgh_remote_port;   // our send right for this script's output
     uint32_t flags = u.m.flags;
     dispatch_async(dispatch_get_main_queue(), ^{
       SRRunScript(src, flags, ^(uint32_t kind, NSString *text) {
         SRSendOutput(reply, kind, text);
-        if (kind == SR_SCRIPT_RESULT || kind == SR_SCRIPT_EXCEPTION)
+        if (kind == SR_SCRIPT_RESULT || kind == SR_SCRIPT_EXCEPTION) {
           mach_port_deallocate(mach_task_self(), reply);
+        }
       });
     });
   }

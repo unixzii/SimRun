@@ -22,8 +22,9 @@ internal.signature = signature;
 // that, later still (UIStepper's buttons, ~0.6 s after the last bundle). So the first look waits until what a script
 // would see has stopped changing: the loaded bundles and the elements, unchanged for a second (at most 8 s).
 internal.ready = async () => {
-  if (!native.ax.ensure())
+  if (!native.ax.ensure()) {
     return;
+  }
   const start = Date.now();
   let seen = '', since = start;
   while (Date.now() - start < 8000) {
@@ -31,8 +32,9 @@ internal.ready = async () => {
     if (now !== seen) {
       seen = now;
       since = Date.now();
-    } else if (Date.now() - since >= 1000)
+    } else if (Date.now() - since >= 1000) {
       break;
+    }
     await internal.sleep(100);
   }
   await internal.waitForIdle();
@@ -41,8 +43,9 @@ internal.ready = async () => {
 // Every element, on screen or not (records as ax.m describes them). Call internal.ready() first.
 internal.collect = () => {
   const elements = native.ax.collect();
-  for (const e of elements)
+  for (const e of elements) {
     signatures.set(e.ref, signature(e));
+  }
   return elements;
 };
 
@@ -52,18 +55,24 @@ const quote = s => JSON.stringify(truncate(s.replace(/\s+/g, ' ').trim(), 160));
 // One element as a snapshot line (without indentation): role "name" [ref] value id states.
 internal.describe = e => {
   let s = e.role;
-  if (e.name)
+  if (e.name) {
     s += ` ${quote(e.name)}`;
+  }
   s += ` [ref=${e.ref}]`;
-  if (e.value)
+  if (e.value) {
     s += ` value=${quote(e.value)}`;
-  if (e.id)
+  }
+  if (e.id) {
     s += ` id=${quote(e.id)}`;
-  for (const state of ['selected', 'disabled', 'focused'])
-    if (e[state])
+  }
+  for (const state of ['selected', 'disabled', 'focused']) {
+    if (e[state]) {
       s += ` ${state}`;
-  if (!e.visible)
+    }
+  }
+  if (!e.visible) {
     s += ' offscreen';
+  }
   return s;
 };
 
@@ -78,8 +87,9 @@ internal.snapshot = async ({ all = false } = {}) => {
   let open = [];   // the groups whose header lines have been written, outermost first
   for (const e of shown) {
     let common = 0;
-    while (common < open.length && common < e.groups.length && sameGroup(open[common], e.groups[common]))
+    while (common < open.length && common < e.groups.length && sameGroup(open[common], e.groups[common])) {
       common++;
+    }
     open = open.slice(0, common);
     for (const g of e.groups.slice(common)) {
       lines.push(`${'  '.repeat(open.length)}- ${groupLine(g)}`);
@@ -87,11 +97,13 @@ internal.snapshot = async ({ all = false } = {}) => {
     }
     lines.push(`${'  '.repeat(open.length)}- ${internal.describe(e)}`);
   }
-  if (!lines.length)
+  if (!lines.length) {
     lines.push(elements.length ? '(nothing accessible on screen)' : '(no accessibility elements)');
+  }
   const hidden = elements.length - shown.length;
-  if (hidden)
+  if (hidden) {
     lines.push(`(${hidden} more off screen: app.snapshot({ all: true }) lists them)`);
+  }
   return lines.join('\n');
 };
 

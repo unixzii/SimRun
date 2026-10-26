@@ -41,8 +41,9 @@ static IOHIDDeviceRef FindSensor(int sensor) {
   IOHIDManagerSetDeviceMatching(m, (__bridge CFDictionaryRef)match);
   NSSet *devices = CFBridgingRelease(IOHIDManagerCopyDevices(m));
   IOHIDDeviceRef d = (__bridge IOHIDDeviceRef)devices.anyObject;
-  if (d)
+  if (d) {
     CFRetain(d);
+  }
   CFRelease(m);
   return d;
 }
@@ -50,20 +51,23 @@ static IOHIDDeviceRef FindSensor(int sensor) {
 // Sets properties, in order, on the sensors' drivers; an interval of -1 is each sensor's own.
 static void SetDrivers(NSArray<NSArray *> *properties) {
   io_iterator_t it;
-  if (IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching("AppleSPUHIDDriver"), &it) != KERN_SUCCESS)
+  if (IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching("AppleSPUHIDDriver"), &it) != KERN_SUCCESS) {
     return;
+  }
   io_service_t s;
   while ((s = IOIteratorNext(it))) {
     NSNumber *page = CFBridgingRelease(IORegistryEntryCreateCFProperty(s, CFSTR(kIOHIDPrimaryUsagePageKey), NULL, 0));
     NSNumber *usage = CFBridgingRelease(IORegistryEntryCreateCFProperty(s, CFSTR(kIOHIDPrimaryUsageKey), NULL, 0));
     for (int sensor = SRMO_ACCELEROMETER; sensor < SENSORS; sensor++) {
-      if (page.intValue != kSensor[sensor].page || usage.intValue != kSensor[sensor].usage)
+      if (page.intValue != kSensor[sensor].page || usage.intValue != kSensor[sensor].usage) {
         continue;
+      }
       for (NSArray *kv in properties) {
         id value = [kv[1] isEqual:@-1] ? @(kSensor[sensor].interval) : kv[1];
         kern_return_t kr = IORegistryEntrySetCFProperty(s, (__bridge CFStringRef)kv[0], (__bridge CFTypeRef)value);
-        if (kr)
+        if (kr) {
           fprintf(stderr, "[simrund] motion sensor %s = %s: 0x%x\n", [kv[0] UTF8String], [value description].UTF8String, kr);
+        }
       }
     }
     IOObjectRelease(s);
@@ -78,13 +82,15 @@ static void StopSensors(void) {
   SetDrivers(@[ @[ @"ReportInterval", @0 ] ]);
 }
 static void StopSensorsAtExit(void) {
-  if (gRunning)
+  if (gRunning) {
     StopSensors();
+  }
 }
 
 static double LidAngle(const uint8_t *report, CFIndex length) {   // radians, or NAN
-  if (length < 3 || report[0] != LID_REPORT)
+  if (length < 3 || report[0] != LID_REPORT) {
     return NAN;
+  }
   return ((report[1] | report[2] << 8) & 0x1ff) * M_PI / 180;
 }
 
@@ -109,13 +115,15 @@ static double LidAngle(const uint8_t *report, CFIndex length) {   // radians, or
   mach_timebase_info(&_timebase);
   const char *pretend = getenv("SIMRUND_MOTION");
   _pretendNone = pretend && !strcmp(pretend, "none");
-  if (_pretendNone)
+  if (_pretendNone) {
     fprintf(stderr, "[simrund] SIMRUND_MOTION=none: apps are told the Mac has no motion sensors\n");
+  }
   _listener = xpc_connection_create(NULL, _q);
   xpc_connection_enable_sim2host_4sim(_listener);
   xpc_connection_set_event_handler(_listener, ^(xpc_object_t peer) {
-    if (xpc_get_type(peer) == XPC_TYPE_CONNECTION)
+    if (xpc_get_type(peer) == XPC_TYPE_CONNECTION) {
       [self accept:peer];
+    }
   });
   xpc_connection_activate(_listener);
   xpc_endpoint_t ep = xpc_endpoint_create(_listener);
@@ -124,13 +132,16 @@ static double LidAngle(const uint8_t *report, CFIndex length) {   // radians, or
 
 // On _q from here on.
 - (void)lookForSensors {
-  if (_looked)
+  if (_looked) {
     return;
+  }
   _looked = YES;
-  if (_pretendNone)
+  if (_pretendNone) {
     return;
-  for (int s = SRMO_ACCELEROMETER; s < SENSORS; s++)
+  }
+  for (int s = SRMO_ACCELEROMETER; s < SENSORS; s++) {
     _device[s] = FindSensor(s);
+  }
   // the lid alone is no motion sensor
   if (!_device[SRMO_ACCELEROMETER] && !_device[SRMO_GYRO] && _device[SRMO_LID]) {
     CFRelease(_device[SRMO_LID]);
@@ -150,11 +161,13 @@ static double LidAngle(const uint8_t *report, CFIndex length) {   // radians, or
       }
       return;
     }
-    if (xpc_get_type(m) != XPC_TYPE_DICTIONARY)
+    if (xpc_get_type(m) != XPC_TYPE_DICTIONARY) {
       return;
+    }
     xpc_object_t reply = xpc_dictionary_create_reply(m);
-    if (!reply)
+    if (!reply) {
       return;
+    }
     [self lookForSensors];
     BOOL any = _device[SRMO_ACCELEROMETER] || _device[SRMO_GYRO];
     const char *op = xpc_dictionary_get_string(m, "op");
@@ -163,10 +176,11 @@ static double LidAngle(const uint8_t *report, CFIndex length) {   // radians, or
       xpc_dictionary_set_bool(reply, "gyro", _device[SRMO_GYRO] != NULL);
       xpc_dictionary_set_bool(reply, "lid", _device[SRMO_LID] != NULL);
     } else if (op && !strcmp(op, "start")) {
-      if (any)
+      if (any) {
         [self subscribe:peer];
-      else
+      } else {
         xpc_dictionary_set_string(reply, "error", "this Mac has no motion sensors");
+      }
     } else if (op && !strcmp(op, "stop")) {
       [self unsubscribe:peer];
     } else {
@@ -178,20 +192,24 @@ static double LidAngle(const uint8_t *report, CFIndex length) {   // radians, or
 }
 
 - (void)subscribe:(xpc_connection_t)peer {
-  if ([_subscribers containsObject:peer])
+  if ([_subscribers containsObject:peer]) {
     return;
+  }
   [_subscribers addObject:peer];
-  if (_subscribers.count == 1)
+  if (_subscribers.count == 1) {
     [self run];
+  }
   [self readLid];   // the angle now, for the new app: the sensor says it only every 100 ms
 }
 
 - (void)unsubscribe:(xpc_connection_t)peer {
-  if (![_subscribers containsObject:peer])
+  if (![_subscribers containsObject:peer]) {
     return;
+  }
   [_subscribers removeObject:peer];
-  if (!_subscribers.count)
+  if (!_subscribers.count) {
     [self idle];
+  }
 }
 
 static void Report(void *ctx, IOReturn r, void *sender, IOHIDReportType type, uint32_t id, uint8_t *report, CFIndex length,
@@ -212,16 +230,18 @@ static void LidReport(void *ctx, IOReturn r, void *sender, IOHIDReportType type,
 }
 
 - (void)openSensors {
-  if (_opened)
+  if (_opened) {
     return;
+  }
   _opened = YES;
   IOHIDReportWithTimeStampCallback callbacks[SENSORS] = {
     [SRMO_ACCELEROMETER] = AccelerometerReport, [SRMO_GYRO] = GyroReport, [SRMO_LID] = LidReport,
   };
   for (int s = SRMO_ACCELEROMETER; s < SENSORS; s++) {
     IOHIDDeviceRef d = _device[s];
-    if (!d)
+    if (!d) {
       continue;
+    }
     IOReturn r = IOHIDDeviceOpen(d, kIOHIDOptionsTypeNone);
     if (r) {
       fprintf(stderr, "[simrund] motion sensor %d: open failed 0x%x\n", s, r);
@@ -237,12 +257,14 @@ static void LidReport(void *ctx, IOReturn r, void *sender, IOHIDReportType type,
 }
 
 - (void)readLid {
-  if (!_device[SRMO_LID])
+  if (!_device[SRMO_LID]) {
     return;
+  }
   uint8_t report[8];
   CFIndex length = sizeof report;
-  if (IOHIDDeviceGetReport(_device[SRMO_LID], kIOHIDReportTypeInput, LID_REPORT, report, &length) == kIOReturnSuccess)
+  if (IOHIDDeviceGetReport(_device[SRMO_LID], kIOHIDReportTypeInput, LID_REPORT, report, &length) == kIOReturnSuccess) {
     [self report:report length:length time:mach_absolute_time() sensor:SRMO_LID];
+  }
 }
 
 - (void)run {
@@ -256,8 +278,9 @@ static void LidReport(void *ctx, IOReturn r, void *sender, IOHIDReportType type,
     gRunning = YES;
   }
   uint64_t now = mach_absolute_time();
-  for (int s = SRMO_ACCELEROMETER; s < SENSORS; s++)
+  for (int s = SRMO_ACCELEROMETER; s < SENSORS; s++) {
     _lastReport[s] = now;
+  }
   fprintf(stderr, "[simrund] motion sensors on (%d Hz)\n", SRMO_RATE);
   // Something else may stop them (a reader that sets ReportInterval 0 when it is done, sleep): start them again when
   // they have been quiet for a second.
@@ -265,14 +288,16 @@ static void LidReport(void *ctx, IOReturn r, void *sender, IOHIDReportType type,
   dispatch_source_set_timer(_watchdog, dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), NSEC_PER_SEC, NSEC_PER_SEC / 10);
   dispatch_source_set_event_handler(_watchdog, ^{
     uint64_t t = mach_absolute_time(), second = NSEC_PER_SEC * self->_timebase.denom / self->_timebase.numer;
-    for (int s = SRMO_ACCELEROMETER; s < SENSORS; s++)
+    for (int s = SRMO_ACCELEROMETER; s < SENSORS; s++) {
       if (self->_device[s] && t - self->_lastReport[s] > second) {
         fprintf(stderr, "[simrund] motion sensors quiet: starting them again\n");
         RunSensors();
-        for (int k = SRMO_ACCELEROMETER; k < SENSORS; k++)
+        for (int k = SRMO_ACCELEROMETER; k < SENSORS; k++) {
           self->_lastReport[k] = t;
+        }
         break;
       }
+    }
   });
   dispatch_resume(_watchdog);
 }
@@ -290,16 +315,19 @@ static void LidReport(void *ctx, IOReturn r, void *sender, IOHIDReportType type,
 
 - (void)report:(const uint8_t *)report length:(CFIndex)length time:(uint64_t)time sensor:(int)sensor {
   _lastReport[sensor] = mach_absolute_time();
-  if (!_subscribers.count)
+  if (!_subscribers.count) {
     return;
+  }
   SRMotionSample s = { .t = (double)time * _timebase.numer / _timebase.denom / NSEC_PER_SEC, .sensor = sensor };
   if (sensor == SRMO_LID) {
     s.x = LidAngle(report, length);
-    if (isnan(s.x))
+    if (isnan(s.x)) {
       return;
+    }
   } else {
-    if (length < 18)
+    if (length < 18) {
       return;
+    }
     int32_t v[3];
     memcpy(v, report + 6, sizeof v);
     double scale = (sensor == SRMO_GYRO ? M_PI / 180 : 1) / 65536.0;
@@ -309,17 +337,20 @@ static void LidReport(void *ctx, IOReturn r, void *sender, IOHIDReportType type,
   }
   [_pending appendBytes:&s length:sizeof s];
   // one message per gyro sample, with the others' since; or by fours, should the gyro be quiet
-  if (sensor == SRMO_GYRO || !_device[SRMO_GYRO] || _pending.length >= 4 * sizeof s)
+  if (sensor == SRMO_GYRO || !_device[SRMO_GYRO] || _pending.length >= 4 * sizeof s) {
     [self flush];
+  }
 }
 
 - (void)flush {
-  if (!_pending.length)
+  if (!_pending.length) {
     return;
+  }
   xpc_object_t m = xpc_dictionary_create(NULL, NULL, 0);
   xpc_dictionary_set_data(m, "samples", _pending.bytes, _pending.length);
-  for (xpc_connection_t p in _subscribers)
+  for (xpc_connection_t p in _subscribers) {
     xpc_connection_send_message(p, m);
+  }
   _pending.length = 0;
 }
 @end

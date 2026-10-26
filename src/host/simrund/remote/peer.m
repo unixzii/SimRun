@@ -15,14 +15,17 @@ static const int kMaxBitrate = 12000000, kMaxBitrateFull = 20000000;
 static NSString *RaiseH264Level(NSString *sdp) {
   NSMutableArray<NSString *> *lines = [[sdp componentsSeparatedByString:@"\r\n"] mutableCopy];
   NSMutableSet<NSString *> *h264 = [NSMutableSet set];
-  for (NSString *l in lines)
-    if ([l hasPrefix:@"a=rtpmap:"] && [l rangeOfString:@" H264/" options:NSCaseInsensitiveSearch].location != NSNotFound)
+  for (NSString *l in lines) {
+    if ([l hasPrefix:@"a=rtpmap:"] && [l rangeOfString:@" H264/" options:NSCaseInsensitiveSearch].location != NSNotFound) {
       [h264 addObject:[[l substringFromIndex:9] componentsSeparatedByString:@" "].firstObject];
+    }
+  }
   NSRegularExpression *plid = [NSRegularExpression regularExpressionWithPattern:@"(?<=profile-level-id=[0-9a-fA-F]{4})[0-9a-fA-F]{2}" options:0 error:NULL];
   for (NSUInteger i = 0; i < lines.count; i++) {
     NSString *l = lines[i];
-    if (![l hasPrefix:@"a=fmtp:"] || ![h264 containsObject:[[l substringFromIndex:7] componentsSeparatedByString:@" "].firstObject])
+    if (![l hasPrefix:@"a=fmtp:"] || ![h264 containsObject:[[l substringFromIndex:7] componentsSeparatedByString:@" "].firstObject]) {
       continue;
+    }
     lines[i] = [plid stringByReplacingMatchesInString:l options:0 range:NSMakeRange(0, l.length) withTemplate:@"33"];
   }
   return [lines componentsJoinedByString:@"\r\n"];
@@ -45,8 +48,9 @@ static NSString *RaiseH264Level(NSString *sdp) {
 
 - (instancetype)initWithStream:(SRRemoteStream *)stream factory:(RTCPeerConnectionFactory *)factory
                     iceServers:(NSArray<RTCIceServer *> *)iceServers {
-  if (!(self = [super init]))
+  if (!(self = [super init])) {
     return nil;
+  }
   _stream = stream;
   _whenGathered = [NSMutableArray array];
   _keysDown = [NSMutableIndexSet indexSet];
@@ -85,11 +89,12 @@ static NSString *RaiseH264Level(NSString *sdp) {
     }
     dispatch_async(dispatch_get_main_queue(), ^{
       RTCRtpTransceiver *video = nil;
-      for (RTCRtpTransceiver *t in pc.transceivers)
+      for (RTCRtpTransceiver *t in pc.transceivers) {
         if (t.mediaType == RTCRtpMediaTypeVideo) {
           video = t;
           break;
         }
+      }
       if (!video) {
         completion(nil, @"the offer has no video");
         return;
@@ -141,8 +146,9 @@ static NSString *RaiseH264Level(NSString *sdp) {
 - (void)gathered {
   NSArray *blocks = [_whenGathered copy];
   [_whenGathered removeAllObjects];
-  for (dispatch_block_t b in blocks)
+  for (dispatch_block_t b in blocks) {
     b();
+  }
 }
 
 // UI on a screen: keep it sharp and drop frames when the network can't carry them, rather than the other way round.
@@ -168,25 +174,29 @@ static NSString *RaiseH264Level(NSString *sdp) {
 - (void)peerConnection:(RTCPeerConnection *)pc didGenerateIceCandidate:(RTCIceCandidate *)candidate {}
 - (void)peerConnection:(RTCPeerConnection *)pc didRemoveIceCandidates:(NSArray<RTCIceCandidate *> *)candidates {}
 - (void)peerConnection:(RTCPeerConnection *)pc didChangeIceGatheringState:(RTCIceGatheringState)state {
-  if (state == RTCIceGatheringStateComplete)
+  if (state == RTCIceGatheringStateComplete) {
     dispatch_async(dispatch_get_main_queue(), ^{
       [self gathered];
     });
+  }
 }
 - (void)peerConnection:(RTCPeerConnection *)pc didChangeConnectionState:(RTCPeerConnectionState)state {
-  if (state == RTCPeerConnectionStateFailed || state == RTCPeerConnectionStateClosed)
+  if (state == RTCPeerConnectionStateFailed || state == RTCPeerConnectionStateClosed) {
     dispatch_async(dispatch_get_main_queue(), ^{
       [self closeWithReason:nil];
     });
+  }
 }
 - (void)peerConnection:(RTCPeerConnection *)pc didOpenDataChannel:(RTCDataChannel *)channel {
   dispatch_async(dispatch_get_main_queue(), ^{
-    if (self->_closed || self->_channel)
+    if (self->_closed || self->_channel) {
       return;
+    }
     self->_channel = channel;
     channel.delegate = self;
-    if (channel.readyState == RTCDataChannelStateOpen)
+    if (channel.readyState == RTCDataChannelStateOpen) {
       [self channelOpened];
+    }
   });
 }
 
@@ -194,16 +204,18 @@ static NSString *RaiseH264Level(NSString *sdp) {
 - (void)dataChannelDidChangeState:(RTCDataChannel *)channel {
   RTCDataChannelState state = channel.readyState;
   dispatch_async(dispatch_get_main_queue(), ^{
-    if (state == RTCDataChannelStateOpen)
+    if (state == RTCDataChannelStateOpen) {
       [self channelOpened];
-    else if (state == RTCDataChannelStateClosed)
+    } else if (state == RTCDataChannelStateClosed) {
       [self closeWithReason:nil];   // the page went away
+    }
   });
 }
 
 - (void)channelOpened {
-  if (_closed || _textObserver)
+  if (_closed || _textObserver) {
     return;
+  }
   SRSession *s = _stream.session;
   __weak SRRemotePeer *weakSelf = self;
   _frameObserver = [s addFrameObserver:^(IOSurfaceRef surface, CGSize pixelSize, dispatch_block_t done) {
@@ -219,24 +231,28 @@ static NSString *RaiseH264Level(NSString *sdp) {
 
 - (void)screenMayHaveChanged {
   NSSize size = _stream.session.screenSize;
-  if (size.width <= 0 || NSEqualSizes(size, _sentScreen))
+  if (size.width <= 0 || NSEqualSizes(size, _sentScreen)) {
     return;
+  }
   _sentScreen = size;
   [self send:@{ @"t": @"screen", @"w": @(size.width), @"h": @(size.height), @"scale": @(_stream.session.screenScale) }];
 }
 
 - (void)send:(NSDictionary *)message {
-  if (_closed || _channel.readyState != RTCDataChannelStateOpen)
+  if (_closed || _channel.readyState != RTCDataChannelStateOpen) {
     return;
+  }
   NSData *d = [NSJSONSerialization dataWithJSONObject:message options:0 error:NULL];
-  if (d)
+  if (d) {
     [_channel sendData:[[RTCDataBuffer alloc] initWithData:d isBinary:NO]];
+  }
 }
 
 - (void)dataChannel:(RTCDataChannel *)channel didReceiveMessageWithBuffer:(RTCDataBuffer *)buffer {
   NSDictionary *m = [NSJSONSerialization JSONObjectWithData:buffer.data options:0 error:NULL];
-  if (![m isKindOfClass:NSDictionary.class])
+  if (![m isKindOfClass:NSDictionary.class]) {
     return;
+  }
   dispatch_async(dispatch_get_main_queue(), ^{
     [self handle:m];
   });
@@ -249,8 +265,9 @@ static float Num(NSDictionary *m, NSString *key) {
 
 // What the page sends is what the window would: points in the app's screen, Mac virtual key codes and modifier flags.
 - (void)handle:(NSDictionary *)m {
-  if (_closed)
+  if (_closed) {
     return;
+  }
   SRSession *s = _stream.session;
   NSString *t = [m[@"t"] isKindOfClass:NSString.class] ? m[@"t"] : @"";
   sr_input_msg_t in = {0};
@@ -258,10 +275,12 @@ static float Num(NSDictionary *m, NSString *key) {
   in.y = Num(m, @"y");
   if ([t isEqualToString:@"touch"]) {   // p: 0 began, 1 moved, 2 ended
     int p = (int)Num(m, @"p");
-    if (p == 0 && _touching)
+    if (p == 0 && _touching) {
       return;
-    if (p != 0 && !_touching)
+    }
+    if (p != 0 && !_touching) {
       return;
+    }
     in.kind = p == 0 ? SR_IN_TOUCH_BEGAN : p == 1 ? SR_IN_TOUCH_MOVED : SR_IN_TOUCH_ENDED;
     _touching = p != 2;
     _touchX = in.x;
@@ -270,12 +289,14 @@ static float Num(NSDictionary *m, NSString *key) {
   } else if ([t isEqualToString:@"key"]) {   // d: down; k: key code; m: modifier flags
     uint16_t code = (uint16_t)Num(m, @"k");
     BOOL down = Num(m, @"d") != 0;
-    if (code >= 128 || (!down && ![_keysDown containsIndex:code]))
+    if (code >= 128 || (!down && ![_keysDown containsIndex:code])) {
       return;
-    if (down)
+    }
+    if (down) {
       [_keysDown addIndex:code];
-    else
+    } else {
       [_keysDown removeIndex:code];
+    }
     in.kind = down ? SR_IN_KEY_DOWN : SR_IN_KEY_UP;
     in.keycode = code;
     in.modifiers = (uint32_t)Num(m, @"m");
@@ -283,8 +304,9 @@ static float Num(NSDictionary *m, NSString *key) {
   } else if ([t isEqualToString:@"text"]) {   // k: SR_TEXT_*; s: text; l, n: the selection in marked text
     uint32_t kind = (uint32_t)Num(m, @"k");
     NSString *text = [m[@"s"] isKindOfClass:NSString.class] ? m[@"s"] : @"";
-    if (kind < SR_TEXT_INSERT || kind > SR_TEXT_UNMARK)
+    if (kind < SR_TEXT_INSERT || kind > SR_TEXT_UNMARK) {
       return;
+    }
     [s sendText:kind text:text selection:NSMakeRange((NSUInteger)Num(m, @"l"), (NSUInteger)Num(m, @"n"))];
   } else if ([t isEqualToString:@"scroll"]) {   // dx, dy: points, content-follows-fingers; no phases: a mouse wheel
     in.kind = SR_IN_SCROLL;
@@ -305,10 +327,12 @@ static float Num(NSDictionary *m, NSString *key) {
   [self closeWithReason:nil];
 }
 - (void)closeWithReason:(NSString *)reason {
-  if (_closed)
+  if (_closed) {
     return;
-  if (reason)
+  }
+  if (reason) {
     [self send:@{ @"t": @"bye", @"reason": reason }];
+  }
   _closed = YES;
   SRSession *s = _stream.session;
   if (_touching) {
@@ -333,7 +357,8 @@ static float Num(NSDictionary *m, NSString *key) {
     [channel close];
     [pc close];
   });
-  if (self.onClose)
+  if (self.onClose) {
     self.onClose(self);
+  }
 }
 @end

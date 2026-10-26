@@ -12,8 +12,9 @@
   self.needsDisplay = YES;
 }
 - (void)drawRect:(NSRect)r {
-  if (!_selected)
+  if (!_selected) {
     return;
+  }
   [[NSColor.controlAccentColor colorWithAlphaComponent:0.15] setFill];
   [[NSBezierPath bezierPathWithRoundedRect:self.bounds xRadius:6 yRadius:6] fill];
 }
@@ -51,12 +52,14 @@
 
 - (void)setSelectedIndex:(NSInteger)i {
   _selectedIndex = i;
-  for (SRTabPill *p in _pills)
+  for (SRTabPill *p in _pills) {
     p.selected = p.button.tag == i;
+  }
 }
 - (void)choose:(NSButton *)b {
   self.selectedIndex = b.tag;
-  if (self.onSelect)
+  if (self.onSelect) {
     self.onSelect(b.tag);
+  }
 }
 @end

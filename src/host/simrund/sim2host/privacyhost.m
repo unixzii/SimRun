@@ -40,8 +40,9 @@ static void LoadTCC(void) {
 }
 static NSString *AudioCaptureStatus(void) {
   LoadTCC();
-  if (!gPreflight)
+  if (!gPreflight) {
     return @SRPV_DENIED;
+  }
   int r = gPreflight(CFSTR("kTCCServiceAudioCapture"), NULL);
   return r == 0 ? @SRPV_AUTHORIZED : r == 1 ? @SRPV_DENIED : @SRPV_UNDETERMINED;
 }
@@ -59,17 +60,20 @@ static NSString *AudioCaptureStatus(void) {
   NSMutableDictionary *pretend = [NSMutableDictionary dictionary];
   for (NSString *item in [@(getenv("SIMRUND_PERMISSIONS") ?: "") componentsSeparatedByString:@","]) {
     NSArray *kv = [item componentsSeparatedByString:@":"];
-    if (kv.count == 2)
+    if (kv.count == 2) {
       pretend[[kv[0] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet]] = [kv[1] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
+    }
   }
   _pretend = pretend;
-  if (pretend.count)
+  if (pretend.count) {
     fprintf(stderr, "[simrund] permissions pretended (SIMRUND_PERMISSIONS): %s\n", pretend.description.UTF8String);
+  }
   _listener = xpc_connection_create(NULL, _q);
   xpc_connection_enable_sim2host_4sim(_listener);
   xpc_connection_set_event_handler(_listener, ^(xpc_object_t peer) {
-    if (xpc_get_type(peer) == XPC_TYPE_CONNECTION)
+    if (xpc_get_type(peer) == XPC_TYPE_CONNECTION) {
       [self accept:peer];
+    }
   });
   xpc_connection_activate(_listener);
   xpc_endpoint_t ep = xpc_endpoint_create(_listener);
@@ -80,15 +84,18 @@ static NSString *AudioCaptureStatus(void) {
   xpc_connection_set_target_queue(peer, _q);
   xpc_connection_set_event_handler(peer, ^(xpc_object_t m) {
     if (xpc_get_type(m) == XPC_TYPE_ERROR) {
-      if (m == XPC_ERROR_CONNECTION_INVALID)
+      if (m == XPC_ERROR_CONNECTION_INVALID) {
         xpc_connection_cancel(peer);
+      }
       return;
     }
-    if (xpc_get_type(m) != XPC_TYPE_DICTIONARY)
+    if (xpc_get_type(m) != XPC_TYPE_DICTIONARY) {
       return;
+    }
     xpc_object_t reply = xpc_dictionary_create_reply(m);
-    if (!reply)
+    if (!reply) {
       return;
+    }
     const char *op = xpc_dictionary_get_string(m, "op"), *service = xpc_dictionary_get_string(m, "service");
     BOOL known = service && (!strcmp(service, SRPV_MICROPHONE) || !strcmp(service, SRPV_AUDIO_CAPTURE));
     if (!op || !known || (strcmp(op, "status") && strcmp(op, "request"))) {
@@ -112,8 +119,9 @@ static NSString *AudioCaptureStatus(void) {
 }
 
 - (NSString *)statusOf:(NSString *)service {
-  if (_pretend[service])
+  if (_pretend[service]) {
     return _pretend[service];
+  }
   return [service isEqualToString:@SRPV_MICROPHONE] ? MicrophoneStatus() : AudioCaptureStatus();
 }
 
@@ -131,8 +139,9 @@ static NSString *AudioCaptureStatus(void) {
       fprintf(stderr, "[simrund] SimRun's %s permission: %s\n", service.UTF8String, status.UTF8String);
       NSArray *replies = self->_asking[service];
       [self->_asking removeObjectForKey:service];
-      for (void (^r)(NSString *) in replies)
+      for (void (^r)(NSString *) in replies) {
         r(status);
+      }
     });
   };
   if ([service isEqualToString:@SRPV_MICROPHONE]) {
@@ -141,12 +150,13 @@ static NSString *AudioCaptureStatus(void) {
     }];
   } else {
     LoadTCC();
-    if (gRequest)
+    if (gRequest) {
       gRequest(CFSTR("kTCCServiceAudioCapture"), NULL, ^(Boolean granted) {
         answered();
       });
-    else
+    } else {
       answered();
+    }
   }
 }
 @end

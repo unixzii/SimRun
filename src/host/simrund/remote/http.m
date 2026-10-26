@@ -58,8 +58,9 @@ static const char *Reason(NSInteger status) {
   snprintf(p, sizeof p, "%u", port);
   nw_listener_t l = nw_listener_create_with_port(p, params);
   if (!l) {
-    if (error)
+    if (error) {
       *error = [NSString stringWithFormat:@"can't listen on port %u", port];
+    }
     return NO;
   }
   nw_listener_set_queue(l, _queue);
@@ -68,17 +69,19 @@ static const char *Reason(NSInteger status) {
   __block NSString *failure = nil;
   __block BOOL done = NO;
   nw_listener_set_state_changed_handler(l, ^(nw_listener_state_t state, nw_error_t err) {
-    if (done)
+    if (done) {
       return;
-    if (state == nw_listener_state_ready)
+    }
+    if (state == nw_listener_state_ready) {
       done = YES;
-    else if (state == nw_listener_state_failed || state == nw_listener_state_waiting) {
+    } else if (state == nw_listener_state_failed || state == nw_listener_state_waiting) {
       int code = err ? nw_error_get_error_code(err) : 0;
       failure = [NSString stringWithFormat:@"can't listen on port %u: %s", port, code ? strerror(code) : "failed"];
       done = YES;
     }
-    if (done)
+    if (done) {
       dispatch_semaphore_signal(settled);
+    }
   });
   __weak SRHTTPServer *weakSelf = self;
   nw_listener_set_new_connection_handler(l, ^(nw_connection_t c) {
@@ -87,8 +90,9 @@ static const char *Reason(NSInteger status) {
   nw_listener_start(l);
   if (dispatch_semaphore_wait(settled, dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC)) || failure) {
     nw_listener_cancel(l);
-    if (error)
+    if (error) {
       *error = failure ?: [NSString stringWithFormat:@"can't listen on port %u", port];
+    }
     return NO;
   }
   _listener = l;
@@ -96,8 +100,9 @@ static const char *Reason(NSInteger status) {
 }
 
 - (void)stop {
-  if (_listener)
+  if (_listener) {
     nw_listener_cancel(_listener);
+  }
   _listener = nil;
 }
 
@@ -113,18 +118,20 @@ static const char *Reason(NSInteger status) {
 
 - (void)read:(nw_connection_t)c into:(NSMutableData *)buf {
   nw_connection_receive(c, 1, 65536, ^(dispatch_data_t content, nw_content_context_t ctx, bool complete, nw_error_t err) {
-    if (content)
+    if (content) {
       dispatch_data_apply(content, ^bool(dispatch_data_t region, size_t offset, const void *bytes, size_t size) {
         [buf appendBytes:bytes length:size];
         return true;
       });
+    }
     SRHTTPRequest *r = nil;
     NSInteger status = [self parse:buf into:&r];
     if (!status) {   // incomplete
-      if (complete || err)
+      if (complete || err) {
         nw_connection_cancel(c);
-      else
+      } else {
         [self read:c into:buf];
+      }
       return;
     }
     if (status != 200) {
@@ -138,8 +145,9 @@ static const char *Reason(NSInteger status) {
       __block BOOL answered = NO;
       handler(r, ^(NSInteger st, NSString *type, NSData *body) {
         dispatch_async(q, ^{
-          if (answered)
+          if (answered) {
             return;
+          }
           answered = YES;
           [weakSelf send:c status:st type:type body:body];
         });
@@ -151,29 +159,35 @@ static const char *Reason(NSInteger status) {
 // 0: not all there yet; 200: `*out` is the request; else the status to answer with.
 - (NSInteger)parse:(NSData *)buf into:(SRHTTPRequest **)out {
   NSRange end = [buf rangeOfData:[NSData dataWithBytes:"\r\n\r\n" length:4] options:0 range:NSMakeRange(0, buf.length)];
-  if (end.location == NSNotFound)
+  if (end.location == NSNotFound) {
     return buf.length > kMaxHeader ? 431 : 0;
-  if (end.location > kMaxHeader)
+  }
+  if (end.location > kMaxHeader) {
     return 431;
+  }
   NSString *head = [[NSString alloc] initWithData:[buf subdataWithRange:NSMakeRange(0, end.location)] encoding:NSISOLatin1StringEncoding];
   NSArray<NSString *> *lines = [head componentsSeparatedByString:@"\r\n"];
   NSArray<NSString *> *start = [lines.firstObject componentsSeparatedByString:@" "];
-  if (start.count != 3 || ![start[2] hasPrefix:@"HTTP/1."])
+  if (start.count != 3 || ![start[2] hasPrefix:@"HTTP/1."]) {
     return 400;
+  }
   NSMutableDictionary *headers = [NSMutableDictionary dictionary];
   for (NSString *line in [lines subarrayWithRange:NSMakeRange(1, lines.count - 1)]) {
     NSRange colon = [line rangeOfString:@":"];
-    if (colon.location == NSNotFound)
+    if (colon.location == NSNotFound) {
       return 400;
+    }
     NSString *name = [line substringToIndex:colon.location].lowercaseString;
     headers[name] = [[line substringFromIndex:NSMaxRange(colon)] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet];
   }
   NSUInteger length = (NSUInteger)MAX(0, [headers[@"content-length"] integerValue]);
-  if (length > kMaxBody)
+  if (length > kMaxBody) {
     return 413;
+  }
   NSUInteger bodyStart = NSMaxRange(end);
-  if (buf.length < bodyStart + length)
+  if (buf.length < bodyStart + length) {
     return 0;
+  }
 
   SRHTTPRequest *r = [SRHTTPRequest new];
   r.method = start[0];
@@ -183,16 +197,19 @@ static const char *Reason(NSInteger status) {
   NSRange q = [target rangeOfString:@"?"];
   r.path = Decode(q.location == NSNotFound ? target : [target substringToIndex:q.location]);
   NSMutableDictionary *query = [NSMutableDictionary dictionary];
-  if (q.location != NSNotFound)
+  if (q.location != NSNotFound) {
     for (NSString *pair in [[target substringFromIndex:NSMaxRange(q)] componentsSeparatedByString:@"&"]) {
       NSRange eq = [pair rangeOfString:@"="];
       if (eq.location == NSNotFound) {
-        if (pair.length)
+        if (pair.length) {
           query[Decode(pair)] = @"";
+        }
       }
-      else
+      else {
         query[Decode([pair substringToIndex:eq.location])] = Decode([pair substringFromIndex:NSMaxRange(eq)]);
+      }
     }
+  }
   r.query = query;
   *out = r;
   return 200;

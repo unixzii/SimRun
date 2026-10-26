@@ -144,8 +144,9 @@ static BOOL SameProfile(NSString *a, NSString *b) {
     _active = [NSMutableArray array];
     _openAtLaunch = [NSMutableArray array];
     _simns = [NSMutableDictionary dictionary];
-    if (mode == SRModeGUI)
+    if (mode == SRModeGUI) {
       [_openAtLaunch addObjectsFromArray:args];
+    }
     _launcher = [[SRLauncher alloc] initWithDelegate:self];
   }
   return self;
@@ -158,9 +159,11 @@ static BOOL SameProfile(NSString *a, NSString *b) {
 
 - (void)application:(NSApplication *)app openURLs:(NSArray<NSURL *> *)urls {   // Dock drop, "Open With", `open -a SimRun x.app`
   NSMutableArray *paths = [NSMutableArray array];
-  for (NSURL *u in urls)
-    if (u.isFileURL)
+  for (NSURL *u in urls) {
+    if (u.isFileURL) {
       [paths addObject:u.path];
+    }
+  }
   if (!_launched) {
     [_openAtLaunch addObjectsFromArray:paths];
     return;
@@ -172,10 +175,11 @@ static BOOL SameProfile(NSString *a, NSString *b) {
 - (void)applicationDidFinishLaunching:(NSNotification *)n {
   // SIMRUN_DEBUG_STALL=<ms> (testing): block the main thread for that long every 100 ms, as a busy UI would
   double stall = getenv("SIMRUN_DEBUG_STALL") ? atof(getenv("SIMRUN_DEBUG_STALL")) : 0;
-  if (stall > 0)
+  if (stall > 0) {
     [NSTimer scheduledTimerWithTimeInterval:0.1 repeats:YES block:^(NSTimer *t) {
       usleep((useconds_t)(stall * 1000));
     }];
+  }
   signal(SIGTERM, SIG_IGN);
   signal(SIGPIPE, SIG_IGN);
   _sigSource = dispatch_source_create(DISPATCH_SOURCE_TYPE_SIGNAL, SIGTERM, 0, dispatch_get_main_queue());
@@ -195,8 +199,9 @@ static BOOL SameProfile(NSString *a, NSString *b) {
     exit(1);
   }
   if (![self startListening]) {
-    if (_mode == SRModeGUI)
+    if (_mode == SRModeGUI) {
       [self forwardToRunningInstance];   // another instance serves: hand over and quit
+    }
     exit(0);
   }
   LOG(@"runtime %@", [SRRuntime runtimeAtRoot:SREnvironment.runtimeRoot].name ?: SREnvironment.runtimeRoot);
@@ -208,16 +213,19 @@ static BOOL SameProfile(NSString *a, NSString *b) {
   __weak SRServer *weakSelf = self;
   _remote = [[SRRemoteControl alloc] initWithSessions:^NSArray<SRSession *> *{
     NSMutableArray *list = [NSMutableArray array];
-    for (SRRequest *r in [weakSelf runningInstances])
-      if (r.session)
+    for (SRRequest *r in [weakSelf runningInstances]) {
+      if (r.session) {
         [list addObject:r.session];
+      }
+    }
     return list;
   }];
   // SimRun ▸ Remote Control says how many viewers there are
   _remote.onChange = ^{
     SRServer *me = weakSelf;
-    if (!me)
+    if (!me) {
       return;
+    }
     NSUInteger n = me->_remote.enabled ? me->_remote.viewerCount : 0;
     me->_remoteItem.title = n ? [NSString stringWithFormat:@"Remote Control (%lu viewer%s)", (unsigned long)n, n == 1 ? "" : "s"] : @"Remote Control";
   };
@@ -226,8 +234,9 @@ static BOOL SameProfile(NSString *a, NSString *b) {
   if (_mode == SRModeGUI) {
     _interactive = YES;
     [_launcher show];
-    if (_openAtLaunch.count)
+    if (_openAtLaunch.count) {
       [_launcher openPaths:_openAtLaunch];
+    }
     [_openAtLaunch removeAllObjects];
   }
   [self scheduleIdleCheck];
@@ -235,8 +244,9 @@ static BOOL SameProfile(NSString *a, NSString *b) {
 
 - (BOOL)applicationShouldHandleReopen:(NSApplication *)app hasVisibleWindows:(BOOL)visible {   // Dock icon click
   _interactive = YES;
-  if (!visible)
+  if (!visible) {
     [_launcher show];
+  }
   return YES;
 }
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)a {
@@ -247,14 +257,19 @@ static BOOL SameProfile(NSString *a, NSString *b) {
     [self reply:r dict:@{ @"error": @"SimRun quit" }];
     [r.session terminate];
   }
-  for (SRRequest *r in _active)
-    if (r.session.pid > 0)
+  for (SRRequest *r in _active) {
+    if (r.session.pid > 0) {
       kill(r.session.pid, SIGKILL);   // no time for the SIGTERM grace period
-  for (SRSimns *ns in _simns.allValues)
-    if (ns.pid > 0)
+    }
+  }
+  for (SRSimns *ns in _simns.allValues) {
+    if (ns.pid > 0) {
       kill(ns.pid, SIGTERM);
-  if (_listenFd >= 0 && _socketPath)
+    }
+  }
+  if (_listenFd >= 0 && _socketPath) {
     unlink(_socketPath.fileSystemRepresentation);
+  }
 }
 
 // ---------------------------------------------------------------- menus
@@ -327,8 +342,9 @@ static BOOL SameProfile(NSString *a, NSString *b) {
   }
   NSApp.mainMenu = bar;
   NSApp.windowsMenu = win;
-  for (NSNotificationName n in @[ NSWindowDidBecomeKeyNotification, NSWindowDidResignKeyNotification ])
+  for (NSNotificationName n in @[ NSWindowDidBecomeKeyNotification, NSWindowDidResignKeyNotification ]) {
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(keyWindowChanged:) name:n object:nil];
+  }
 }
 
 // Key equivalents are matched without opening the menu, so move ⌘Q as the key window changes: to "Quit <app>"
@@ -342,9 +358,11 @@ static BOOL SameProfile(NSString *a, NSString *b) {
 }
 
 - (SRRequest *)requestForWindow:(NSWindow *)w {
-  for (SRRequest *r in _active)
-    if (w && r.session.window == w)
+  for (SRRequest *r in _active) {
+    if (w && r.session.window == w) {
       return r;
+    }
+  }
   return nil;
 }
 - (SRRequest *)frontRequest {
@@ -353,22 +371,28 @@ static BOOL SameProfile(NSString *a, NSString *b) {
 - (BOOL)validateMenuItem:(NSMenuItem *)item {
   SEL a = item.action;
   SRRequest *r = [self frontRequest];
-  if (a == @selector(relaunchFrontApp:))
+  if (a == @selector(relaunchFrontApp:)) {
     return r.appPath != nil;
-  if (a == @selector(relaunchFrontAppWith:))
+  }
+  if (a == @selector(relaunchFrontAppWith:)) {
     return r.appPath != nil;
-  if (a == @selector(quitFrontApp:) || a == @selector(showFrontAppLog:) || a == @selector(showFrontAppLayers:))
+  }
+  if (a == @selector(quitFrontApp:) || a == @selector(showFrontAppLog:) || a == @selector(showFrontAppLayers:)) {
     return r != nil;
-  if (a == @selector(showFrontAppKeychain:))
+  }
+  if (a == @selector(showFrontAppKeychain:)) {
     return r.appPath != nil;
-  if (a == @selector(installCommandLineTool:))
+  }
+  if (a == @selector(installCommandLineTool:)) {
     return SRCommandLineTool.canInstall;
+  }
   if (a == @selector(toggleRemoteControl:)) {
     item.state = _remote.enabled ? NSControlStateValueOn : NSControlStateValueOff;
     return _remote != nil;
   }
-  if (a == @selector(copyRemoteControlLink:) || a == @selector(resetRemoteControlLink:))
+  if (a == @selector(copyRemoteControlLink:) || a == @selector(resetRemoteControlLink:)) {
     return _remote.enabled;
+  }
   return YES;
 }
 - (void)addApp:(id)s {
@@ -405,8 +429,9 @@ static BOOL SameProfile(NSString *a, NSString *b) {
     [al runModal];
     return;
   }
-  if (!on)
+  if (!on) {
     return;
+  }
   [self copyRemoteControlLink:nil];
   NSAlert *al = [NSAlert new];
   al.messageText = @"Remote control is on";
@@ -424,23 +449,27 @@ static BOOL SameProfile(NSString *a, NSString *b) {
 }
 - (void)showFrontAppLayers:(id)s {
   SRSession *session = [self frontRequest].session;
-  if (session)
+  if (session) {
     [SRLayerWindow showForSession:session];
+  }
 }
 - (void)showFrontAppKeychain:(id)s {
   NSString *path = [self frontRequest].appPath;
-  if (path)
+  if (path) {
     [SRKeychainWindow.shared showWithFilter:[SRAppInfo infoWithPath:path].bundleIdentifier ?: @""];
+  }
 }
 - (void)relaunchFrontApp:(id)s {
   SRRequest *r = [self frontRequest];
-  if (r.appPath)
+  if (r.appPath) {
     [self relaunchApp:[SRAppInfo infoWithPath:r.appPath] profile:r.profile];
+  }
 }
 - (void)relaunchFrontAppWith:(id)s {
   SRRequest *r = [self frontRequest];
-  if (!r.appPath)
+  if (!r.appPath) {
     return;
+  }
   _interactive = YES;
   [_launcher showLaunchOptionsForApp:[SRAppInfo infoWithPath:r.appPath] profile:r.profile];
 }
@@ -474,10 +503,11 @@ static BOOL SameProfile(NSString *a, NSString *b) {
   SRRuntime *running = [SRRuntime runtimeAtRoot:SREnvironment.runtimeRoot];
   SRRuntime *chosen = pref ? [SREnvironment installedRuntimeWithBuild:pref] : installed.firstObject;
   NSString *note = nil;
-  if (SREnvironment.runtimeRootFromEnvironment)
+  if (SREnvironment.runtimeRootFromEnvironment) {
     note = [NSString stringWithFormat:@"Using %@ (set by SIMRUN_RUNTIME_ROOT)", running.name ?: SREnvironment.runtimeRoot];
-  else if (![chosen.build isEqualToString:running.build])
+  } else if (![chosen.build isEqualToString:running.build]) {
     note = [NSString stringWithFormat:@"Using %@ until SimRun is reopened", running.name];
+  }
   if (note) {
     [menu addItem:NSMenuItem.separatorItem];
     [menu addItemWithTitle:note action:nil keyEquivalent:@""].enabled = NO;
@@ -490,31 +520,40 @@ static BOOL SameProfile(NSString *a, NSString *b) {
 // ---------------------------------------------------------------- SRLauncherDelegate
 // The launcher runs an app in any of its profiles, one instance per profile from here (simrun clients may start more).
 - (SRRequest *)requestForApp:(SRAppInfo *)app profile:(NSString *)profile {
-  for (SRRequest *r in _active)
-    if ([r.appPath isEqualToString:app.path] && SameProfile(r.profile, profile))
+  for (SRRequest *r in _active) {
+    if ([r.appPath isEqualToString:app.path] && SameProfile(r.profile, profile)) {
       return r;
-  for (SRRequest *r in _pending)
-    if ([r.appPath isEqualToString:app.path] && SameProfile(r.profile, profile))
+    }
+  }
+  for (SRRequest *r in _pending) {
+    if ([r.appPath isEqualToString:app.path] && SameProfile(r.profile, profile)) {
       return r;
-  for (SRRequest *r in _preparing)
-    if ([r.appPath isEqualToString:app.path] && SameProfile(r.profile, profile))
+    }
+  }
+  for (SRRequest *r in _preparing) {
+    if ([r.appPath isEqualToString:app.path] && SameProfile(r.profile, profile)) {
       return r;
+    }
+  }
   return nil;
 }
 - (SRAppState)stateForApp:(SRAppInfo *)app profile:(NSString *)profile {
   SRRequest *r = [self requestForApp:app profile:profile];
-  if (!r)
+  if (!r) {
     return SRAppStateStopped;
+  }
   return r.session.isReady ? SRAppStateRunning : SRAppStateLaunching;
 }
 - (NSDictionary<NSString *, NSArray<NSNumber *> *> *)instancesOfApp:(SRAppInfo *)app {
   NSMutableDictionary<NSString *, NSMutableArray *> *out = [NSMutableDictionary dictionary];
   for (SRRequest *r in _active) {
-    if (r.session.pid <= 0 || ![r.appPath isEqualToString:app.path])
+    if (r.session.pid <= 0 || ![r.appPath isEqualToString:app.path]) {
       continue;
+    }
     NSString *p = r.profile ?: @"default";
-    if (!out[p])
+    if (!out[p]) {
       out[p] = [NSMutableArray array];
+    }
     [out[p] addObject:@(r.session.pid)];
   }
   return out;
@@ -531,8 +570,9 @@ static BOOL SameProfile(NSString *a, NSString *b) {
   __weak SRServer *weakSelf = self;
   SRSessionExitHandler old = r.session.onExit;
   r.session.onExit = ^(SRSession *session, int status) {
-    if (old)
+    if (old) {
       old(session, status);
+    }
     [weakSelf launchApp:app profile:profile];
   };
   [r.session terminate];
@@ -542,8 +582,9 @@ static BOOL SameProfile(NSString *a, NSString *b) {
 }
 
 - (void)resetDataForApp:(SRAppInfo *)app profile:(NSString *)profile {
-  if ([self requestForApp:app profile:profile])
+  if ([self requestForApp:app profile:profile]) {
     return;   // running: it would recreate what we delete
+  }
   NSString *ident = [SREnvironment containerIdentifierForExecutable:app.executablePath];
   // The shared cfprefsd caches the app's preferences domain and would write it straight back into the new container:
   // stop it first (letting it flush). simns keeps its service port meanwhile and relaunches it on the next message, so
@@ -551,8 +592,9 @@ static BOOL SameProfile(NSString *a, NSString *b) {
   [self stopSimDaemonsNamed:@"cfprefsd"];
   NSFileManager *fm = NSFileManager.defaultManager;
   [fm removeItemAtPath:[SREnvironment containerPathForIdentifier:ident profile:profile] error:nil];
-  if (profile)
+  if (profile) {
     [SREnvironment createContainerForIdentifier:ident profile:profile];   // empty: the profile stays
+  }
   // cfprefsd copies a domain missing from a container from the shared Preferences (where every app's preferences
   // lived before apps had containers); don't let a stale copy come back
   [fm removeItemAtPath:[[SREnvironment dataDirectory] stringByAppendingFormat:@"/Library/Preferences/%@.plist", ident] error:nil];
@@ -560,8 +602,9 @@ static BOOL SameProfile(NSString *a, NSString *b) {
 }
 
 - (void)deleteProfile:(NSString *)profile ofApp:(SRAppInfo *)app {
-  if (!profile || [self requestForApp:app profile:profile])
+  if (!profile || [self requestForApp:app profile:profile]) {
     return;
+  }
   NSString *ident = [SREnvironment containerIdentifierForExecutable:app.executablePath];
   // as for a reset: cfprefsd would write the profile's cached preferences back into a new container
   [self stopSimDaemonsNamed:@"cfprefsd"];
@@ -569,8 +612,9 @@ static BOOL SameProfile(NSString *a, NSString *b) {
   NSString *container = [SREnvironment containerPathForIdentifier:ident profile:profile];
   [fm removeItemAtPath:container error:nil];
   NSString *parent = container.stringByDeletingLastPathComponent;   // Profiles/<id>: gone with the app's last profile
-  if (![fm contentsOfDirectoryAtPath:parent error:nil].count)
+  if (![fm contentsOfDirectoryAtPath:parent error:nil].count) {
     [fm removeItemAtPath:parent error:nil];
+  }
   [SRLaunchOptions removeOptionsForAppAtPath:app.path profile:profile];
   LOG(@"deleted profile %@ of %@", profile, ident);
 }
@@ -584,24 +628,29 @@ static BOOL ProcessGone(pid_t pid) {
 - (void)stopSimDaemonsNamed:(NSString *)name {
   NSMutableArray<NSNumber *> *pids = [NSMutableArray array];
   for (SRSimns *ns in _simns.allValues) {
-    if (ns.pid <= 0)
+    if (ns.pid <= 0) {
       continue;
+    }
     pid_t kids[512];
     int n = proc_listchildpids(ns.pid, kids, sizeof kids);
     for (int i = 0; i < n && i < (int)(sizeof kids / sizeof *kids); i++) {
       char buf[64] = {0};
-      if (proc_name(kids[i], buf, sizeof buf) > 0 && [@(buf) isEqualToString:name] && kill(kids[i], SIGTERM) == 0)
+      if (proc_name(kids[i], buf, sizeof buf) > 0 && [@(buf) isEqualToString:name] && kill(kids[i], SIGTERM) == 0) {
         [pids addObject:@(kids[i])];
+      }
     }
   }
   for (int t = 0; t < 50 && pids.count; t++) {
     usleep(20000);
-    for (NSNumber *p in [pids copy])
-      if (ProcessGone(p.intValue))
+    for (NSNumber *p in [pids copy]) {
+      if (ProcessGone(p.intValue)) {
         [pids removeObject:p];
+      }
+    }
   }
-  for (NSNumber *p in pids)
+  for (NSNumber *p in pids) {
     kill(p.intValue, SIGKILL);
+  }
 }
 
 - (void)launchApp:(SRAppInfo *)app profile:(NSString *)profile {
@@ -652,8 +701,9 @@ static BOOL ProcessGone(pid_t pid) {
   r.runtimeRoot = root;
   r.profile = profile;
   r.withWatchApp = o.runsWatchApp;   // Launch Options ▸ Apple Watch ▸ Run … too
-  if (app.deviceBuild)
+  if (app.deviceBuild) {
     r.deviceBuild = app.path;
+  }
   r.device = device ?: [SREnvironment defaultDeviceTypeForRuntime:[SRRuntime runtimeAtRoot:root]];
   r.env = [self environmentFrom:[SREnvironment processEnvironment] for:r extraLibrary:NSProcessInfo.processInfo.environment[@"SIMAPP_EXTRA_INSERT"]
                       overrides:o.environmentVariables];
@@ -676,8 +726,9 @@ static BOOL ProcessGone(pid_t pid) {
   NSMutableDictionary *vars = [[SREnvironment simulatorVariablesForRoot:r.runtimeRoot deviceType:r.device] mutableCopy];
   vars[@"SIMNS_INSERT"] = [SREnvironment injectedLibrariesForPlatform:platform extra:extra];
   vars[@"SIMULATOR_FRAMEBUFFER_FRAMEWORK"] = [SREnvironment framebufferFrameworkForPlatform:platform];
-  if (overrides)
+  if (overrides) {
     [vars addEntriesFromDictionary:overrides];
+  }
   return [SREnvironment environment:base withOverrides:vars];
 }
 
@@ -686,11 +737,13 @@ static BOOL ProcessGone(pid_t pid) {
 // (`control` set); requests for it wait in _pending until then.
 - (SRSimns *)simnsForRoot:(NSString *)root {
   root = root.stringByStandardizingPath;
-  if (!root.length)
+  if (!root.length) {
     return nil;
+  }
   SRSimns *ns = _simns[root];
-  if (ns)
+  if (ns) {
     return ns;
+  }
   ns = [SRSimns new];
   ns.root = root;
   mach_port_t ctl;
@@ -715,12 +768,15 @@ static BOOL ProcessGone(pid_t pid) {
   vars[@"SIMNS_DAEMON_INSERT"] = [NSString stringWithFormat:@"com.apple.wcd=%@,com.apple.containermanagerd=%@",
                                   [lib stringByAppendingPathComponent:@"wcd.dylib"], [lib stringByAppendingPathComponent:@"containermanagerd.dylib"]];
   NSMutableArray *env = [NSMutableArray array];
-  for (NSString *kv in [SREnvironment environment:[SREnvironment processEnvironment] withOverrides:vars])
-    if (![kv hasPrefix:@"DYLD_INSERT_LIBRARIES="])
+  for (NSString *kv in [SREnvironment environment:[SREnvironment processEnvironment] withOverrides:vars]) {
+    if (![kv hasPrefix:@"DYLD_INSERT_LIBRARIES="]) {
       [env addObject:kv];
+    }
+  }
   char **cenv = calloc(env.count + 1, sizeof(char *));
-  for (NSUInteger i = 0; i < env.count; i++)
+  for (NSUInteger i = 0; i < env.count; i++) {
     cenv[i] = (char *)[env[i] UTF8String];
+  }
   char *argv[] = { (char *)simns.UTF8String, "--serve", NULL };
   mach_port_t reg[1] = { ctl };
   mach_ports_register(mach_task_self(), reg, 1);   // simns finds us in slot 0 and says hello
@@ -730,8 +786,9 @@ static BOOL ProcessGone(pid_t pid) {
   posix_spawnattr_setflags(&at, POSIX_SPAWN_CLOEXEC_DEFAULT);
   posix_spawn_file_actions_t fa;
   posix_spawn_file_actions_init(&fa);
-  for (int i = 0; i < 3; i++)
+  for (int i = 0; i < 3; i++) {
     posix_spawn_file_actions_addinherit_np(&fa, i);
+  }
   pid_t pid = 0;
   int r = posix_spawn(&pid, argv[0], &fa, &at, argv, cenv);
   mach_ports_register(mach_task_self(), NULL, 0);
@@ -752,8 +809,9 @@ static BOOL ProcessGone(pid_t pid) {
 }
 
 - (void)drainControlOf:(SRSimns *)ns {
-  if (!ns)
+  if (!ns) {
     return;
+  }
   union {
     mach_msg_header_t h;
     simns_port_msg_t p;
@@ -768,27 +826,31 @@ static BOOL ProcessGone(pid_t pid) {
     // host services, started once and published in every runtime's simns
     if (!_gpuStarted) {
       _gpuStarted = YES;
-      if (srgpu_host_start(&_iosurfacePort, &_metalPort) != 0)
+      if (srgpu_host_start(&_iosurfacePort, &_metalPort) != 0) {
         LOG(@"host GPU services failed to start");
+      }
     }
-    if (_iosurfacePort)
+    if (_iosurfacePort) {
       [self registerName:"com.apple.IOSurface.Remote" port:_iosurfacePort in:ns];
-    if (_metalPort)
+    }
+    if (_metalPort) {
       [self registerName:"com.apple.metal.simulator" port:_metalPort in:ns];
+    }
     if (!_pasteboard) {
       _pasteboard = [SRPasteboardHost new];
       _pasteboardPort = [_pasteboard start];
     }
-    if (_pasteboardPort)
+    if (_pasteboardPort) {
       [self registerName:SRPB_SERVICE port:_pasteboardPort in:ns];
-    else
+    } else {
       LOG(@"host pasteboard service failed to start");
+    }
     if (!_docPicker) {
       __weak SRServer *weakSelf = self;
       _docPicker = [[SRDocumentPickerHost alloc] initWithAppForPid:^SRPickerApp *(pid_t pid) {
         SRServer *s = weakSelf;
-        if (s)
-          for (SRRequest *r in s->_active)
+        if (s) {
+          for (SRRequest *r in s->_active) {
           if (r.session.pid == pid) {
             SRPickerApp *a = [SRPickerApp new];
             a.window = r.session.window;
@@ -796,43 +858,51 @@ static BOOL ProcessGone(pid_t pid) {
             a.presets = r.pickPresets;
             return a;
           }
+          }
+        }
         return nil;
       }];
       _docPickerPort = [_docPicker start];
     }
-    if (_docPickerPort)
+    if (_docPickerPort) {
       [self registerName:SRDP_SERVICE port:_docPickerPort in:ns];
-    else
+    } else {
       LOG(@"host document picker service failed to start");
+    }
     if (!_privacy) {
       _privacy = [SRPrivacyHost new];
       _privacyPort = [_privacy start];
     }
-    if (_privacyPort)
+    if (_privacyPort) {
       [self registerName:SRPV_SERVICE port:_privacyPort in:ns];
-    else
+    } else {
       LOG(@"host privacy service failed to start");
+    }
     if (!_motion) {
       _motion = [SRMotionHost new];
       _motionPort = [_motion start];
     }
-    if (_motionPort)
+    if (_motionPort) {
       [self registerName:SRMO_SERVICE port:_motionPort in:ns];
-    else
+    } else {
       LOG(@"host motion service failed to start");
-    if (!_audioPort)
+    }
+    if (!_audioPort) {
       [self lookUpHostAudio];
-    if (_audioPort)
+    }
+    if (_audioPort) {
       [self registerName:"com.apple.audio.audiohald" port:_audioPort in:ns];
+    }
     mach_msg_header_t ready = { .msgh_bits = MACH_MSGH_BITS(MACH_MSG_TYPE_COPY_SEND, 0), .msgh_size = sizeof ready,
                                 .msgh_remote_port = ns.control, .msgh_id = SIMNS_MSG_READY };
     mach_msg(&ready, MACH_SEND_MSG, sizeof ready, 0, 0, 0, 0);
     LOG(@"ready (%@)", [SRRuntime runtimeAtRoot:ns.root].name ?: ns.root);
-    for (SRRequest *r in [_pending copy])
+    for (SRRequest *r in [_pending copy]) {
       if ([r.runtimeRoot.stringByStandardizingPath isEqualToString:ns.root]) {
         [_pending removeObject:r];
         [self launch:r];
       }
+    }
     [self pairDevices];
   }
 }
@@ -841,15 +911,18 @@ static BOOL ProcessGone(pid_t pid) {
 // first watch app starts) are paired once both are up (pairing.h).
 - (void)pairDevices {
   SRSimns *phone = _simns[SREnvironment.runtimeRoot.stringByStandardizingPath], *watch = nil;
-  for (SRSimns *ns in _simns.allValues)
+  for (SRSimns *ns in _simns.allValues) {
     if (ns.control && [[SRRuntime runtimeAtRoot:ns.root].platform isEqualToString:SRPlatformWatchOS]) {
       watch = ns;
       break;
     }
-  if (!phone.control || !watch || _pairing.pairedWatchRoot)
+  }
+  if (!phone.control || !watch || _pairing.pairedWatchRoot) {
     return;
-  if (!_pairing)
+  }
+  if (!_pairing) {
     _pairing = [SRPairing new];
+  }
   SRPairDevice *p = [SRPairDevice new], *w = [SRPairDevice new];
   p.root = phone.root;
   p.control = phone.control;
@@ -873,8 +946,9 @@ static BOOL ProcessGone(pid_t pid) {
   __weak SRServer *weakSelf = self;
   dispatch_source_set_event_handler(_audioDeath, ^{
     SRServer *s = weakSelf;
-    if (!s)
+    if (!s) {
       return;
+    }
     dispatch_source_cancel(s->_audioDeath);
     s->_audioDeath = nil;
     mach_port_deallocate(mach_task_self(), dead);
@@ -883,13 +957,17 @@ static BOOL ProcessGone(pid_t pid) {
     // coreaudiod comes back under launchd at once; give it a moment to check in
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), ^{
       SRServer *s = weakSelf;
-      if (!s || s->_audioPort)
+      if (!s || s->_audioPort) {
         return;
+      }
       [s lookUpHostAudio];
-      if (s->_audioPort)
-        for (SRSimns *ns in s->_simns.allValues)
-          if (ns.control)
+      if (s->_audioPort) {
+        for (SRSimns *ns in s->_simns.allValues) {
+          if (ns.control) {
             [s registerName:"com.apple.audio.audiohald" port:s->_audioPort in:ns];
+          }
+        }
+      }
     });
   });
   dispatch_resume(_audioDeath);
@@ -912,8 +990,9 @@ static BOOL ProcessGone(pid_t pid) {
 
 // A fresh per-app namespace (send right) from `ns`.
 - (mach_port_t)newNamespaceIn:(SRSimns *)ns {
-  if (!ns.control)
+  if (!ns.control) {
     return MACH_PORT_NULL;
+  }
   mach_port_t reply;
   mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &reply);
   union {
@@ -948,8 +1027,9 @@ static BOOL ProcessGone(pid_t pid) {
   _idleTimer = nil;
   [_preparing addObject:r];
   [_launcher reloadState];
-  if (r.sock >= 0 && r.fd2 >= 0)
+  if (r.sock >= 0 && r.fd2 >= 0) {
     dprintf(r.fd2, "simrun: %s is built for devices; converting a copy for the Simulator\n", r.deviceBuild.lastPathComponent.UTF8String);
+  }
   NSString *app = r.deviceBuild;
   dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
     NSString *err, *made = [SRDeviceBuild simulatorCopyOfApp:app error:&err];
@@ -957,9 +1037,11 @@ static BOOL ProcessGone(pid_t pid) {
       [self->_preparing removeObject:r];
       if (r.eofSource && dispatch_source_testcancel(r.eofSource)) {   // its client went away meanwhile (Ctrl-C)
         int fds[] = { r.fd0, r.fd1, r.fd2 };
-        for (int i = 0; i < 3; i++)
-          if (fds[i] >= 0)
+        for (int i = 0; i < 3; i++) {
+          if (fds[i] >= 0) {
             close(fds[i]);
+          }
+        }
         r.fd0 = r.fd1 = r.fd2 = -1;
         [self closeClient:r];
         [self->_launcher reloadState];
@@ -979,11 +1061,13 @@ static BOOL ProcessGone(pid_t pid) {
 - (void)enqueue:(SRRequest *)r inCopy:(NSString *)copy {
   if (copy) {
     NSString *exe = r.argv.firstObject;
-    if ([exe hasPrefix:[r.deviceBuild stringByAppendingString:@"/"]])
+    if ([exe hasPrefix:[r.deviceBuild stringByAppendingString:@"/"]]) {
       exe = [copy stringByAppendingString:[exe substringFromIndex:r.deviceBuild.length]];
+    }
     r.argv = [@[ exe ] arrayByAddingObjectsFromArray:[r.argv subarrayWithRange:NSMakeRange(1, r.argv.count - 1)]];
-    if ([r.cwd isEqualToString:r.deviceBuild])
+    if ([r.cwd isEqualToString:r.deviceBuild]) {
       r.cwd = copy;
+    }
   }
   [self enqueue:r];
 }
@@ -991,9 +1075,9 @@ static BOOL ProcessGone(pid_t pid) {
   [_idleTimer invalidate];
   _idleTimer = nil;
   SRSimns *ns = [SRRuntime runtimeAtRoot:r.runtimeRoot] ? [self simnsForRoot:r.runtimeRoot] : nil;
-  if (!ns || ns.control)
+  if (!ns || ns.control) {
     [self launch:r];   // no simns: launch: reports the failure
-  else {
+  } else {
     [_pending addObject:r];
     [_launcher reloadState];
   }
@@ -1008,17 +1092,20 @@ static BOOL ProcessGone(pid_t pid) {
   NSMutableDictionary *vars = [NSMutableDictionary dictionary];
   for (NSString *kv in env) {
     NSRange eq = [kv rangeOfString:@"="];
-    if (eq.location != NSNotFound && ([kv hasPrefix:@"SCENES_"] || [kv hasPrefix:@"SIMULATOR_MAINSCREEN_"]))
+    if (eq.location != NSNotFound && ([kv hasPrefix:@"SCENES_"] || [kv hasPrefix:@"SIMULATOR_MAINSCREEN_"])) {
       vars[[kv substringToIndex:eq.location]] = [kv substringFromIndex:NSMaxRange(eq)];
+    }
   }
-  if (!vars[@"SCENES_W"] && !vars[@"SCENES_H"] && !vars[@"SCENES_SCALE"])
+  if (!vars[@"SCENES_W"] && !vars[@"SCENES_H"] && !vars[@"SCENES_SCALE"]) {
     return @{};
+  }
   double dscale = [vars[@"SIMULATOR_MAINSCREEN_SCALE"] doubleValue] ?: 3;   // the display's, as the scenes module defaults to
   double dw = ([vars[@"SIMULATOR_MAINSCREEN_WIDTH"] doubleValue] ?: 1206) / dscale, dh = ([vars[@"SIMULATOR_MAINSCREEN_HEIGHT"] doubleValue] ?: 2622) / dscale;
   double w = vars[@"SCENES_W"] ? [vars[@"SCENES_W"] doubleValue] : dw, h = vars[@"SCENES_H"] ? [vars[@"SCENES_H"] doubleValue] : dh;
   double scale = vars[@"SCENES_SCALE"] ? [vars[@"SCENES_SCALE"] doubleValue] : dscale;
-  if (w <= 0 || h <= 0 || scale <= 0)
+  if (w <= 0 || h <= 0 || scale <= 0) {
     return @{};
+  }
   return @{ @"SIMULATOR_MAINSCREEN_WIDTH": [NSString stringWithFormat:@"%.0f", round(w * scale)],
             @"SIMULATOR_MAINSCREEN_HEIGHT": [NSString stringWithFormat:@"%.0f", round(h * scale)],
             @"SIMULATOR_MAINSCREEN_SCALE": [NSString stringWithFormat:@"%f", scale] };
@@ -1035,23 +1122,28 @@ static BOOL ProcessGone(pid_t pid) {
   NSString *insert = nil;
   NSMutableArray *out = [NSMutableArray array];
   for (NSString *kv in env) {
-    if ([kv hasPrefix:@"SIMNS_INSERT="])
+    if ([kv hasPrefix:@"SIMNS_INSERT="]) {
       insert = [kv substringFromIndex:13];
+    }
     if ([kv hasPrefix:@"DYLD_INSERT_LIBRARIES="] || [kv hasPrefix:@"XPC_SIMULATOR_LAUNCHD_NAME="] || [kv hasPrefix:@"XPC_FLAGS="] ||
         [kv hasPrefix:@"XPC_SERVICE_NAME="] || [kv hasPrefix:@"SIMNS_"] || [kv hasPrefix:@"SIMRUN_HOST_INTL="] ||
-        [kv hasPrefix:@"SIMRUN_PROFILE="])
+        [kv hasPrefix:@"SIMRUN_PROFILE="]) {
       continue;
+    }
     [out addObject:kv];
   }
-  if (profile)
+  if (profile) {
     [out addObject:[@"SIMRUN_PROFILE=" stringByAppendingString:profile]];
+  }
   NSString *intl = [SREnvironment hostInternationalSettings];   // read at each launch: follows changes on the Mac
-  if (intl)
+  if (intl) {
     [out addObject:[@"SIMRUN_HOST_INTL=" stringByAppendingString:intl]];
+  }
   [out addObject:@"XPC_SIMULATOR_LAUNCHD_NAME=dev.simrun.simns"];   // value unused; makes sim libxpc use our bootstrap port
   [out addObject:@"XPC_FLAGS=0x0"];
-  if (insert.length)
+  if (insert.length) {
     [out addObject:[@"DYLD_INSERT_LIBRARIES=" stringByAppendingString:insert]];
+  }
   return out;
 }
 
@@ -1059,15 +1151,18 @@ static BOOL ProcessGone(pid_t pid) {
 // dyld would refuse to load it and the app would just exit), or nil.
 - (NSString *)runtimeProblemFor:(SRRequest *)r runtime:(SRRuntime *)rt {
   NSString *exe = r.argv.firstObject;
-  if (!exe.absolutePath && r.cwd)
+  if (!exe.absolutePath && r.cwd) {
     exe = [r.cwd stringByAppendingPathComponent:exe];   // a client's path is relative to its cwd
+  }
   NSString *name = r.title ?: r.argv.firstObject.lastPathComponent;
   SRPlatform platform = [SRAppInfo platformOfExecutable:exe];
-  if (![platform isEqualToString:rt.platform])
+  if (![platform isEqualToString:rt.platform]) {
     return [NSString stringWithFormat:@"%@ is built for the %@ Simulator, and can't run on %@.", name, platform, rt.name];
+  }
   NSString *min = [SRAppInfo minimumOSVersionOfExecutable:exe];
-  if (!min || [min compare:rt.version options:NSNumericSearch] != NSOrderedDescending)
+  if (!min || [min compare:rt.version options:NSNumericSearch] != NSOrderedDescending) {
     return nil;
+  }
   NSString *how = r.sock >= 0
       ? @"Run it on a newer runtime with simrun run --runtime (simrun runtimes lists them)."
       : [platform isEqualToString:SRPlatformIOS]
@@ -1087,12 +1182,14 @@ static NSSize ScreenSize(NSDictionary<NSString *, NSString *> *env) {
   NSMutableDictionary<NSString *, NSString *> *vars = [NSMutableDictionary dictionary];
   for (NSString *kv in [SREnvironment environment:r.env withOverrides:[self displayVariablesForScene:r.env]]) {
     NSRange eq = [kv rangeOfString:@"="];
-    if (eq.location != NSNotFound && [kv hasPrefix:@"SIMULATOR_"])
+    if (eq.location != NSNotFound && [kv hasPrefix:@"SIMULATOR_"]) {
       vars[[kv substringToIndex:eq.location]] = [kv substringFromIndex:NSMaxRange(eq)];
+    }
   }
   NSString *title = r.title ?: @"SimRun";
-  if (r.profile)
+  if (r.profile) {
     title = [NSString stringWithFormat:@"%@ — %@", title, r.profile];   // also names its log
+  }
   SRSession *s = [[SRSession alloc] initWithTitle:title screenSize:ScreenSize(vars)
                                      cornerRadius:SRDeviceCornerRadius(vars[@"SIMULATOR_CAPABILITIES"])];
   s.appPath = r.appPath;
@@ -1110,27 +1207,32 @@ static NSSize ScreenSize(NSDictionary<NSString *, NSString *> *env) {
   NSString *err = nil;
   mach_port_t ns = MACH_PORT_NULL;
   SRRuntime *rt = [SRRuntime runtimeAtRoot:r.runtimeRoot];
-  if (r.problem)
+  if (r.problem) {
     err = r.problem;
-  else if (!rt)
+  } else if (!rt) {
     err = [NSString stringWithFormat:@"Not an iOS or watchOS Simulator runtime: %@", r.runtimeRoot];
-  else if ((err = [self runtimeProblemFor:r runtime:rt])) {}
-  else
+  } else if ((err = [self runtimeProblemFor:r runtime:rt])) {}
+  else {
     ns = [self newNamespaceIn:_simns[r.runtimeRoot.stringByStandardizingPath]];
+  }
   int fds[3] = { r.fd0, r.fd1, r.fd2 };
   BOOL ok = ns && [s spawnArgv:r.argv env:[self appEnvironmentFrom:r.env executable:r.argv.firstObject profile:r.profile] cwd:r.cwd bootstrap:ns fds:fds error:&err];
-  if (ns)
+  if (ns) {
     mach_port_deallocate(mach_task_self(), ns);   // the app holds its own send right; simns frees the namespace after it
-  for (int i = 0; i < 3; i++)
-    if (fds[i] >= 0)
+  }
+  for (int i = 0; i < 3; i++) {
+    if (fds[i] >= 0) {
       close(fds[i]);
+    }
+  }
   r.fd0 = r.fd1 = r.fd2 = -1;
   if (ok && r.captureFD >= 0) {
     [s captureOutputFrom:r.captureFD];
     r.captureFD = -1;
   }
-  if (ok && r.headless)
+  if (ok && r.headless) {
     [_pasteboard isolatePid:s.pid];
+  }
   if (!ok) {
     LOG(@"launch failed: %@", err ?: @"no namespace");
     if (r.captureFD >= 0) {
@@ -1152,8 +1254,9 @@ static NSSize ScreenSize(NSDictionary<NSString *, NSString *> *env) {
     return;
   }
   SRNoteWatchApps(r.appPath);   // for WatchConnectivity: the watch apps SimRun knows
-  if (r.withWatchApp)
+  if (r.withWatchApp) {
     [self launchWatchAppsOf:r];
+  }
   LOG(@"launched %@ pid %d%@%@", r.argv.firstObject.lastPathComponent, s.pid, r.profile ? [@" in profile " stringByAppendingString:r.profile] : @"",
       r.headless ? @", headless" : @"");
   [self reply:r dict:@{ @"pid": @(s.pid) }];
@@ -1163,16 +1266,19 @@ static NSSize ScreenSize(NSDictionary<NSString *, NSString *> *env) {
 // An iPhone app's Watch apps (its Watch/ folder, as Xcode embeds them), run on the paired Apple Watch as installing the
 // app puts them there: each one that isn't running yet, with no window if the app has none, its output in its log.
 - (void)launchWatchAppsOf:(SRRequest *)r {
-  if (!r.appPath || ![[SRRuntime runtimeAtRoot:r.runtimeRoot].platform isEqualToString:SRPlatformIOS])
+  if (!r.appPath || ![[SRRuntime runtimeAtRoot:r.runtimeRoot].platform isEqualToString:SRPlatformIOS]) {
     return;
+  }
   NSString *dir = [r.appPath stringByAppendingPathComponent:@"Watch"];
   for (NSString *name in [NSFileManager.defaultManager contentsOfDirectoryAtPath:dir error:nil]) {
     NSString *path = [dir stringByAppendingPathComponent:name];
-    if (![name.pathExtension isEqualToString:@"app"] || [SRAppInfo problemWithAppAtPath:path])
+    if (![name.pathExtension isEqualToString:@"app"] || [SRAppInfo problemWithAppAtPath:path]) {
       continue;
+    }
     SRAppInfo *app = [SRAppInfo infoWithPath:path];
-    if (![app.platform isEqualToString:SRPlatformWatchOS] || [self requestForApp:app profile:nil])
+    if (![app.platform isEqualToString:SRPlatformWatchOS] || [self requestForApp:app profile:nil]) {
       continue;
+    }
     SRRuntime *rt = [SREnvironment defaultRuntimeForPlatform:SRPlatformWatchOS];
     if (!rt) {
       LOG(@"%@ has a Watch app, but no watchOS runtime is installed", r.title);
@@ -1201,8 +1307,9 @@ static NSSize ScreenSize(NSDictionary<NSString *, NSString *> *env) {
 
 - (void)finish:(SRRequest *)r status:(int)status {
   LOG(@"%@ (pid %d) exited, status %d", r.title, r.session.pid, status);
-  if (r.headless)
+  if (r.headless) {
     [_pasteboard endIsolationOfPid:r.session.pid];
+  }
   [self reply:r dict:@{ @"exit": @(status) }];
   [self closeClient:r];
   [_active removeObject:r];
@@ -1217,8 +1324,9 @@ static NSSize ScreenSize(NSDictionary<NSString *, NSString *> *env) {
   _socketPath = @(path);
   [NSFileManager.defaultManager createDirectoryAtPath:_socketPath.stringByDeletingLastPathComponent withIntermediateDirectories:YES attributes:nil error:nil];
   struct sockaddr_un a;
-  if (simrund_socket_addr(path, &a))
+  if (simrund_socket_addr(path, &a)) {
     exit(2);
+  }
   // a live server already listening? then we're redundant
   int probe = socket(AF_UNIX, SOCK_STREAM, 0);
   if (connect(probe, (struct sockaddr *)&a, sizeof a) == 0) {
@@ -1237,8 +1345,9 @@ static NSSize ScreenSize(NSDictionary<NSString *, NSString *> *env) {
   _listenSource = dispatch_source_create(DISPATCH_SOURCE_TYPE_READ, _listenFd, 0, dispatch_get_main_queue());
   dispatch_source_set_event_handler(_listenSource, ^{
     int c = accept(self->_listenFd, NULL, NULL);
-    if (c >= 0)
+    if (c >= 0) {
       [self readRequestFrom:c];
+    }
   });
   dispatch_resume(_listenSource);
   LOG(@"serving %s", path);
@@ -1250,8 +1359,9 @@ static NSSize ScreenSize(NSDictionary<NSString *, NSString *> *env) {
   char path[1024];
   simrund_socket_path(path, sizeof path);
   struct sockaddr_un a;
-  if (simrund_socket_addr(path, &a))
+  if (simrund_socket_addr(path, &a)) {
     return;
+  }
   int s = socket(AF_UNIX, SOCK_STREAM, 0);
   if (connect(s, (struct sockaddr *)&a, sizeof a) == 0) {
     NSDictionary *msg = @{ @"action": @"show", @"open": _openAtLaunch };
@@ -1271,8 +1381,9 @@ static void SendReply(int c, NSDictionary *reply, dispatch_block_t then) {
   dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
     simrund_send(c, (__bridge CFDictionaryRef)reply, NULL, 0);
     close(c);
-    if (then)
+    if (then) {
       dispatch_async(dispatch_get_main_queue(), then);
+    }
   });
 }
 
@@ -1289,8 +1400,9 @@ static void SendReply(int c, NSDictionary *reply, dispatch_block_t then) {
         [self runRequest:d client:c fds:got];
         return;
       }
-      for (int i = 0; i < nfds; i++)
+      for (int i = 0; i < nfds; i++) {
         close(got[i]);
+      }
       if ([action isEqual:@"show"]) {   // another SimRun instance handed over
         close(c);
         self->_interactive = YES;
@@ -1298,8 +1410,9 @@ static void SendReply(int c, NSDictionary *reply, dispatch_block_t then) {
         self->_idleTimer = nil;
         [self->_launcher show];
         NSArray *open = d[@"open"];
-        if ([open isKindOfClass:NSArray.class] && open.count)
+        if ([open isKindOfClass:NSArray.class] && open.count) {
           [self->_launcher openPaths:open];
+        }
         return;
       }
       if ([action isEqual:@"quit"]) {   // replies once the app has exited
@@ -1311,8 +1424,9 @@ static void SendReply(int c, NSDictionary *reply, dispatch_block_t then) {
         }
         SRSessionExitHandler old = r.session.onExit;
         r.session.onExit = ^(SRSession *session, int status) {
-          if (old)
+          if (old) {
             old(session, status);
+          }
           SendReply(c, @{ @"ok": @YES }, nil);
         };
         [r.session terminate];
@@ -1337,10 +1451,11 @@ static void SendReply(int c, NSDictionary *reply, dispatch_block_t then) {
         });
         return;
       }
-      if (d)
+      if (d) {
         SendReply(c, [self answer:action request:d], nil);
-      else
+      } else {
         close(c);
+      }
     });
   });
 }
@@ -1356,8 +1471,9 @@ static void SendReply(int c, NSDictionary *reply, dispatch_block_t then) {
   if (err) {
     LOG(@"launch failed: %@", err);
     [self reply:r dict:@{ @"error": err }];
-    for (int i = 0; i < 3; i++)
+    for (int i = 0; i < 3; i++) {
       close(fds[i]);
+    }
     [self closeClient:r];
     return;
   }
@@ -1380,20 +1496,23 @@ static void SendReply(int c, NSDictionary *reply, dispatch_block_t then) {
   NSString *err = nil;
   SRRequest *r = [self instanceMatching:Str(d, @"instance") profile:Str(d, @"profile") error:&err];
   NSString *source = [d[@"source"] isKindOfClass:NSString.class] ? d[@"source"] : nil;
-  if (r && !source)
+  if (r && !source) {
     err = @"No script";
+  }
   if (!r || !source) {
     SendReply(c, @{ @"error": err }, nil);
     return;
   }
   BOOL started = [r.session runScript:source snapshot:[d[@"snapshot"] isEqual:@YES] output:^(NSString *key, NSString *text) {
     simrund_send(c, (__bridge CFDictionaryRef)@{ key: text }, NULL, 0);
-    if (![key isEqual:@"log"] && ![key isEqual:@"snapshot"])
+    if (![key isEqual:@"log"] && ![key isEqual:@"snapshot"]) {
       close(c);
+    }
   }];
-  if (!started)
+  if (!started) {
     SendReply(c, @{ @"error": r.session.ready ? [NSString stringWithFormat:@"%@ can't run scripts (launched with SCRIPT_DISABLE)", r.session.title]
                                               : [NSString stringWithFormat:@"%@ is still launching", r.session.title] }, nil);
+  }
 }
 
 // `pick`: answer the app's file picker (the one open, or the next within `timeout` s), or say what it asks for.
@@ -1406,11 +1525,12 @@ static void SendReply(int c, NSDictionary *reply, dispatch_block_t then) {
   }
   pid_t pid = r.session.pid;
   NSArray *paths = [d[@"paths"] isKindOfClass:NSArray.class] ? d[@"paths"] : nil;
-  for (id p in paths)
+  for (id p in paths) {
     if (![p isKindOfClass:NSString.class] || ![p isAbsolutePath]) {
       SendReply(c, @{ @"error": @"Bad request" }, nil);
       return;
     }
+  }
   if (!paths.count && ![d[@"cancel"] isEqual:@YES]) {   // what is open?
     NSDictionary *picker = [_docPicker pickerOfPid:pid];
     SendReply(c, picker ? @{ @"picker": picker } : @{}, nil);
@@ -1425,15 +1545,17 @@ static void SendReply(int c, NSDictionary *reply, dispatch_block_t then) {
     }
     SendReply(c, chosen ? @{ @"chosen": chosen } : @{ @"error": why ?: @"Not picked" }, nil);
   }];
-  if (!token)
+  if (!token) {
     return;   // answered at once
+  }
   // the client going away (Ctrl-C) withdraws its answer
   __weak SRDocumentPickerHost *picker = _docPicker;
   eof = dispatch_source_create(DISPATCH_SOURCE_TYPE_READ, c, 0, dispatch_get_main_queue());
   dispatch_source_set_event_handler(eof, ^{
     char b;
-    if (recv(c, &b, 1, MSG_PEEK | MSG_DONTWAIT) != 0)
+    if (recv(c, &b, 1, MSG_PEEK | MSG_DONTWAIT) != 0) {
       return;
+    }
     dispatch_source_cancel(eof);
     eof = nil;
     [picker withdrawPick:token];
@@ -1467,8 +1589,9 @@ static void SendReply(int c, NSDictionary *reply, dispatch_block_t then) {
   __block int stage = 0;   // 0: waiting for the tree; 1 (check): waiting for the fresh tree; 2: watching
   __block NSString *before = nil;
   void (^finish)(NSDictionary *) = ^(NSDictionary *last) {
-    if (closed)
+    if (closed) {
       return;
+    }
     closed = YES;
     [s removeLayerObserver:token];
     token = nil;
@@ -1477,14 +1600,16 @@ static void SendReply(int c, NSDictionary *reply, dispatch_block_t then) {
       eof = nil;
     }
     dispatch_async(q, ^{
-      if (last)
+      if (last) {
         simrund_send(c, (__bridge CFDictionaryRef)last, NULL, 0);
+      }
       close(c);
     });
   };
   token = [s addLayerObserver:^(SRLayerMirror *m, NSDictionary *changes) {
-    if (closed)
+    if (closed) {
       return;
+    }
     if (!changes) {
       finish(@{ @"error": @"the app went away" });
       return;
@@ -1496,8 +1621,9 @@ static void SendReply(int c, NSDictionary *reply, dispatch_block_t then) {
       return;
     }
     if (stage == 1) {
-      if ([changes[@"full"] isEqual:@YES])
+      if ([changes[@"full"] isEqual:@YES]) {
         finish(@{ @"tree": m.treeDescription, @"before": before });
+      }
       return;
     }
     if (stage == 0) {
@@ -1505,8 +1631,9 @@ static void SendReply(int c, NSDictionary *reply, dispatch_block_t then) {
       if (png) {
         // 3D: turned a little to the left and tilted back, as the layer window's 3D view starts
         NSData *data = explode ? [SRLayerScene PNGOfMirror:m size:CGSizeMake(1400, 1400) yaw:-0.55 pitch:0.3 spacing:0] : [m PNGWithScale:2];
-        if (data)
+        if (data) {
           reply[@"png"] = data;
+        }
       }
       if (!watch) {
         finish(reply);
@@ -1534,8 +1661,9 @@ static void SendReply(int c, NSDictionary *reply, dispatch_block_t then) {
   eof = dispatch_source_create(DISPATCH_SOURCE_TYPE_READ, c, 0, dispatch_get_main_queue());
   dispatch_source_set_event_handler(eof, ^{
     char b;
-    if (recv(c, &b, 1, MSG_PEEK | MSG_DONTWAIT) == 0)
+    if (recv(c, &b, 1, MSG_PEEK | MSG_DONTWAIT) == 0) {
       finish(nil);
+    }
   });
   dispatch_resume(eof);
 }
@@ -1544,31 +1672,39 @@ static void SendReply(int c, NSDictionary *reply, dispatch_block_t then) {
 // client's, with the simulator environment for those). Returns why it can't run, or nil.
 - (NSString *)prepareClientRun:(SRRequest *)r request:(NSDictionary *)d {
   NSArray *argv = d[@"argv"];
-  if (![argv isKindOfClass:NSArray.class] || !argv.count)
+  if (![argv isKindOfClass:NSArray.class] || !argv.count) {
     return @"Nothing to run";
-  for (id a in argv)
-    if (![a isKindOfClass:NSString.class])
+  }
+  for (id a in argv) {
+    if (![a isKindOfClass:NSString.class]) {
       return @"Bad request";
+    }
+  }
   r.cwd = Str(d, @"cwd") ?: @"/";
   NSString *target = argv.firstObject;
-  if (!target.absolutePath)
+  if (!target.absolutePath) {
     target = [r.cwd stringByAppendingPathComponent:target];
+  }
   target = target.stringByStandardizingPath;
   BOOL dir = NO;
-  if (![NSFileManager.defaultManager fileExistsAtPath:target isDirectory:&dir])
+  if (![NSFileManager.defaultManager fileExistsAtPath:target isDirectory:&dir]) {
     return [NSString stringWithFormat:@"No such file: %@", target];
+  }
   NSString *exe = target;
   if (dir) {
-    if (![target.pathExtension isEqualToString:@"app"])
+    if (![target.pathExtension isEqualToString:@"app"]) {
       return [NSString stringWithFormat:@"Not an app or an executable: %@", target];
+    }
     NSString *problem = [SRAppInfo problemWithAppAtPath:target];
-    if (problem)
+    if (problem) {
       return problem;
+    }
     r.appPath = target;
     SRAppInfo *info = [SRAppInfo infoWithPath:target];
     exe = info.executablePath;
-    if (info.deviceBuild)
+    if (info.deviceBuild) {
       r.deviceBuild = target;
+    }
   } else if ([target.stringByDeletingLastPathComponent.pathExtension isEqualToString:@"app"]) {
     r.appPath = target.stringByDeletingLastPathComponent;   // lets the launcher show it as running
   }
@@ -1577,24 +1713,28 @@ static void SendReply(int c, NSDictionary *reply, dispatch_block_t then) {
     r.title = info.name;
     r.bundleID = info.bundleIdentifier.length ? info.bundleIdentifier : nil;
   }
-  else
+  else {
     r.title = exe.lastPathComponent;
+  }
   r.argv = [@[ exe ] arrayByAddingObjectsFromArray:[argv subarrayWithRange:NSMakeRange(1, argv.count - 1)]];
 
   NSString *err = [SREnvironment problemWithProfileName:Str(d, @"profile")];
-  if (err)
+  if (err) {
     return err;
+  }
   r.profile = [SREnvironment normalizedProfile:Str(d, @"profile")];
   r.headless = [d[@"headless"] isEqual:@YES];
   r.withWatchApp = [d[@"withWatchApp"] isEqual:@YES];
   if ([d[@"pick"] isKindOfClass:NSArray.class]) {
     NSMutableArray *presets = [NSMutableArray array];
     for (NSString *p in d[@"pick"]) {
-      if (![p isKindOfClass:NSString.class])
+      if (![p isKindOfClass:NSString.class]) {
         return @"Bad request";
+      }
       NSString *path = (p.absolutePath ? p : [r.cwd stringByAppendingPathComponent:p]).stringByStandardizingPath;
-      if (![NSFileManager.defaultManager fileExistsAtPath:path])
+      if (![NSFileManager.defaultManager fileExistsAtPath:path]) {
         return [NSString stringWithFormat:@"No such file (--pick): %@", path];
+      }
       [presets addObject:path];
     }
     r.pickPresets = presets;
@@ -1602,19 +1742,25 @@ static void SendReply(int c, NSDictionary *reply, dispatch_block_t then) {
   NSString *rtSpec = Str(d, @"runtime"), *devSpec = Str(d, @"device");
   SRPlatform platform = [SRAppInfo platformOfExecutable:exe];
   SRRuntime *rt = rtSpec ? [SREnvironment runtimeMatching:rtSpec platform:platform] : [SREnvironment defaultRuntimeForPlatform:platform];
-  if (!rt && rtSpec)
+  if (!rt && rtSpec) {
     return [NSString stringWithFormat:@"No installed %@ runtime matches \"%@\" (simrun runtimes lists them)", platform, rtSpec];
-  if (!rt)
+  }
+  if (!rt) {
     return [NSString stringWithFormat:@"%@ is a %@ app, and no %@ Simulator runtime is installed", r.title, platform, platform];
+  }
   r.runtimeRoot = rt.root;
   r.device = devSpec ? [SREnvironment deviceTypeWithIdentifier:devSpec runtime:rt] : [SREnvironment defaultDeviceTypeForRuntime:rt];
-  if (devSpec && !r.device)
+  if (devSpec && !r.device) {
     return [NSString stringWithFormat:@"%@ has no device type \"%@\" (simrun devices --runtime %@ lists them)", rt.name, devSpec, rt.build];
+  }
   NSMutableArray *env = [NSMutableArray array];
-  if ([d[@"env"] isKindOfClass:NSArray.class])
-    for (id kv in d[@"env"])
-      if ([kv isKindOfClass:NSString.class])
+  if ([d[@"env"] isKindOfClass:NSArray.class]) {
+    for (id kv in d[@"env"]) {
+      if ([kv isKindOfClass:NSString.class]) {
         [env addObject:kv];
+      }
+    }
+  }
   r.env = [self environmentFrom:env for:r extraLibrary:Str(d, @"insert") overrides:nil];
   return nil;
 }
@@ -1624,23 +1770,30 @@ static void SendReply(int c, NSDictionary *reply, dispatch_block_t then) {
   NSMutableDictionary *m = [@{ @"pid": @(r.session.pid), @"title": r.title ?: @"", @"executable": r.argv.firstObject ?: @"",
                                @"runtime": [SRRuntime runtimeAtRoot:r.runtimeRoot].name ?: r.runtimeRoot ?: @"",
                                @"ready": @(r.session.isReady) } mutableCopy];
-  if (r.appPath)
+  if (r.appPath) {
     m[@"app"] = r.appPath;
-  if (r.bundleID)
+  }
+  if (r.bundleID) {
     m[@"bundleID"] = r.bundleID;
-  if (r.profile)
+  }
+  if (r.profile) {
     m[@"profile"] = r.profile;
-  if (r.device.name)
+  }
+  if (r.device.name) {
     m[@"device"] = r.device.name;
-  if (r.session.headless)
+  }
+  if (r.session.headless) {
     m[@"headless"] = @YES;
+  }
   return m;
 }
 - (NSArray<SRRequest *> *)runningInstances {
   NSMutableArray *a = [NSMutableArray array];
-  for (SRRequest *r in _active)
-    if (r.session.pid > 0)
+  for (SRRequest *r in _active) {
+    if (r.session.pid > 0) {
       [a addObject:r];
+    }
+  }
   return a;
 }
 
@@ -1655,23 +1808,27 @@ static void SendReply(int c, NSDictionary *reply, dispatch_block_t then) {
   NSString *want = [SREnvironment normalizedProfile:profile];
   NSMutableArray<SRRequest *> *found = [NSMutableArray array];
   for (SRRequest *r in [self runningInstances]) {
-    if (profile && !SameProfile(r.profile, want))
+    if (profile && !SameProfile(r.profile, want)) {
       continue;
+    }
     NSString *exe = r.argv.firstObject;
     BOOL match = byPid ? r.session.pid == spec.intValue
                        : [r.title caseInsensitiveCompare:spec] == NSOrderedSame || [r.bundleID caseInsensitiveCompare:spec] == NSOrderedSame ||
                          [exe.lastPathComponent isEqualToString:spec] || [exe isEqualToString:spec] || [r.appPath isEqualToString:spec.stringByStandardizingPath];
-    if (match)
+    if (match) {
       [found addObject:r];
+    }
   }
-  if (found.count == 1)
+  if (found.count == 1) {
     return found[0];
+  }
   NSString *where = profile ? [NSString stringWithFormat:@" in profile %@", want ?: @"default"] : @"";
-  if (!found.count)
+  if (!found.count) {
     *err = [NSString stringWithFormat:@"No running app matches \"%@\"%@ (simrun list shows them)", spec, where];
-  else
+  } else {
     *err = [NSString stringWithFormat:@"%@ is running %lu times%@ (pids %@): give a pid%@", spec, (unsigned long)found.count, where,
                [[found valueForKeyPath:@"session.pid"] componentsJoinedByString:@", "], profile ? @"" : @" or --profile"];
+  }
   return nil;
 }
 
@@ -1680,25 +1837,30 @@ static void SendReply(int c, NSDictionary *reply, dispatch_block_t then) {
   NSString *err = nil;
   if ([action isEqual:@"remote"]) {
     id enable = d[@"enable"];
-    if ([enable isKindOfClass:NSNumber.class] && ![_remote setEnabled:[enable boolValue] error:&err])
+    if ([enable isKindOfClass:NSNumber.class] && ![_remote setEnabled:[enable boolValue] error:&err]) {
       return @{ @"error": err ?: @"failed" };
-    if ([d[@"reset"] boolValue] && _remote.enabled)
+    }
+    if ([d[@"reset"] boolValue] && _remote.enabled) {
       [_remote resetAccessKey];
-    if (!_remote.enabled)
+    }
+    if (!_remote.enabled) {
       return @{ @"enabled": @NO, @"port": @(_remote.port) };
+    }
     return @{ @"enabled": @YES, @"port": @(_remote.port), @"link": _remote.link, @"localLink": _remote.localLink,
               @"viewers": @(_remote.viewerCount) };
   }
   if ([action isEqual:@"list"]) {
     NSMutableArray *list = [NSMutableArray array];
-    for (SRRequest *r in [self runningInstances])
+    for (SRRequest *r in [self runningInstances]) {
       [list addObject:[self describeInstance:r]];
+    }
     return @{ @"instances": list };
   }
   if ([action isEqual:@"screenshot"]) {
     SRRequest *r = [self instanceMatching:Str(d, @"instance") profile:Str(d, @"profile") error:&err];
-    if (!r)
+    if (!r) {
       return @{ @"error": err };
+    }
     NSData *png = [r.session screenshotPNG];
     return png ? @{ @"png": png } : @{ @"error": [NSString stringWithFormat:@"%@ hasn't shown anything yet", r.session.title] };
   }
@@ -1708,13 +1870,15 @@ static void SendReply(int c, NSDictionary *reply, dispatch_block_t then) {
     if (app) {
       BOOL dir = NO;
       NSString *path = app.absolutePath ? app.stringByStandardizingPath : nil;
-      if (path && [NSFileManager.defaultManager fileExistsAtPath:path isDirectory:&dir])
+      if (path && [NSFileManager.defaultManager fileExistsAtPath:path isDirectory:&dir]) {
         app = [SREnvironment containerIdentifierForExecutable:dir ? [SRAppInfo infoWithPath:path].executablePath : path];
+      }
       ids = @[ app ];
     }
     NSMutableArray *apps = [NSMutableArray array];
-    for (NSString *ident in ids)
+    for (NSString *ident in ids) {
       [apps addObject:@{ @"id": ident, @"profiles": [SREnvironment profilesForIdentifier:ident] }];
+    }
     return @{ @"apps": apps };
   }
   if ([action isEqual:@"runtimes"]) {
@@ -1730,32 +1894,37 @@ static void SendReply(int c, NSDictionary *reply, dispatch_block_t then) {
       [list addObject:@{ @"name": rt.name, @"version": rt.version, @"build": rt.build, @"root": rt.root, @"current": @(cur),
                          @"platform": rt.platform }];
     }
-    if (current && !listed)   // SIMRUN_RUNTIME_ROOT outside the installed ones
+    if (current && !listed) {   // SIMRUN_RUNTIME_ROOT outside the installed ones
       [list addObject:@{ @"name": current.name, @"version": current.version, @"build": current.build, @"root": current.root, @"current": @YES }];
+    }
     return @{ @"runtimes": list };
   }
   if ([action isEqual:@"devices"]) {
     NSString *spec = Str(d, @"runtime");
     SRRuntime *rt = !spec ? [SRRuntime runtimeAtRoot:SREnvironment.runtimeRoot]
                           : [SREnvironment runtimeMatching:spec] ?: [SREnvironment runtimeMatching:spec platform:SRPlatformWatchOS];
-    if (!rt)
+    if (!rt) {
       return @{ @"error": [NSString stringWithFormat:@"No installed runtime matches \"%@\" (simrun runtimes lists them)", spec] };
+    }
     SRDeviceType *def = [SREnvironment defaultDeviceTypeForRuntime:rt];
     NSMutableArray *list = [NSMutableArray array];
-    for (SRDeviceType *t in [SREnvironment deviceTypesForRuntime:rt])
+    for (SRDeviceType *t in [SREnvironment deviceTypesForRuntime:rt]) {
       [list addObject:@{ @"identifier": t.identifier, @"name": t.name, @"width": @(t.screenWidth), @"height": @(t.screenHeight),
                          @"scale": @(t.screenScale), @"default": @([t.identifier isEqualToString:def.identifier]) }];
+    }
     return @{ @"runtime": rt.name, @"devices": list };
   }
-  if ([action isEqual:@"status"])
+  if ([action isEqual:@"status"]) {
     return @{ @"pid": @(getpid()), @"runtime": [SRRuntime runtimeAtRoot:SREnvironment.runtimeRoot].name ?: SREnvironment.runtimeRoot ?: @"",
               @"instances": @([self runningInstances].count) };
+  }
   return @{ @"error": [NSString stringWithFormat:@"Unknown request \"%@\" (is SimRun older than this simrun?)", action ?: @""] };
 }
 
 - (void)reply:(SRRequest *)r dict:(NSDictionary *)d {
-  if (r.sock >= 0)
+  if (r.sock >= 0) {
     simrund_send(r.sock, (__bridge CFDictionaryRef)d, NULL, 0);
+  }
 }
 - (void)closeClient:(SRRequest *)r {
   if (r.eofSource) {
@@ -1770,12 +1939,14 @@ static void SendReply(int c, NSDictionary *reply, dispatch_block_t then) {
 
 // ---------------------------------------------------------------- idle exit (headless --serve only)
 - (void)scheduleIdleCheck {
-  if (_mode != SRModeServe || _interactive || _active.count || _pending.count || _preparing.count)
+  if (_mode != SRModeServe || _interactive || _active.count || _pending.count || _preparing.count) {
     return;
+  }
   const char *e = getenv("SIMRUND_IDLE");
   double idle = e ? atof(e) : 600;
-  if (idle <= 0)
+  if (idle <= 0) {
     return;
+  }
   [_idleTimer invalidate];
   _idleTimer = [NSTimer scheduledTimerWithTimeInterval:idle repeats:NO block:^(NSTimer *t) {
     if (!self->_interactive && !self->_active.count && !self->_pending.count && !self->_preparing.count) {
@@ -1790,16 +1961,20 @@ int main(int argc, char **argv) {
   @autoreleasepool {
     SRMode mode = SRModeGUI;
     NSMutableArray *rest = [NSMutableArray array];
-    if (argc >= 2 && !strcmp(argv[1], "--serve"))
+    if (argc >= 2 && !strcmp(argv[1], "--serve")) {
       mode = SRModeServe;
-    else
-      for (int i = 1; i < argc; i++)   // GUI: app bundles to open; skip LaunchServices/AppKit flags (-psn_…, -NSFoo YES)
+    } else {
+      for (int i = 1; i < argc; i++) {   // GUI: app bundles to open; skip LaunchServices/AppKit flags (-psn_…, -NSFoo YES)
       if (argv[i][0] == '-') {
-        if (strncmp(argv[i], "-psn_", 5) && i + 1 < argc && argv[i + 1][0] != '-')
+        if (strncmp(argv[i], "-psn_", 5) && i + 1 < argc && argv[i + 1][0] != '-') {
           i++;
+        }
       }
-      else
+      else {
         [rest addObject:[@(argv[i]) stringByStandardizingPath]];
+      }
+      }
+    }
     // After a crash AppKit asks whether to reopen windows, in a modal alert that a headless server shows no one and
     // waits on forever (simrun then can't connect). -ApplePersistenceIgnoreState YES, as if passed on the command line.
     if (mode == SRModeServe) {   // added to the -Key value arguments there are (tests pass settings that way)

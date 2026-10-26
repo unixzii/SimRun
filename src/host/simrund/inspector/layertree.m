@@ -16,8 +16,9 @@
 }
 
 - (instancetype)init {
-  if (!(self = [super init]))
+  if (!(self = [super init])) {
     return nil;
+  }
   // the outline over a filter field at the bottom, as in Xcode's navigators; the sidebar's material shows through
   _view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 260, 500)];
   NSScrollView *sv = [NSScrollView new];
@@ -86,11 +87,13 @@
   _allLayersButton.state = on ? NSControlStateValueOn : NSControlStateValueOff;
   _allLayersButton.contentTintColor = on ? NSColor.controlAccentColor : NSColor.secondaryLabelColor;
   [self reloadNow];
-  if (!selected)
+  if (!selected) {
     return;
+  }
   NSNumber *now = [self selectNode:selected];   // with only views listed, the nearest view above it
-  if (![now isEqual:selected] && self.onSelect)
+  if (![now isEqual:selected] && self.onSelect) {
     self.onSelect(now);
+  }
 }
 - (void)toggleAllLayers:(NSButton *)b {
   self.showsAllLayers = !_showsAllLayers;
@@ -102,8 +105,9 @@
   return n && (_showsAllLayers || n.props[@"view"]);
 }
 - (NSString *)label:(NSNumber *)nid {
-  if (nid.longLongValue < 0)
+  if (nid.longLongValue < 0) {
     return SRReadableClassName(_mirror.nodes[@(-nid.longLongValue)].props[@"viewController"]);
+  }
   NSDictionary *p = _mirror.nodes[nid].props;
   return SRReadableClassName(p[@"view"] ?: p[@"class"]);
 }
@@ -117,39 +121,45 @@ static NSNumber *NodeOf(NSNumber *item) {
 // The shown nodes under `nid`: its sublayers that are shown, and the shown ones under those that aren't.
 - (void)collect:(NSNumber *)nid into:(NSMutableArray *)out {
   for (NSNumber *c in _mirror.nodes[nid].props[@"sublayers"]) {
-    if ([self isShown:c])
+    if ([self isShown:c]) {
       [out addObject:c];
-    else
+    } else {
       [self collect:c into:out];
+    }
   }
 }
 - (void)rebuild {
   NSDictionary<NSNumber *, SRMirrorNode *> *nodes = _mirror.nodes;
   NSMutableDictionary *parent = [NSMutableDictionary dictionary], *children = [NSMutableDictionary dictionary];
   [nodes enumerateKeysAndObjectsUsingBlock:^(NSNumber *nid, SRMirrorNode *n, BOOL *stop) {
-    for (NSNumber *c in n.props[@"sublayers"])
+    for (NSNumber *c in n.props[@"sublayers"]) {
       parent[c] = nid;
-    if ([n.props[@"mask"] isKindOfClass:NSNumber.class])
+    }
+    if ([n.props[@"mask"] isKindOfClass:NSNumber.class]) {
       parent[n.props[@"mask"]] = nid;
+    }
   }];
   _layerParent = parent;
   NSMutableArray *topNodes = [NSMutableArray array];
   [self collect:@1 into:topNodes];   // under the screen: the windows
   NSMutableArray *top = [NSMutableArray array];
-  for (NSNumber *n in topNodes)
+  for (NSNumber *n in topNodes) {
     [top addObject:[self rowItem:n]];
+  }
   children[@0] = top;
   NSMutableArray *todo = [topNodes mutableCopy];
   while (todo.count) {
     NSNumber *nid = todo.lastObject;
     [todo removeLastObject];
-    if (nodes[nid].props[@"viewController"])
+    if (nodes[nid].props[@"viewController"]) {
       children[@(-nid.longLongValue)] = @[ nid ];   // the controller's row holds its view
+    }
     NSMutableArray *kids = [NSMutableArray array];
     [self collect:nid into:kids];
     NSMutableArray *rows = [NSMutableArray array];
-    for (NSNumber *k in kids)
+    for (NSNumber *k in kids) {
       [rows addObject:[self rowItem:k]];
+    }
     children[nid] = rows;
     [todo addObjectsFromArray:kids];
   }
@@ -161,8 +171,9 @@ static NSNumber *NodeOf(NSNumber *item) {
     __weak __block BOOL (^weakVisit)(NSNumber *);
     weakVisit = visit = ^BOOL(NSNumber *nid) {
       BOOL any = NO;
-      for (NSNumber *c in children[nid])
+      for (NSNumber *c in children[nid]) {
         any |= weakVisit(c);
+      }
       NSDictionary *p = nodes[NodeOf(nid)].props;
       NSString *hay = [NSString stringWithFormat:@"%@ %@ %@ #%@ %@ %@", [self label:nid], SRReadableClassName(p[@"class"]), p[@"name"] ?: @"", NodeOf(nid),
                                                  p[@"view"] ?: @"", p[@"viewController"] ? SRReadableClassName(p[@"viewController"]) : @""].lowercaseString;
@@ -172,12 +183,14 @@ static NSNumber *NodeOf(NSNumber *item) {
       }
       return NO;
     };
-    for (NSNumber *t in top)
+    for (NSNumber *t in top) {
       visit(t);
-    for (NSNumber *k in children.allKeys)
+    }
+    for (NSNumber *k in children.allKeys) {
       children[k] = [children[k] filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(NSNumber *c, id b) {
         return [keep containsObject:c];
       }]];
+    }
   }
   _children = children;
 }
@@ -191,33 +204,39 @@ static NSNumber *NodeOf(NSNumber *item) {
     _expandedOnce = YES;
     for (NSNumber *w in _children[@0]) {
       [_outline expandItem:w];
-      for (NSNumber *c in _children[w])
+      for (NSNumber *c in _children[w]) {
         [_outline expandItem:c];
+      }
     }
   }
-  if (_search.stringValue.length)
+  if (_search.stringValue.length) {
     [_outline expandItem:nil expandChildren:YES];
+  }
   if (selected) {
     NSInteger row = [_outline rowForItem:selected];
     _selecting = YES;
-    if (row >= 0)
+    if (row >= 0) {
       [_outline selectRowIndexes:[NSIndexSet indexSetWithIndex:row] byExtendingSelection:NO];
-    else
+    } else {
       [_outline deselectAll:nil];
+    }
     _selecting = NO;
   }
 }
 
 - (void)mirrorChanged:(NSDictionary *)changes {
   BOOL shape = [changes[@"full"] isEqual:@YES] || [changes[@"added"] count] || [changes[@"removed"] count];
-  if (!shape)
-    for (NSArray *keys in [changes[@"changed"] allValues])
+  if (!shape) {
+    for (NSArray *keys in [changes[@"changed"] allValues]) {
       if ([keys containsObject:@"sublayers"] || [keys containsObject:@"view"] || [keys containsObject:@"hidden"] || [keys containsObject:@"mask"]) {
         shape = YES;
         break;
       }
-  if (!shape || _reloadScheduled)
+    }
+  }
+  if (!shape || _reloadScheduled) {
     return;
+  }
   _reloadScheduled = YES;
   __weak SRLayerTree *weakSelf = self;
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 120 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
@@ -232,39 +251,47 @@ static NSNumber *NodeOf(NSNumber *item) {
 // ---------------------------------------------------------------- selection
 - (NSNumber *)shownAncestor:(NSNumber *)nid {
   NSNumber *p = _layerParent[nid];
-  while (p && ![self isShown:p])
+  while (p && ![self isShown:p]) {
     p = _layerParent[p];
+  }
   return p;
 }
 - (NSNumber *)selectNode:(NSNumber *)nid {
-  while (nid && ![self isShown:nid])
+  while (nid && ![self isShown:nid]) {
     nid = _layerParent[nid];
-  if (_reloadScheduled)
+  }
+  if (_reloadScheduled) {
     [self reloadNow];   // the node may be new
+  }
   NSMutableArray *chain = [NSMutableArray array];
-  for (NSNumber *a = nid ? [self shownAncestor:nid] : nil; a; a = [self shownAncestor:a])
+  for (NSNumber *a = nid ? [self shownAncestor:nid] : nil; a; a = [self shownAncestor:a]) {
     [chain insertObject:a atIndex:0];
+  }
   for (NSNumber *a in chain) {
-    if (![[self rowItem:a] isEqual:a])
+    if (![[self rowItem:a] isEqual:a]) {
       [_outline expandItem:[self rowItem:a]];   // its controller's row first
+    }
     [_outline expandItem:a];
   }
-  if (nid && ![[self rowItem:nid] isEqual:nid])
+  if (nid && ![[self rowItem:nid] isEqual:nid]) {
     [_outline expandItem:[self rowItem:nid]];
+  }
   NSInteger row = nid ? [_outline rowForItem:nid] : -1;
   _selecting = YES;
   if (row >= 0) {
     [_outline selectRowIndexes:[NSIndexSet indexSetWithIndex:row] byExtendingSelection:NO];
     [_outline scrollRowToVisible:row];
   }
-  else
+  else {
     [_outline deselectAll:nil];
+  }
   _selecting = NO;
   return row >= 0 ? nid : nil;
 }
 - (void)outlineViewSelectionDidChange:(NSNotification *)n {
-  if (_selecting || !self.onSelect)
+  if (_selecting || !self.onSelect) {
     return;
+  }
   self.onSelect(_outline.selectedRow >= 0 ? NodeOf([_outline itemAtRow:_outline.selectedRow]) : nil);   // a controller's row: its view
 }
 
@@ -281,20 +308,27 @@ static NSNumber *NodeOf(NSNumber *item) {
 
 static NSString *SymbolFor(NSDictionary *p) {
   NSString *view = p[@"view"], *kind = p[@"kind"], *contents = p[@"contents"];
-  if ([view hasSuffix:@"Window"])
+  if ([view hasSuffix:@"Window"]) {
     return @"macwindow";
-  if ([kind isEqual:@"backdrop"] || [kind isEqual:@"sdf"] || [kind isEqual:@"sdfElement"])
+  }
+  if ([kind isEqual:@"backdrop"] || [kind isEqual:@"sdf"] || [kind isEqual:@"sdfElement"]) {
     return @"drop";
-  if ([kind isEqual:@"portal"])
+  }
+  if ([kind isEqual:@"portal"]) {
     return @"rectangle.on.rectangle";
-  if ([kind isEqual:@"gradient"])
+  }
+  if ([kind isEqual:@"gradient"]) {
     return @"circle.lefthalf.filled";
-  if ([kind isEqual:@"shape"])
+  }
+  if ([kind isEqual:@"shape"]) {
     return @"scribble.variable";
-  if ([contents isEqual:@"image"] || [contents isEqual:@"CATintedImage"])
+  }
+  if ([contents isEqual:@"image"] || [contents isEqual:@"CATintedImage"]) {
     return @"photo";
-  if ([contents hasPrefix:@"backingStore"])
+  }
+  if ([contents hasPrefix:@"backingStore"]) {
     return @"textformat";
+  }
   return view ? @"square" : @"square.dashed";
 }
 

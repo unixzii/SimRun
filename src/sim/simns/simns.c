@@ -67,23 +67,27 @@ static void L(const char *fmt, ...) {
   va_start(ap, fmt);
   vsnprintf(buf, sizeof buf, fmt, ap);
   va_end(ap);
-  if (!gQuiet)
+  if (!gQuiet) {
     fprintf(stderr, "[simns] %s\n", buf);
+  }
   if (gLog) {
     fprintf(gLog, "%s\n", buf);
     fflush(gLog);
   }
 }
 static entry_t *find(ns_t *n, const char *name) {
-  for (entry_t *e = n->entries; e; e = e->next)
-    if (!strcmp(e->name, name))
+  for (entry_t *e = n->entries; e; e = e->next) {
+    if (!strcmp(e->name, name)) {
       return e;
+    }
+  }
   return NULL;
 }
 static entry_t *get(ns_t *n, const char *name) {
   entry_t *e = find(n, name);
-  if (e)
+  if (e) {
     return e;
+  }
   e = calloc(1, sizeof *e);
   e->name = strdup(name);
   e->next = n->entries;
@@ -91,17 +95,20 @@ static entry_t *get(ns_t *n, const char *name) {
   return e;
 }
 static ns_t *ns_for_port(mach_port_t port) {   // caller holds gLock
-  for (ns_t *n = gApps; n; n = n->next)
-    if (n->port == port)
+  for (ns_t *n = gApps; n; n = n->next) {
+    if (n->port == port) {
       return n;
+    }
+  }
   return &gGlobal;
 }
 // Register a send right (consumes one user ref of `send`).
 static void reg(ns_t *n, const char *name, mach_port_t send, uint32_t flags) {
   pthread_mutex_lock(&gLock);
   entry_t *e = get(n, name);
-  if (e->send)
+  if (e->send) {
     mach_port_deallocate(mach_task_self(), e->send);
+  }
   e->send = send;
   e->flags = flags;
   pthread_mutex_unlock(&gLock);
@@ -118,8 +125,9 @@ static mach_port_t checkin(ns_t *n, const char *name) {
   if (!r) {
     mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &r);
     mach_port_insert_right(mach_task_self(), r, r, MACH_MSG_TYPE_MAKE_SEND);
-    if (e->send)
+    if (e->send) {
       mach_port_deallocate(mach_task_self(), e->send);
+    }
     e->send = r;  // the send right is a separate user ref under the same name; receive right leaves with the reply
   }
   e->recv = MACH_PORT_NULL;
@@ -128,8 +136,9 @@ static mach_port_t checkin(ns_t *n, const char *name) {
     mach_port_move_member(mach_task_self(), r, MACH_PORT_NULL);   // out of gIdle, if it was waiting there
     mach_port_t prev = MACH_PORT_NULL;
     mach_port_request_notification(mach_task_self(), r, MACH_NOTIFY_PORT_DESTROYED, 0, gReturned, MACH_MSG_TYPE_MAKE_SEND_ONCE, &prev);
-    if (prev)
+    if (prev) {
       mach_port_deallocate(mach_task_self(), prev);
+    }
   }
   return r;
 }
@@ -139,8 +148,9 @@ static mach_port_t lookup_in(ns_t *n, const char *name, uint32_t *flags) {
     mach_port_type_t t = 0;
     if (mach_port_type(mach_task_self(), e->send, &t) == KERN_SUCCESS && (t & (MACH_PORT_TYPE_SEND | MACH_PORT_TYPE_RECEIVE)) && !(t & MACH_PORT_TYPE_DEAD_NAME)) {
       e->lookups++;
-      if (flags)
+      if (flags) {
         *flags = e->flags;
+      }
       return e->send;
     }
   }
@@ -149,18 +159,21 @@ static mach_port_t lookup_in(ns_t *n, const char *name, uint32_t *flags) {
 static mach_port_t lookup(ns_t *n, const char *name, uint32_t *flags) {
   pthread_mutex_lock(&gLock);
   mach_port_t p = n != &gGlobal ? lookup_in(n, name, flags) : MACH_PORT_NULL;
-  if (!p)
+  if (!p) {
     p = lookup_in(&gGlobal, name, flags);
+  }
   pthread_mutex_unlock(&gLock);
   return p;
 }
 static void free_entries(entry_t *e) {
   while (e) {
     entry_t *nx = e->next;
-    if (e->send)
+    if (e->send) {
       mach_port_deallocate(mach_task_self(), e->send);
-    if (e->recv)
+    }
+    if (e->recv) {
       mach_port_mod_refs(mach_task_self(), e->recv, MACH_PORT_RIGHT_RECEIVE, -1);
+    }
     free(e->name);
     free(e);
     e = nx;
@@ -194,34 +207,40 @@ static char *gRoot;
 
 static int allowed(const char *label) {
   const char *list = getenv("SIMNS_DAEMONS");
-  if (!list)
+  if (!list) {
     list = "com.apple.notifyd,com.apple.trustd,com.apple.securityd,com.apple.cfprefsd.xpc.daemon,com.apple.cfprefsd.xpc.agent,"
                     "com.apple.containermanagerd,com.apple.nsurlsessiond,com.apple.geod,com.apple.audio.systemsoundserver-simd,"
                     "com.apple.ids_simd,com.apple.nanoregistryd,com.apple.wcd,com.apple.FileCoordination";
-  if (!strcmp(list, "none"))
+  }
+  if (!strcmp(list, "none")) {
     return 0;
+  }
   size_t n = strlen(label);
-  for (const char *p = list; (p = strstr(p, label)); p += n)
-    if ((p == list || p[-1] == ',') && (p[n] == 0 || p[n] == ','))
+  for (const char *p = list; (p = strstr(p, label)); p += n) {
+    if ((p == list || p[-1] == ',') && (p[n] == 0 || p[n] == ',')) {
       return 1;
+    }
+  }
   return 0;
 }
 // SIMNS_DAEMON_INSERT ("label=lib[:lib],label=lib"): the libraries a daemon gets as its DYLD_INSERT_LIBRARIES, or NULL
 static char *daemon_insert(const char *label) {
   const char *list = getenv("SIMNS_DAEMON_INSERT");
   size_t n = strlen(label);
-  for (const char *p = list; p && *p; p = strchr(p, ',') ? strchr(p, ',') + 1 : NULL)
+  for (const char *p = list; p && *p; p = strchr(p, ',') ? strchr(p, ',') + 1 : NULL) {
     if (!strncmp(p, label, n) && p[n] == '=') {
       const char *v = p + n + 1, *end = strchr(v, ',');
       char *out;
       asprintf(&out, "DYLD_INSERT_LIBRARIES=%.*s", (int)(end ? end - v : strlen(v)), v);
       return out;
     }
+  }
   return NULL;
 }
 static char *cfstr(CFTypeRef v) {
-  if (!v || CFGetTypeID(v) != CFStringGetTypeID())
+  if (!v || CFGetTypeID(v) != CFStringGetTypeID()) {
     return NULL;
+  }
   char buf[2048];
   return CFStringGetCString(v, buf, sizeof buf, kCFStringEncodingUTF8) ? strdup(buf) : NULL;
 }
@@ -230,16 +249,18 @@ static void load_plist(const char *path) {
   CFReadStreamRef rs = CFReadStreamCreateWithFile(NULL, u);
   CFRelease(u);
   if (!rs || !CFReadStreamOpen(rs)) {
-    if (rs)
+    if (rs) {
       CFRelease(rs);
+    }
     return;
   }
   CFPropertyListRef pl = CFPropertyListCreateWithStream(NULL, rs, 0, 0, NULL, NULL);
   CFReadStreamClose(rs);
   CFRelease(rs);
   if (!pl || CFGetTypeID(pl) != CFDictionaryGetTypeID()) {
-    if (pl)
+    if (pl) {
       CFRelease(pl);
+    }
     return;
   }
   char *label = cfstr(CFDictionaryGetValue(pl, CFSTR("Label")));
@@ -251,27 +272,32 @@ static void load_plist(const char *path) {
     d->label = label;
     CFIndex na = args ? CFArrayGetCount(args) : 0;
     d->argv = calloc(na + 2, sizeof(char *));
-    for (CFIndex i = 0; i < na; i++)
+    for (CFIndex i = 0; i < na; i++) {
       d->argv[i] = cfstr(CFArrayGetValueAtIndex(args, i));
+    }
     if (prog) {
-      if (!na)
+      if (!na) {
         d->argv[0] = prog;
-      else
+      } else {
         d->argv[0] = prog;
+      }
     }
     if (d->argv[0] && d->argv[0][0] == '/') {   // rebase into the runtime root
       char full[2048];
       snprintf(full, sizeof full, "%s%s", gRoot, d->argv[0]);
-      if (access(full, X_OK) == 0)
+      if (access(full, X_OK) == 0) {
         d->argv[0] = strdup(full);
+      }
     }
     CFIndex ns = CFDictionaryGetCount(ms);
     const void **keys = calloc(ns, sizeof(void *));
     CFDictionaryGetKeysAndValues(ms, keys, NULL);
     d->services = calloc(ns, sizeof(char *));
-    for (CFIndex i = 0; i < ns; i++)
-      if ((d->services[d->nservices] = cfstr(keys[i])))
+    for (CFIndex i = 0; i < ns; i++) {
+      if ((d->services[d->nservices] = cfstr(keys[i]))) {
         d->nservices++;
+      }
+    }
     free(keys);
     CFDictionaryRef ev = CFDictionaryGetValue(pl, CFSTR("EnvironmentVariables"));
     CFIndex ne = ev && CFGetTypeID(ev) == CFDictionaryGetTypeID() ? CFDictionaryGetCount(ev) : 0;
@@ -281,16 +307,18 @@ static void load_plist(const char *path) {
       CFDictionaryGetKeysAndValues(ev, k, v);
       for (CFIndex i = 0; i < ne; i++) {
         char *a = cfstr(k[i]), *b = cfstr(v[i]);
-        if (a && b)
+        if (a && b) {
           asprintf(&d->env[i], "%s=%s", a, b);
+        }
       }
       free(k);
       free(v);
     }
     d->next = gDaemons;
     gDaemons = d;
-  } else
+  } else {
     free(label);
+  }
   CFRelease(pl);
 }
 static void load_daemons(void) {
@@ -299,8 +327,9 @@ static void load_daemons(void) {
     char dir[1024];
     snprintf(dir, sizeof dir, "%s%s", gRoot, dirs[i]);
     DIR *dp = opendir(dir);
-    if (!dp)
+    if (!dp) {
       continue;
+    }
     struct dirent *de;
     while ((de = readdir(dp))) {
       size_t l = strlen(de->d_name);
@@ -312,18 +341,22 @@ static void load_daemons(void) {
     }
     closedir(dp);
   }
-  for (daemon_t *d = gDaemons; d; d = d->next)
+  for (daemon_t *d = gDaemons; d; d = d->next) {
     L("on-demand daemon %s (%s, %d services)", d->label, d->argv[0], d->nservices);
+  }
 }
 static int port_alive(mach_port_t p) {
   mach_port_type_t t = 0;
   return p && mach_port_type(mach_task_self(), p, &t) == KERN_SUCCESS && !(t & MACH_PORT_TYPE_DEAD_NAME) && (t & (MACH_PORT_TYPE_SEND | MACH_PORT_TYPE_RECEIVE));
 }
 static daemon_t *daemon_for(const char *name) {
-  for (daemon_t *d = gDaemons; d; d = d->next)
-    for (int i = 0; i < d->nservices; i++)
-      if (!strcmp(d->services[i], name))
+  for (daemon_t *d = gDaemons; d; d = d->next) {
+    for (int i = 0; i < d->nservices; i++) {
+      if (!strcmp(d->services[i], name)) {
         return d;
+      }
+    }
+  }
   return NULL;
 }
 static int is_daemon_service(const char *name) {
@@ -333,13 +366,16 @@ static pthread_mutex_t gDaemonLock = PTHREAD_MUTEX_INITIALIZER;   // lookups (se
 static volatile int gStopping;
 // If `name` belongs to an allow-listed daemon that isn't running, declare its ports and spawn it.
 static void ensure_daemon(const char *name) {
-  if (gStopping)
+  if (gStopping) {
     return;
+  }
   pthread_mutex_lock(&gDaemonLock);
   for (daemon_t *d = daemon_for(name); d && !gStopping; d = NULL) {
-    if (d->gone && d->pid > 0)   // its ports came back: it is exiting, if not gone yet
-      for (int t = 0; t < 50 && waitpid(d->pid, NULL, WNOHANG) == 0; t++)
+    if (d->gone && d->pid > 0) {   // its ports came back: it is exiting, if not gone yet
+      for (int t = 0; t < 50 && waitpid(d->pid, NULL, WNOHANG) == 0; t++) {
         usleep(10000);
+      }
+    }
     if (d->gone) {
       d->pid = 0;
       d->gone = 0;
@@ -348,22 +384,26 @@ static void ensure_daemon(const char *name) {
     // on zombies, so it would count as running and never be relaunched
     if (d->pid > 0) {
       int st;
-      if (waitpid(d->pid, &st, WNOHANG) == d->pid)
+      if (waitpid(d->pid, &st, WNOHANG) == d->pid) {
         d->pid = 0;
+      }
     }
-    if (d->pid > 0 && kill(d->pid, 0) == 0)
+    if (d->pid > 0 && kill(d->pid, 0) == 0) {
       break;
+    }
     pthread_mutex_lock(&gLock);
     for (int i = 0; i < d->nservices; i++) {
       entry_t *e = get(&gGlobal, d->services[i]);
       if (e->recv || port_alive(e->send)) {
         // a previous instance's port whose receive right died is a dead name: replace it
         mach_port_type_t t = 0;
-        if (e->recv || (mach_port_type(mach_task_self(), e->send, &t) == KERN_SUCCESS && (t & MACH_PORT_TYPE_RECEIVE)))
+        if (e->recv || (mach_port_type(mach_task_self(), e->send, &t) == KERN_SUCCESS && (t & MACH_PORT_TYPE_RECEIVE))) {
           continue;
+        }
       }
-      if (e->send)
+      if (e->send) {
         mach_port_deallocate(mach_task_self(), e->send);
+      }
       mach_port_t r;
       mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &r);
       mach_port_insert_right(mach_task_self(), r, r, MACH_MSG_TYPE_MAKE_SEND);
@@ -372,31 +412,37 @@ static void ensure_daemon(const char *name) {
     }
     pthread_mutex_unlock(&gLock);
     int nb = 0;
-    while (gChildEnv[nb])
+    while (gChildEnv[nb]) {
       nb++;
+    }
     int ne = 0;
-    while (d->env[ne])
+    while (d->env[ne]) {
       ne++;
+    }
     char **env = calloc(nb + ne + 3, sizeof(char *));
     int k = 0;
-    for (int i = 0; i < nb; i++)
+    for (int i = 0; i < nb; i++) {
       env[k++] = gChildEnv[i];
-    for (int i = 0; i < ne; i++)
+    }
+    for (int i = 0; i < ne; i++) {
       env[k++] = d->env[i];
+    }
     char svc[300];
     snprintf(svc, sizeof svc, "XPC_SERVICE_NAME=%s", d->label);
     env[k++] = svc;
     char *insert = daemon_insert(d->label);
-    if (insert)
+    if (insert) {
       env[k++] = insert;
+    }
     posix_spawnattr_t attr;
     posix_spawnattr_init(&attr);
     posix_spawnattr_setspecialport_np(&attr, gNS, TASK_BOOTSTRAP_PORT);
     posix_spawnattr_setflags(&attr, POSIX_SPAWN_CLOEXEC_DEFAULT);   // stdio only (not our log)
     posix_spawn_file_actions_t fa;
     posix_spawn_file_actions_init(&fa);
-    for (int i = 0; i < 3; i++)
+    for (int i = 0; i < 3; i++) {
       posix_spawn_file_actions_addinherit_np(&fa, i);
+    }
     int r = posix_spawn(&d->pid, d->argv[0], &fa, &attr, d->argv, env);
     posix_spawn_file_actions_destroy(&fa);
     posix_spawnattr_destroy(&attr);
@@ -406,8 +452,9 @@ static void ensure_daemon(const char *name) {
       L("spawn daemon %s failed: %s", d->label, strerror(r));
       d->pid = 0;
     }
-    else
+    else {
       L("launched %s (pid %d) for %s", d->label, d->pid, name);
+    }
   }
   pthread_mutex_unlock(&gDaemonLock);
 }
@@ -418,12 +465,13 @@ static void port_returned(mach_port_destroyed_notification_t *m) {
   mach_port_t p = m->not_port.name;
   const char *name = NULL;
   pthread_mutex_lock(&gLock);
-  for (entry_t *e = gGlobal.entries; e; e = e->next)
+  for (entry_t *e = gGlobal.entries; e; e = e->next) {
     if (e->send == p) {
       e->recv = p;
       name = e->name;
       break;
     }
+  }
   pthread_mutex_unlock(&gLock);
   daemon_t *d = name && !gStopping ? daemon_for(name) : NULL;
   if (!d) {
@@ -451,24 +499,28 @@ static void *idle_watch(void *arg) {
     }
     mach_port_name_array_t members = NULL;
     mach_msg_type_number_t count = 0;
-    if (mach_port_get_set_status(me, gIdle, &members, &count))
+    if (mach_port_get_set_status(me, gIdle, &members, &count)) {
       continue;
+    }
     for (mach_msg_type_number_t i = 0; i < count; i++) {
       mach_port_status_t st;
       mach_msg_type_number_t sc = MACH_PORT_RECEIVE_STATUS_COUNT;
-      if (mach_port_get_attributes(me, members[i], MACH_PORT_RECEIVE_STATUS, (mach_port_info_t)&st, &sc) || !st.mps_msgcount)
+      if (mach_port_get_attributes(me, members[i], MACH_PORT_RECEIVE_STATUS, (mach_port_info_t)&st, &sc) || !st.mps_msgcount) {
         continue;
+      }
       mach_port_move_member(me, members[i], MACH_PORT_NULL);
       char name[256] = "";
       pthread_mutex_lock(&gLock);
-      for (entry_t *e = gGlobal.entries; e; e = e->next)
+      for (entry_t *e = gGlobal.entries; e; e = e->next) {
         if (e->recv == members[i]) {
           strlcpy(name, e->name, sizeof name);
           break;
         }
+      }
       pthread_mutex_unlock(&gLock);
-      if (name[0])
+      if (name[0]) {
         ensure_daemon(name);
+      }
     }
     vm_deallocate(me, (vm_address_t)members, count * sizeof *members);
   }
@@ -478,25 +530,30 @@ static void *idle_watch(void *arg) {
 static void stop_daemons(void) {
   gStopping = 1;
   int alive = 0;
-  for (daemon_t *d = gDaemons; d; d = d->next)
-    if (d->pid > 0 && kill(d->pid, SIGTERM) == 0)
+  for (daemon_t *d = gDaemons; d; d = d->next) {
+    if (d->pid > 0 && kill(d->pid, SIGTERM) == 0) {
       alive++;
+    }
+  }
   for (int t = 0; alive && t < 20; t++) {
     usleep(50000);
     alive = 0;
-    for (daemon_t *d = gDaemons; d; d = d->next)
+    for (daemon_t *d = gDaemons; d; d = d->next) {
       if (d->pid > 0) {
-        if (waitpid(d->pid, NULL, WNOHANG) == d->pid || kill(d->pid, 0) != 0)
+        if (waitpid(d->pid, NULL, WNOHANG) == d->pid || kill(d->pid, 0) != 0) {
           d->pid = 0;
-        else
+        } else {
           alive++;
+        }
       }
+    }
   }
-  for (daemon_t *d = gDaemons; d; d = d->next)
+  for (daemon_t *d = gDaemons; d; d = d->next) {
     if (d->pid > 0) {
       kill(d->pid, SIGKILL);
       d->pid = 0;
     }
+  }
 }
 // Daemons stopped when the last app goes away. systemsoundserver-simd keeps the Mac's audio output running (and with it
 // coreaudiod's assertion against idle sleep) from its first sound until it exits, as sim CoreAudio does in any process
@@ -507,31 +564,39 @@ static void *stop_idle_daemons(void *arg) {
   pid_t pids[8];
   int n = 0;
   pthread_mutex_lock(&gDaemonLock);
-  for (daemon_t *d = gDaemons; d && n < 8; d = d->next)
-    for (const char **l = kStopWhenIdle; *l; l++)
+  for (daemon_t *d = gDaemons; d && n < 8; d = d->next) {
+    for (const char **l = kStopWhenIdle; *l; l++) {
       if (!strcmp(d->label, *l) && d->pid > 0 && !d->gone && kill(d->pid, SIGTERM) == 0) {
         L("no apps: stopping %s (pid %d)", d->label, d->pid);
         pids[n++] = d->pid;
       }
+    }
+  }
   pthread_mutex_unlock(&gDaemonLock);
   for (int t = 0; n && t < 20; t++) {   // a moment to exit, then SIGKILL (as stop_daemons)
     usleep(50000);
     int alive = 0;
-    for (int i = 0; i < n; i++)
+    for (int i = 0; i < n; i++) {
       if (pids[i] && kill(pids[i], 0) == 0) {
         int st;
-        if (waitpid(pids[i], &st, WNOHANG) == 0)
+        if (waitpid(pids[i], &st, WNOHANG) == 0) {
           alive++;
-        else
+        } else {
           pids[i] = 0;
-      } else
+        }
+      } else {
         pids[i] = 0;
-    if (!alive)
+      }
+    }
+    if (!alive) {
       n = 0;
+    }
   }
-  for (int i = 0; i < n; i++)
-    if (pids[i])
+  for (int i = 0; i < n; i++) {
+    if (pids[i]) {
       kill(pids[i], SIGKILL);
+    }
+  }
   return NULL;
 }
 
@@ -573,8 +638,9 @@ static void handle_pipe(mach_msg_header_t *h, pid_t pid) {
     return;
   }
   const char *name = xpc_dictionary_get_string(msg, "name");
-  if (!name)
+  if (!name) {
     name = "";
+  }
   pthread_mutex_lock(&gLock);
   ns_t *n = ns_for_port(h->msgh_local_port);
   pthread_mutex_unlock(&gLock);
@@ -590,40 +656,49 @@ static void handle_pipe(mach_msg_header_t *h, pid_t pid) {
         static unsigned nseen;   // log each missing name once
         int dup = 0;
         if (!p) {
-          for (unsigned i = 0; i < nseen; i++)
-            if (!strcmp(seen[i], name))
+          for (unsigned i = 0; i < nseen; i++) {
+            if (!strcmp(seen[i], name)) {
               dup = 1;
-          if (!dup && nseen < 64)
+            }
+          }
+          if (!dup && nseen < 64) {
             strlcpy(seen[nseen++], name, 128);
+          }
         }
-        if (!dup)
+        if (!dup) {
           L("%-16s %d  %s %-60s -> %s%s", who, pid, routine == 207 ? "lookup  " : "endpoint", name, p ? "OK" : "MISSING", (fl & SIMNS_F_HOST_SIDE) ? " (host)" : "");
+        }
         if (reply) {
           if (p) {
             xpc_dictionary_set_mach_send(reply, "port", p);
-            if (routine == 804)
+            if (routine == 804) {
               xpc_dictionary_set_bool(reply, "non-launching", false);
+            }
           }
-          else
+          else {
             xpc_dictionary_set_int64(reply, "error", routine == 207 ? 1102 : 3);
+          }
         }
         break;
       }
     case 204: {
       mach_port_t p = xpc_dictionary_copy_mach_send(msg, "port");
       L("%-16s %d  register %s port=%x", who, pid, name, p);
-      if (p)
+      if (p) {
         reg(n, name, p, 0);
-      if (reply)
+      }
+      if (reply) {
         xpc_dictionary_set_int64(reply, "error", 0);
+      }
       break;
     }
     case 206:
       case 805: {
         mach_port_t r = checkin(n, name);
         L("%-16s %d  checkin  %s (%s)", who, pid, name, routine == 805 ? "xpc listener" : "bootstrap");
-        if (reply)
+        if (reply) {
           xpc_dictionary_set_mach_recv(reply, "port", r);
+        }
         break;
       }
     case 403:   // xpc_event_publisher_activate (notifyd): fetch subscriptions {stream} -> {events:[], initial-load-completed:true}
@@ -639,21 +714,24 @@ static void handle_pipe(mach_msg_header_t *h, pid_t pid) {
       break;
     case 712:   // a process's launchd attributes {pid} -> {attrs}: bundle-id, extension... (xpc_connection_copy_bundle_id,
                 // xpc_connection_is_extension; nsurlsessiond asks for every client). 113 = none, which libxpc takes quietly
-      if (reply)
+      if (reply) {
         xpc_dictionary_set_int64(reply, "error", 113);
+      }
       break;
     default: {
       char *d = xpc_copy_description(msg);
       L("%-16s %d  routine %u (unhandled) %s", who, pid, routine, d ? d : "");
       free(d);
-      if (reply)
+      if (reply) {
         xpc_dictionary_set_int64(reply, "error", 45 /*ENOTSUP*/);
+      }
     }
   }
   if (reply) {
     int r = xpc_pipe_routine_reply(reply);
-    if (r)
+    if (r) {
       L("reply failed %d", r);
+    }
     xpc_release(reply);
   }
   xpc_release(msg);
@@ -695,8 +773,9 @@ static void handle_ctl(mach_msg_header_t *h) {
       pthread_mutex_lock(&gLock);
       for (ns_t *n = &gGlobal; n; n = (n == &gGlobal) ? gApps : n->next) {
         L("namespace %x%s", n->port, n == &gGlobal ? " (global)" : "");
-        for (entry_t *e = n->entries; e; e = e->next)
+        for (entry_t *e = n->entries; e; e = e->next) {
           L("  %-60s send=%x recv=%x lookups=%u", e->name, e->send, e->recv, e->lookups);
+        }
       }
       pthread_mutex_unlock(&gLock);
       break;
@@ -743,8 +822,9 @@ static void destroy_ns(mach_port_t port) {
     } pp = &(*pp)->next;
   }
   pthread_mutex_unlock(&gLock);
-  if (!n)
+  if (!n) {
     return;
+  }
   free_entries(n->entries);
   mach_port_mod_refs(mach_task_self(), port, MACH_PORT_RIGHT_RECEIVE, -1);
   L("namespace %x destroyed", port);
@@ -754,8 +834,9 @@ static void destroy_ns(mach_port_t port) {
   pthread_mutex_unlock(&gLock);
   if (last) {
     pthread_t t;
-    if (pthread_create(&t, NULL, stop_idle_daemons, NULL) == 0)
+    if (pthread_create(&t, NULL, stop_idle_daemons, NULL) == 0) {
       pthread_detach(t);
+    }
   }
 }
 
@@ -776,15 +857,15 @@ static void *serve(void *arg) {
     }
     mach_msg_audit_trailer_t *t = (mach_msg_audit_trailer_t *)((char *)h + round_msg(h->msgh_size));
     pid_t pid = audit_token_to_pid(t->msgh_audit);
-    if (h->msgh_local_port == gCtl)
+    if (h->msgh_local_port == gCtl) {
       handle_ctl(h);
-    else if (h->msgh_local_port == gReturned && h->msgh_id == MACH_NOTIFY_PORT_DESTROYED)
+    } else if (h->msgh_local_port == gReturned && h->msgh_id == MACH_NOTIFY_PORT_DESTROYED) {
       port_returned((mach_port_destroyed_notification_t *)h);
-    else if (h->msgh_id == MACH_NOTIFY_NO_SENDERS)
+    } else if (h->msgh_id == MACH_NOTIFY_NO_SENDERS) {
       destroy_ns(h->msgh_local_port);
-    else if ((h->msgh_id & 0x40000000) || (h->msgh_id & 0x10000000))
+    } else if ((h->msgh_id & 0x40000000) || (h->msgh_id & 0x10000000)) {
       handle_pipe(h, pid);
-    else {
+    } else {
       L("pid %d: non-pipe msg id=%x", pid, h->msgh_id);
       mach_msg_destroy(h);
     }
@@ -799,8 +880,9 @@ int main(int argc, char **argv) {
     return 2;
   }
   gQuiet = getenv("SIMNS_QUIET") != NULL;
-  if (getenv("SIMNS_LOG"))
+  if (getenv("SIMNS_LOG")) {
     gLog = fopen(getenv("SIMNS_LOG"), "w");
+  }
   mach_port_t me = mach_task_self();
   mach_port_allocate(me, MACH_PORT_RIGHT_RECEIVE, &gNS);
   mach_port_insert_right(me, gNS, gNS, MACH_MSG_TYPE_MAKE_SEND);
@@ -821,13 +903,15 @@ int main(int argc, char **argv) {
   // the daemons' environment: ours, in the namespace. Loaded before saying hello: SimRun may look a daemon's service up
   // (SIMNS_MSG_LOOKUP) as soon as it is ready
   int envc = 0;
-  while (environ[envc])
+  while (environ[envc]) {
     envc++;
+  }
   gChildEnv = calloc(envc + 3, sizeof(char *));
   int k = 0;
   for (int i = 0; i < envc; i++) {
-    if (!strncmp(environ[i], "SIMNS_", 6) || !strncmp(environ[i], "DYLD_INSERT_LIBRARIES=", 22) || !strncmp(environ[i], "XPC_SIMULATOR_LAUNCHD_NAME=", 27) || !strncmp(environ[i], "XPC_FLAGS=", 10))
+    if (!strncmp(environ[i], "SIMNS_", 6) || !strncmp(environ[i], "DYLD_INSERT_LIBRARIES=", 22) || !strncmp(environ[i], "XPC_SIMULATOR_LAUNCHD_NAME=", 27) || !strncmp(environ[i], "XPC_FLAGS=", 10)) {
       continue;
+    }
     gChildEnv[k++] = environ[i];
   }
   gChildEnv[k++] = "XPC_SIMULATOR_LAUNCHD_NAME=dev.simrun.simns";
@@ -857,12 +941,15 @@ int main(int argc, char **argv) {
       kern_return_t kr = mach_msg(&m.h, MACH_SEND_MSG | MACH_SEND_TIMEOUT, sizeof m, 0, 0, 1000, 0);
       L("hello -> host slot %d kr=%x; waiting for ready", i, kr);
       int wait_ms = getenv("SIMNS_HOST_WAIT") ? atoi(getenv("SIMNS_HOST_WAIT")) : 5000;
-      for (int t = 0; t < wait_ms && !gReady; t += 10)
+      for (int t = 0; t < wait_ms && !gReady; t += 10) {
         usleep(10000);
-      if (!gReady)
+      }
+      if (!gReady) {
         L("host helper did not send ready; continuing");
-    } else
+      }
+    } else {
       L("SIMNS_HOST_SLOT=%s: no port in that slot", slot);
+    }
   }
 
   signal(SIGTERM, on_term);
@@ -870,8 +957,9 @@ int main(int argc, char **argv) {
   signal(SIGHUP, on_term);
   L("serving (shared)");
   pid_t parent = getppid();
-  while (getppid() == parent)
+  while (getppid() == parent) {
     sleep(1);   // the host server went away
+  }
   stop_daemons();
   return 0;
 }

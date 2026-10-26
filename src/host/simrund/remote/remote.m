@@ -19,11 +19,13 @@ static const NSUInteger kMaxPeers = 8;
 
 static NSString *NewToken(void) {
   uint8_t b[16];
-  if (SecRandomCopyBytes(kSecRandomDefault, sizeof b, b) != errSecSuccess)
+  if (SecRandomCopyBytes(kSecRandomDefault, sizeof b, b) != errSecSuccess) {
     arc4random_buf(b, sizeof b);
+  }
   NSMutableString *s = [NSMutableString string];
-  for (size_t i = 0; i < sizeof b; i++)
+  for (size_t i = 0; i < sizeof b; i++) {
     [s appendFormat:@"%02x", b[i]];
+  }
   return s;
 }
 
@@ -34,23 +36,28 @@ static NSString *NewToken(void) {
   RTCDefaultVideoEncoderFactory *_default;
 }
 - (instancetype)init {
-  if ((self = [super init]))
+  if ((self = [super init])) {
     _default = [RTCDefaultVideoEncoderFactory new];
+  }
   return self;
 }
 - (NSArray<RTCVideoCodecInfo *> *)supportedCodecs {
   NSMutableArray *codecs = [NSMutableArray array];
-  for (NSString *plid in @[ @"640c33", @"42e033" ])   // constrained high, constrained baseline; level 5.1
+  for (NSString *plid in @[ @"640c33", @"42e033" ]) {   // constrained high, constrained baseline; level 5.1
     [codecs addObject:[[RTCVideoCodecInfo alloc] initWithName:kRTCVideoCodecH264Name parameters:@{
       @"profile-level-id": plid, @"level-asymmetry-allowed": @"1", @"packetization-mode": @"1" }]];
-  for (RTCVideoCodecInfo *c in RTCDefaultVideoEncoderFactory.supportedCodecs)
-    if (![c.name isEqualToString:kRTCVideoCodecH264Name])
+  }
+  for (RTCVideoCodecInfo *c in RTCDefaultVideoEncoderFactory.supportedCodecs) {
+    if (![c.name isEqualToString:kRTCVideoCodecH264Name]) {
       [codecs addObject:c];
+    }
+  }
   return codecs;
 }
 - (id<RTCVideoEncoder>)createEncoder:(RTCVideoCodecInfo *)info {
-  if ([info.name isEqualToString:kRTCVideoCodecH264Name])
+  if ([info.name isEqualToString:kRTCVideoCodecH264Name]) {
     return [[RTCVideoEncoderH264 alloc] initWithCodecInfo:info];
+  }
   return [_default createEncoder:info];
 }
 @end
@@ -69,8 +76,9 @@ static NSString *NewToken(void) {
 }
 
 - (instancetype)initWithSessions:(NSArray<SRSession *> *(^)(void))sessions {
-  if (!(self = [super init]))
+  if (!(self = [super init])) {
     return nil;
+  }
   _sessions = [sessions copy];
   _peers = [NSMutableArray array];
   _streams = [NSMutableDictionary dictionary];
@@ -96,38 +104,46 @@ static NSString *NewToken(void) {
 }
 
 - (void)startIfEnabled {
-  if (![NSUserDefaults.standardUserDefaults boolForKey:kEnabledKey])
+  if (![NSUserDefaults.standardUserDefaults boolForKey:kEnabledKey]) {
     return;
+  }
   NSString *err = nil;
-  if (![self start:&err])
+  if (![self start:&err]) {
     NSLog(@"remote control: %@", err);
+  }
 }
 
 - (BOOL)setEnabled:(BOOL)on error:(NSString **)error {
-  if (on == _running)
+  if (on == _running) {
     return YES;
-  if (on && ![self start:error])
+  }
+  if (on && ![self start:error]) {
     return NO;
+  }
   if (!on) {
     [self stop];
     NSLog(@"remote control: off");
   }
   [NSUserDefaults.standardUserDefaults setBool:on forKey:kEnabledKey];
-  if (_onChange)
+  if (_onChange) {
     _onChange();
+  }
   return YES;
 }
 
 - (void)resetAccessKey {
   [NSUserDefaults.standardUserDefaults setObject:NewToken() forKey:kTokenKey];
-  if (!_running)
+  if (!_running) {
     return;
+  }
   [self stop];   // disconnects every viewer
   NSString *err = nil;
-  if (![self start:&err])
+  if (![self start:&err]) {
     NSLog(@"remote control: %@", err);
-  if (_onChange)
+  }
+  if (_onChange) {
     _onChange();
+  }
 }
 
 - (NSString *)link {
@@ -160,8 +176,9 @@ static NSString *NewToken(void) {
     }];
   }
   _token = [self.token dataUsingEncoding:NSUTF8StringEncoding];
-  if (![_http startOnPort:_port error:error])
+  if (![_http startOnPort:_port error:error]) {
     return NO;
+  }
   _running = YES;
   NSLog(@"remote control: on, %@", self.link);
   return YES;
@@ -170,8 +187,9 @@ static NSString *NewToken(void) {
 - (void)stop {
   [_http stop];
   _running = NO;
-  for (SRRemotePeer *p in [_peers copy])
+  for (SRRemotePeer *p in [_peers copy]) {
     [p closeWithReason:@"Remote control was turned off."];
+  }
 }
 
 // SIMRUN_REMOTE_ICE: the STUN/TURN servers both ends use, as JSON (RTCIceServer dictionaries:
@@ -179,27 +197,34 @@ static NSString *NewToken(void) {
 - (void)loadIceServers {
   const char *env = getenv("SIMRUN_REMOTE_ICE");
   id list = env ? [NSJSONSerialization JSONObjectWithData:[NSData dataWithBytes:env length:strlen(env)] options:0 error:NULL] : nil;
-  if (env && ![list isKindOfClass:NSArray.class])
+  if (env && ![list isKindOfClass:NSArray.class]) {
     NSLog(@"remote: SIMRUN_REMOTE_ICE isn't a JSON array; using the default");
-  if (![list isKindOfClass:NSArray.class])
+  }
+  if (![list isKindOfClass:NSArray.class]) {
     list = @[ @{ @"urls": @[ @"stun:stun.l.google.com:19302" ] } ];
+  }
   NSMutableArray *ice = [NSMutableArray array], *json = [NSMutableArray array];
   for (NSDictionary *d in list) {
-    if (![d isKindOfClass:NSDictionary.class])
+    if (![d isKindOfClass:NSDictionary.class]) {
       continue;
+    }
     id urls = d[@"urls"];
-    if ([urls isKindOfClass:NSString.class])
+    if ([urls isKindOfClass:NSString.class]) {
       urls = @[ urls ];
-    if (![urls isKindOfClass:NSArray.class])
+    }
+    if (![urls isKindOfClass:NSArray.class]) {
       continue;
+    }
     NSString *user = [d[@"username"] isKindOfClass:NSString.class] ? d[@"username"] : nil;
     NSString *cred = [d[@"credential"] isKindOfClass:NSString.class] ? d[@"credential"] : nil;
     [ice addObject:[[RTCIceServer alloc] initWithURLStrings:urls username:user credential:cred]];
     NSMutableDictionary *j = [@{ @"urls": urls } mutableCopy];
-    if (user)
+    if (user) {
       j[@"username"] = user;
-    if (cred)
+    }
+    if (cred) {
       j[@"credential"] = cred;
+    }
     [json addObject:j];
   }
   _ice = ice;
@@ -209,15 +234,18 @@ static NSString *NewToken(void) {
 // ---------------------------------------------------------------- requests
 - (BOOL)authorized:(SRHTTPRequest *)r {
   NSString *auth = r.headers[@"authorization"];
-  if (![auth hasPrefix:@"Bearer "])
+  if (![auth hasPrefix:@"Bearer "]) {
     return NO;
+  }
   NSData *given = [[auth substringFromIndex:7] dataUsingEncoding:NSUTF8StringEncoding];
-  if (given.length != _token.length || !_token.length)
+  if (given.length != _token.length || !_token.length) {
     return NO;
+  }
   const uint8_t *a = given.bytes, *b = _token.bytes;
   uint8_t diff = 0;
-  for (NSUInteger i = 0; i < given.length; i++)
+  for (NSUInteger i = 0; i < given.length; i++) {
     diff |= a[i] ^ b[i];   // in constant time
+  }
   return diff == 0;
 }
 
@@ -260,9 +288,10 @@ static NSData *JSON(id obj) {
 
   if ([r.path isEqualToString:@"/api/apps"]) {
     NSMutableArray *apps = [NSMutableArray array];
-    for (SRSession *s in [self viewableSessions])
+    for (SRSession *s in [self viewableSessions]) {
       [apps addObject:@{ @"id": @(s.pid), @"title": s.title ?: @"", @"width": @(s.screenSize.width),
                          @"height": @(s.screenSize.height), @"scale": @(s.screenScale) }];
+    }
     respond(200, json, JSON(@{ @"apps": apps, @"iceServers": _iceJSON }));
     return;
   }
@@ -279,9 +308,11 @@ static NSData *JSON(id obj) {
     }
     pid_t pid = (pid_t)r.query[@"app"].intValue;
     SRSession *session = nil;
-    for (SRSession *s in [self viewableSessions])
-      if (s.pid == pid)
+    for (SRSession *s in [self viewableSessions]) {
+      if (s.pid == pid) {
         session = s;
+      }
+    }
     if (!session) {
       error(404, @"That app isn't running.");
       return;
@@ -291,10 +322,11 @@ static NSData *JSON(id obj) {
       return;
     }
     [self connect:session offer:sdp full:[body[@"full"] boolValue] respond:^(NSString *answer, NSString *why) {
-      if (answer)
+      if (answer) {
         respond(200, json, JSON(@{ @"sdp": answer }));
-      else
+      } else {
         error(500, why ?: @"WebRTC failed");
+      }
     }];
     return;
   }
@@ -303,17 +335,20 @@ static NSData *JSON(id obj) {
 
 - (NSArray<SRSession *> *)viewableSessions {
   NSMutableArray *list = [NSMutableArray array];
-  for (SRSession *s in _sessions())
-    if (s.isReady && s.pid > 0 && s.screenSize.width > 0)
+  for (SRSession *s in _sessions()) {
+    if (s.isReady && s.pid > 0 && s.screenSize.width > 0) {
       [list addObject:s];
+    }
+  }
   return list;
 }
 
 // ---------------------------------------------------------------- viewers
 - (void)connect:(SRSession *)session offer:(NSString *)sdp full:(BOOL)full respond:(void (^)(NSString *, NSString *))respond {
   SRRemoteStream *stream = _streams[@(session.pid)];
-  if (!stream)
+  if (!stream) {
     _streams[@(session.pid)] = stream = [[SRRemoteStream alloc] initWithSession:session factory:_factory];
+  }
   SRRemotePeer *peer = [[SRRemotePeer alloc] initWithStream:stream factory:_factory iceServers:_ice];
   [_peers addObject:peer];
   __weak SRRemoteControl *weakSelf = self;
@@ -332,14 +367,17 @@ static NSData *JSON(id obj) {
 }
 
 - (void)peerClosed:(SRRemotePeer *)peer {
-  if (![_peers containsObject:peer])
+  if (![_peers containsObject:peer]) {
     return;
+  }
   [_peers removeObject:peer];
   NSLog(@"remote: a viewer of %@ left", peer.stream.session.title);
   BOOL watched = NO;
-  for (SRRemotePeer *p in _peers)
-    if (p.stream == peer.stream)
+  for (SRRemotePeer *p in _peers) {
+    if (p.stream == peer.stream) {
       watched = YES;
+    }
+  }
   if (!watched) {
     [peer.stream stop];
     [_streams removeObjectForKey:@(peer.stream.session.pid)];
@@ -349,21 +387,24 @@ static NSData *JSON(id obj) {
 
 - (void)viewersChanged {
   // apps that quit end their viewers' connections
-  if (_peers.count && !_reaper)
+  if (_peers.count && !_reaper) {
     _reaper = [NSTimer scheduledTimerWithTimeInterval:1 repeats:YES block:^(NSTimer *t) {
       [self reap];
     }];
-  else if (!_peers.count) {
+  } else if (!_peers.count) {
     [_reaper invalidate];
     _reaper = nil;
   }
-  if (_onChange)
+  if (_onChange) {
     _onChange();
+  }
 }
 - (void)reap {
   NSArray<SRSession *> *running = _sessions();
-  for (SRRemotePeer *p in [_peers copy])
-    if (![running containsObject:p.stream.session])
+  for (SRRemotePeer *p in [_peers copy]) {
+    if (![running containsObject:p.stream.session]) {
       [p closeWithReason:@"The app quit."];
+    }
+  }
 }
 @end

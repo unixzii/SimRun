@@ -33,8 +33,9 @@ static uint64_t NowNs(void) {   // mach_absolute_time, as WebRTC's clock
 }
 
 - (instancetype)initWithSession:(SRSession *)session factory:(RTCPeerConnectionFactory *)factory {
-  if (!(self = [super init]))
+  if (!(self = [super init])) {
     return nil;
+  }
   _session = session;
   _source = [factory videoSourceForScreenCast:YES];   // screen content: sharp text over frame rate
   _capturer = [[RTCVideoCapturer alloc] initWithDelegate:_source];
@@ -43,17 +44,19 @@ static uint64_t NowNs(void) {   // mach_absolute_time, as WebRTC's clock
   __weak SRRemoteStream *weakSelf = self;
   _observer = [session addFrameObserver:^(IOSurfaceRef surface, CGSize pixelSize, dispatch_block_t done) {
     SRRemoteStream *me = weakSelf;
-    if (me)
+    if (me) {
       [me frame:surface size:pixelSize done:done];
-    else
+    } else {
       done();
+    }
   }];
   _repeat = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, _queue);
   dispatch_source_set_timer(_repeat, dispatch_time(DISPATCH_TIME_NOW, kRepeatNs), kRepeatNs / 2, 10 * NSEC_PER_MSEC);
   dispatch_source_set_event_handler(_repeat, ^{
     SRRemoteStream *me = weakSelf;
-    if (me && me->_last && NowNs() - me->_lastSentNs >= kRepeatNs)
+    if (me && me->_last && NowNs() - me->_lastSentNs >= kRepeatNs) {
       [me send:me->_last];
+    }
   });
   dispatch_resume(_repeat);
   return self;
@@ -63,15 +66,18 @@ static uint64_t NowNs(void) {   // mach_absolute_time, as WebRTC's clock
   atomic_store(&_stopped, true);
   [_session removeFrameObserver:_observer];
   _observer = nil;
-  if (_repeat)
+  if (_repeat) {
     dispatch_source_cancel(_repeat);
+  }
   _repeat = nil;
   dispatch_async(_queue, ^{
-    if (self->_last)
+    if (self->_last) {
       CVPixelBufferRelease(self->_last);
+    }
     self->_last = NULL;
-    if (self->_pool)
+    if (self->_pool) {
       CVPixelBufferPoolRelease(self->_pool);
+    }
     self->_pool = NULL;
   });
 }
@@ -85,10 +91,12 @@ static uint64_t NowNs(void) {   // mach_absolute_time, as WebRTC's clock
     }
     CVPixelBufferRef copy = [self copySurface:surface size:size];
     done();
-    if (!copy)
+    if (!copy) {
       return;
-    if (self->_last)
+    }
+    if (self->_last) {
       CVPixelBufferRelease(self->_last);
+    }
     self->_last = copy;
     [self send:copy];
   });
@@ -96,25 +104,30 @@ static uint64_t NowNs(void) {   // mach_absolute_time, as WebRTC's clock
 
 // The content (its top-left `size`) in a buffer of our own; NULL if it isn't BGRA.
 - (CVPixelBufferRef)copySurface:(IOSurfaceRef)s size:(CGSize)size CF_RETURNS_RETAINED {
-  if (IOSurfaceGetPixelFormat(s) != 'BGRA')
+  if (IOSurfaceGetPixelFormat(s) != 'BGRA') {
     return NULL;
+  }
   size_t w = (size_t)size.width & ~(size_t)1, h = (size_t)size.height & ~(size_t)1;   // even, for the encoder's 4:2:0
-  if (!w || !h)
+  if (!w || !h) {
     return NULL;
+  }
   if (!_pool || w != _poolW || h != _poolH) {
-    if (_pool)
+    if (_pool) {
       CVPixelBufferPoolRelease(_pool);
+    }
     _pool = NULL;
     NSDictionary *attrs = @{ (id)kCVPixelBufferPixelFormatTypeKey: @(kCVPixelFormatType_32BGRA), (id)kCVPixelBufferWidthKey: @(w),
                              (id)kCVPixelBufferHeightKey: @(h), (id)kCVPixelBufferIOSurfacePropertiesKey: @{} };
-    if (CVPixelBufferPoolCreate(NULL, NULL, (__bridge CFDictionaryRef)attrs, &_pool) != kCVReturnSuccess)
+    if (CVPixelBufferPoolCreate(NULL, NULL, (__bridge CFDictionaryRef)attrs, &_pool) != kCVReturnSuccess) {
       return NULL;
+    }
     _poolW = w;
     _poolH = h;
   }
   CVPixelBufferRef pb = NULL;
-  if (CVPixelBufferPoolCreatePixelBuffer(NULL, _pool, &pb) != kCVReturnSuccess)
+  if (CVPixelBufferPoolCreatePixelBuffer(NULL, _pool, &pb) != kCVReturnSuccess) {
     return NULL;
+  }
   if (IOSurfaceLock(s, kIOSurfaceLockReadOnly, NULL) != kIOReturnSuccess) {
     CVPixelBufferRelease(pb);
     return NULL;
@@ -126,11 +139,13 @@ static uint64_t NowNs(void) {   // mach_absolute_time, as WebRTC's clock
   size_t dstRow = CVPixelBufferGetBytesPerRow(pb);
   h = MIN(h, IOSurfaceGetHeight(s));
   size_t row = MIN(w, IOSurfaceGetWidth(s)) * 4;
-  if (srcRow == dstRow && row == srcRow)
+  if (srcRow == dstRow && row == srcRow) {
     memcpy(dst, src, srcRow * h);
-  else
-    for (size_t y = 0; y < h; y++)
+  } else {
+    for (size_t y = 0; y < h; y++) {
       memcpy(dst + y * dstRow, src + y * srcRow, row);
+    }
+  }
   CVPixelBufferUnlockBaseAddress(pb, 0);
   IOSurfaceUnlock(s, kIOSurfaceLockReadOnly, NULL);
   return pb;

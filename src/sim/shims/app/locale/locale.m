@@ -10,31 +10,41 @@
 #import "app.h"
 
 static int gVerbose;
-#define LOG(...) do { if (gVerbose) fprintf(stderr, "[locale] " __VA_ARGS__); } while (0)
+#define LOG(...) \
+  do { \
+    if (gVerbose) { \
+      fprintf(stderr, "[locale] " __VA_ARGS__); \
+    } \
+  } while (0)
 
 void SRLocaleStart(void) {
   gVerbose = getenv("LOCALE_VERBOSE") != NULL;
   const char *json = getenv("SIMRUN_HOST_INTL");
-  if (!json)
+  if (!json) {
     return;
+  }
   NSDictionary *host = [NSJSONSerialization JSONObjectWithData:[NSData dataWithBytesNoCopy:(void *)json length:strlen(json) freeWhenDone:NO]
                                                        options:0 error:NULL];
-  if (![host isKindOfClass:NSDictionary.class])
+  if (![host isKindOfClass:NSDictionary.class]) {
     return;
+  }
   NSDictionary *cur = CFBridgingRelease(CFPreferencesCopyMultiple((__bridge CFArrayRef)host.allKeys, kCFPreferencesAnyApplication,
                                                                   kCFPreferencesCurrentUser, kCFPreferencesAnyHost));
   NSMutableDictionary *set = [NSMutableDictionary dictionary];
   NSMutableArray *remove = [NSMutableArray array];
   [host enumerateKeysAndObjectsUsingBlock:^(NSString *k, id v, BOOL *stop) {
     if (v == NSNull.null) {
-      if (cur[k])
+      if (cur[k]) {
         [remove addObject:k];
+      }
     }
-    else if (![cur[k] isEqual:v])
+    else if (![cur[k] isEqual:v]) {
       set[k] = v;
+    }
   }];
-  if (!set.count && !remove.count)
+  if (!set.count && !remove.count) {
     return;
+  }
   CFPreferencesSetMultiple((__bridge CFDictionaryRef)set, (__bridge CFArrayRef)remove, kCFPreferencesAnyApplication,
                            kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
   CFPreferencesSynchronize(kCFPreferencesAnyApplication, kCFPreferencesCurrentUser, kCFPreferencesAnyHost);

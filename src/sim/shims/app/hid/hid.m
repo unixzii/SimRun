@@ -35,7 +35,12 @@
 
 #define LOG(fmt, ...) fprintf(stderr, "[hid] " fmt "\n", ##__VA_ARGS__)
 static int gVerbose;
-#define VLOG(fmt, ...) do { if (gVerbose) LOG(fmt, ##__VA_ARGS__); } while (0)
+#define VLOG(fmt, ...) \
+  do { \
+    if (gVerbose) { \
+      LOG(fmt, ##__VA_ARGS__); \
+    } \
+  } while (0)
 
 // ---------------------------------------------------------------- IOKit (IOHIDEvent) / BackBoardServices private API
 typedef struct __IOHIDEvent *IOHIDEventRef;
@@ -79,10 +84,11 @@ static uint32_t kKeyboardSource = 1;
 @end
 
 static void SRHIDOnMain(dispatch_block_t b) {
-  if (pthread_main_np())
+  if (pthread_main_np()) {
     b();
-  else
+  } else {
     dispatch_async(dispatch_get_main_queue(), b);
+  }
 }
 
 // ---------------------------------------------------------------- touch routing (what backboardd's hit-test does)
@@ -92,10 +98,12 @@ static void SRHIDOnMain(dispatch_block_t b) {
 static UIWindowScene *SRHIDScene(void) {
   UIWindowScene *best = nil;
   for (UIScene *s in UIApplication.sharedApplication.connectedScenes) {
-    if (![s isKindOfClass:UIWindowScene.class])
+    if (![s isKindOfClass:UIWindowScene.class]) {
       continue;
-    if (!best || s.activationState == UISceneActivationStateForegroundActive)
+    }
+    if (!best || s.activationState == UISceneActivationStateForegroundActive) {
       best = (UIWindowScene *)s;
+    }
   }
   return best;
 }
@@ -109,10 +117,12 @@ static UIWindow *SRHIDWindowAt(CGPoint p) {
   CGFloat level = 0;
   BOOL have = NO;
   for (UIWindow *w in wins) {
-    if (have && w.windowLevel != level)
+    if (have && w.windowLevel != level) {
       break;
-    if (w.hidden || w.alpha < 0.01 || !w.userInteractionEnabled || ![w _contextId])
+    }
+    if (w.hidden || w.alpha < 0.01 || !w.userInteractionEnabled || ![w _contextId]) {
       continue;
+    }
     CGPoint lp = [w convertPoint:p fromCoordinateSpace:ws.coordinateSpace];
     if ([w hitTest:lp withEvent:nil]) {
       hit = w;
@@ -139,21 +149,25 @@ static void SRHIDTouchFingerMain(int finger, int phase, float x, float y);
 // ts: mach_absolute_time() of the sample (0 = now). UIKit derives touch velocities (fling speed) from these.
 static uint64_t gLastTouchTime;
 static void SRHIDTouchFingerAt(int finger, int phase, float x, float y, uint64_t ts) {
-  if (finger < 0 || finger >= SRHID_MAX_FINGERS)
+  if (finger < 0 || finger >= SRHID_MAX_FINGERS) {
     return;
+  }
   SRFinger *f = &gFingers[finger];
   if (f->detached && phase != SRHID_TOUCH_BEGAN) {   // taken by a drag: UIKit already saw this touch cancelled
     f->x = x;
     f->y = y;
-    if (phase == SRHID_TOUCH_ENDED || phase == SRHID_TOUCH_CANCELLED)
+    if (phase == SRHID_TOUCH_ENDED || phase == SRHID_TOUCH_CANCELLED) {
       f->down = f->detached = false;
-    if (gDetachedHandler)
+    }
+    if (gDetachedHandler) {
       gDetachedHandler(phase, x, y, gDetachedCtx);
+    }
     return;
   }
   if (phase == SRHID_TOUCH_BEGAN) {
-    if (f->down)
+    if (f->down) {
       SRHIDTouchFingerMain(finger, SRHID_TOUCH_ENDED, f->x, f->y); // missing end: close the old touch
+    }
     UIWindow *w = SRHIDWindowAt(CGPointMake(x, y));
     if (!w) {
       VLOG("touch began but no window");
@@ -161,43 +175,52 @@ static void SRHIDTouchFingerAt(int finger, int phase, float x, float y, uint64_t
     }
     // all fingers of one hand event must share the context; join an existing touch's context if any
     uint32_t ctx = [w _contextId];
-    for (int i = 0; i < SRHID_MAX_FINGERS; i++)
+    for (int i = 0; i < SRHID_MAX_FINGERS; i++) {
       if (gFingers[i].down) {
         ctx = gFingers[i].ctx;
         break;
       }
+    }
     *f = (SRFinger){ .down = true, .x = x, .y = y, .identity = gNextIdentity++, .ctx = ctx };
   } else {
-    if (!f->down)
+    if (!f->down) {
       return; // moved/ended without began: ignore
+    }
     f->x = x;
     f->y = y;
   }
   bool ending = phase == SRHID_TOUCH_ENDED || phase == SRHID_TOUCH_CANCELLED;
   uint64_t now = mach_absolute_time();
   static mach_timebase_info_data_t tb;
-  if (!tb.denom)
+  if (!tb.denom) {
     mach_timebase_info(&tb);
-  if (!ts || ts > now || (now - ts) * tb.numer / tb.denom > 250 * NSEC_PER_MSEC)
+  }
+  if (!ts || ts > now || (now - ts) * tb.numer / tb.denom > 250 * NSEC_PER_MSEC) {
     ts = now;   // missing or implausible
-  if (ts < gLastTouchTime)
+  }
+  if (ts < gLastTouchTime) {
     ts = gLastTouchTime;   // digitizer time never runs backwards
+  }
   gLastTouchTime = ts;
   uint32_t changedMask = phase == SRHID_TOUCH_MOVED ? kMaskPosition : (kMaskRange | kMaskTouch | kMaskIdentity);
-  if (phase == SRHID_TOUCH_CANCELLED)
+  if (phase == SRHID_TOUCH_CANCELLED) {
     changedMask |= kMaskCancel;
+  }
   // Hand (parent) event: position of the changed finger, touch/range = any finger still touching after this event.
   bool anyTouching = !ending;
-  for (int i = 0; i < SRHID_MAX_FINGERS; i++)
-    if (i != finger && gFingers[i].down)
+  for (int i = 0; i < SRHID_MAX_FINGERS; i++) {
+    if (i != finger && gFingers[i].down) {
       anyTouching = true;
+    }
+  }
   IOHIDEventRef hand = IOHIDEventCreateDigitizerEvent(kCFAllocatorDefault, ts, kTransducerHand, 0, 0, changedMask, 0, x, y, 0, 0, 0,
                                                       anyTouching, anyTouching, 0);
   IOHIDEventSetIntegerValue(hand, kFieldDigitizerIsDisplayIntegrated, 1);
   for (int i = 0; i < SRHID_MAX_FINGERS; i++) {
     SRFinger *g = &gFingers[i];
-    if (!g->down)
+    if (!g->down) {
       continue;
+    }
     bool changed = i == finger;
     bool touching = !(changed && ending);
     IOHIDEventRef child = IOHIDEventCreateDigitizerFingerEvent(kCFAllocatorDefault, ts, (uint32_t)i + 1, g->identity, changed ? changedMask : 0,
@@ -212,8 +235,9 @@ static void SRHIDTouchFingerAt(int finger, int phase, float x, float y, uint64_t
   VLOG("touch finger=%d phase=%d (%.1f,%.1f) ctx=0x%x", finger, phase, x, y, f->ctx);
   [UIApplication.sharedApplication _enqueueHIDEvent:hand];
   CFRelease(hand);
-  if (ending)
+  if (ending) {
     f->down = false;
+  }
 }
 static void SRHIDTouchFingerMain(int finger, int phase, float x, float y) {
   SRHIDTouchFingerAt(finger, phase, x, y, 0);
@@ -231,8 +255,9 @@ bool SRHIDDetachTouches(SRHIDDetachedTouchHandler handler, void *ctx) {
   void (^detach)(void) = ^{
     for (int i = 0; i < SRHID_MAX_FINGERS; i++) {
       SRFinger *f = &gFingers[i];
-      if (!f->down || f->detached)
+      if (!f->down || f->detached) {
         continue;
+      }
       float x = f->x, y = f->y;
       SRHIDTouchFingerMain(i, SRHID_TOUCH_CANCELLED, x, y);   // UIKit: touch cancelled
       f->down = f->detached = true;                           // still on the glass, now the drag's
@@ -242,10 +267,11 @@ bool SRHIDDetachTouches(SRHIDDetachedTouchHandler handler, void *ctx) {
     gDetachedCtx = ctx;
     VLOG("detached touches for a drag: %d", any);
   };
-  if (pthread_main_np())
+  if (pthread_main_np()) {
     detach();
-  else
+  } else {
     dispatch_sync(dispatch_get_main_queue(), detach);
+  }
   return any;
 }
 
@@ -302,8 +328,9 @@ static void SRHIDCrownMain(float dy) {
   float units = dy / 1.5f + gCrownRemainder;
   long whole = lroundf(units);
   gCrownRemainder = units - whole;
-  if (!whole)
+  if (!whole) {
     return;
+  }
   // the content follows the fingers (dy > 0: down); the Crown turned up scrolls it down
   IOHIDEventRef e = IOHIDEventCreateScrollEvent(kCFAllocatorDefault, mach_absolute_time(), 0, -whole, 0, 0);
   IOHIDEventSetSenderID(e, kCrownSenderID);
@@ -339,8 +366,9 @@ static bool gScrollPhased;   // the scroll finger belongs to a trackpad gesture 
 
 static uint64_t SRHIDMachTimeFromUptime(double seconds) {   // NSEvent.timestamp -> mach_absolute_time units
   static mach_timebase_info_data_t tb;
-  if (!tb.denom)
+  if (!tb.denom) {
     mach_timebase_info(&tb);
+  }
   return seconds > 0 ? (uint64_t)(seconds * 1e9 * tb.denom / tb.numer) : 0;
 }
 
@@ -350,32 +378,38 @@ static void SRHIDWheelMain(float x, float y, float dx, float dy) {
     return;
   }
   SRFinger *f = &gFingers[SRHID_SCROLL_FINGER];
-  if (f->down && gScrollPhased)
+  if (f->down && gScrollPhased) {
     return;   // a trackpad gesture owns the finger
+  }
   if (!f->down) {
     gScrollX = x;
     gScrollY = y;
     gScrollPhased = false;
     SRHIDTouchFingerMain(SRHID_SCROLL_FINGER, SRHID_TOUCH_BEGAN, x, y);
-    if (!f->down)
+    if (!f->down) {
       return;
+    }
   }
   gScrollX += dx;
   gScrollY += dy;
   SRHIDTouchFingerMain(SRHID_SCROLL_FINGER, SRHID_TOUCH_MOVED, gScrollX, gScrollY);
   uint64_t serial = ++gScrollSerial;
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 120 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
-    if (serial != gScrollSerial || !gFingers[SRHID_SCROLL_FINGER].down)
+    if (serial != gScrollSerial || !gFingers[SRHID_SCROLL_FINGER].down) {
       return;
+    }
     // kill the velocity before lifting: a few sub-point "still" samples spread over ~60 ms, then lift
-    for (int k = 1; k <= 3; k++)
+    for (int k = 1; k <= 3; k++) {
       dispatch_after(dispatch_time(DISPATCH_TIME_NOW, k * 20 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
-        if (serial != gScrollSerial || !gFingers[SRHID_SCROLL_FINGER].down)
+        if (serial != gScrollSerial || !gFingers[SRHID_SCROLL_FINGER].down) {
           return;
+        }
         SRHIDTouchFingerMain(SRHID_SCROLL_FINGER, SRHID_TOUCH_MOVED, gScrollX + (k & 1) * 0.05f, gScrollY + (k & 1) * 0.05f);
-        if (k == 3)
+        if (k == 3) {
           SRHIDTouchFingerMain(SRHID_SCROLL_FINGER, SRHID_TOUCH_ENDED, gScrollX, gScrollY);
+        }
       });
+    }
   });
 }
 
@@ -388,8 +422,9 @@ static void SRHIDTrackpadScrollMain(float x, float y, float dx, float dy, int ph
     SRHIDCrownMain(dy);
     return;
   }
-  if (momentumPhase)
+  if (momentumPhase) {
     return;   // the finger is already up: UIKit's own deceleration takes it from here
+  }
   SRFinger *f = &gFingers[SRHID_SCROLL_FINGER];
   uint64_t ts = SRHIDMachTimeFromUptime(timestamp);
   VLOG("trackpad scroll phase=%d d=(%.1f,%.1f) event age %.1f ms", phase, dx, dy,
@@ -404,8 +439,9 @@ static void SRHIDTrackpadScrollMain(float x, float y, float dx, float dy, int ph
       gScrollY = y;
       gScrollPhased = true;
       SRHIDTouchFingerAt(SRHID_SCROLL_FINGER, SRHID_TOUCH_BEGAN, x, y, ts);
-      if (!f->down)
+      if (!f->down) {
         return;
+      }
     }
     if (dx || dy) {
       gScrollX += dx;
@@ -413,8 +449,9 @@ static void SRHIDTrackpadScrollMain(float x, float y, float dx, float dy, int ph
       SRHIDTouchFingerAt(SRHID_SCROLL_FINGER, SRHID_TOUCH_MOVED, gScrollX, gScrollY, ts);
     }
   } else if (phase & (kPhaseEnded | kPhaseCancelled)) {
-    if (!f->down)
+    if (!f->down) {
       return;
+    }
     if (dx || dy) {
       gScrollX += dx;
       gScrollY += dy;
@@ -425,11 +462,13 @@ static void SRHIDTrackpadScrollMain(float x, float y, float dx, float dy, int ph
   // Safety net: if the gesture's end never arrives (window closed mid-gesture...), cancel the touch after 5 s without
   // input. Cancel, not lift: fingers resting on the trackpad must not turn into a tap on what is under the cursor.
   uint64_t serial = ++gScrollSerial;
-  if (f->down)
+  if (f->down) {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-      if (serial == gScrollSerial && gFingers[SRHID_SCROLL_FINGER].down)
+      if (serial == gScrollSerial && gFingers[SRHID_SCROLL_FINGER].down) {
         SRHIDTouchFingerMain(SRHID_SCROLL_FINGER, SRHID_TOUCH_CANCELLED, gScrollX, gScrollY);
+      }
     });
+  }
 }
 void SRHIDScroll(float x, float y, float dx, float dy) {
   SRHIDOnMain(^{
@@ -468,8 +507,9 @@ static void SRHIDTrackpadGestureMain(int type, float x, float y, float magnifica
   uint32_t bit = type == SR_GESTURE_ROTATE ? 2 : 1;
   if (phase & (kPhaseBegan | kPhaseChanged)) {
     if (!gPinch.streams) {
-      if (gFingers[SRHID_PINCH_FINGER].down || gFingers[SRHID_PINCH_FINGER + 1].down)
+      if (gFingers[SRHID_PINCH_FINGER].down || gFingers[SRHID_PINCH_FINGER + 1].down) {
         return;
+      }
       gPinch.cx = x;
       gPinch.cy = y;
       gPinch.scale = 1;
@@ -484,8 +524,9 @@ static void SRHIDTrackpadGestureMain(int type, float x, float y, float magnifica
     }
   } else if ((phase & (kPhaseEnded | kPhaseCancelled)) && (gPinch.streams & bit)) {
     gPinch.streams &= ~bit;
-    if (!gPinch.streams)
+    if (!gPinch.streams) {
       SRHIDPinchPlace(phase & kPhaseCancelled ? SRHID_TOUCH_CANCELLED : SRHID_TOUCH_ENDED);
+    }
   }
 }
 void SRHIDTrackpadGesture(int type, float x, float y, float magnification, float rotationDegrees, int phase) {
@@ -497,12 +538,14 @@ void SRHIDTrackpadGesture(int type, float x, float y, float magnification, float
 // Trackpad smart magnify (two-finger double tap) -> a double tap at the cursor, iOS's zoom gesture.
 void SRHIDDoubleTap(float x, float y) {
   SRHIDOnMain(^{
-    if (gFingers[0].down)
+    if (gFingers[0].down) {
       return;
-    for (int k = 0; k < 4; k++)
+    }
+    for (int k = 0; k < 4; k++) {
       dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)k * 60 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
         SRHIDTouchFingerMain(0, k & 1 ? SRHID_TOUCH_ENDED : SRHID_TOUCH_BEGAN, x, y);
       });
+    }
   });
 }
 
@@ -521,13 +564,15 @@ static void SRHIDRunAfterKeysMain(void) {
   while (gAfterKeys.count) {
     id next = gAfterKeys.firstObject;
     bool isKey = [next isKindOfClass:NSNumber.class];
-    if (!isKey && gKeysInFlight.count)
+    if (!isKey && gKeysInFlight.count) {
       return;
+    }
     [gAfterKeys removeObjectAtIndex:0];
-    if (isKey)
+    if (isKey) {
       SRHIDPostKeyMain([next unsignedIntValue] >> 1, [next unsignedIntValue] & 1);
-    else
+    } else {
       ((dispatch_block_t)next)();
+    }
   }
 }
 void SRHIDAfterKeys(dispatch_block_t block) {
@@ -543,8 +588,9 @@ void SRHIDAfterKeys(dispatch_block_t block) {
 static void SRHIDKeyWatchdogMain(void) {
   static BOOL armed, stalled;
   static uint64_t before;
-  if (armed)
+  if (armed) {
     return;
+  }
   armed = YES;
   before = gKeysHandled;
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), ^{
@@ -572,10 +618,11 @@ static uintptr_t sr_handleKeyHIDEvent(id self, SEL _cmd, IOHIDEventRef e, id syn
   if (i != NSNotFound) {
     [gKeysInFlight removeObjectAtIndex:i];
     gKeysHandled++;
-    if (!gKeysInFlight.count && gAfterKeys.count)
+    if (!gKeysInFlight.count && gAfterKeys.count) {
       dispatch_async(dispatch_get_main_queue(), ^{
         SRHIDRunAfterKeysMain();
       });   // outside UIKit's event handling
+    }
   }
   return r;
 }
@@ -607,10 +654,11 @@ static void SRHIDPostKeyMain(uint32_t usage, bool down) {
   CFRelease(e);
 }
 static void SRHIDKeyUsageMain(uint32_t usage, bool down) {
-  if (gAfterKeys.count)
+  if (gAfterKeys.count) {
     [gAfterKeys addObject:@(usage << 1 | down)];   // behind something waiting for the keys before it
-  else
+  } else {
     SRHIDPostKeyMain(usage, down);
+  }
 }
 void SRHIDKeyUsage(uint32_t usage, bool down) {
   SRHIDOnMain(^{
@@ -663,23 +711,27 @@ void SRHIDKeyMac(uint16_t keyCode, bool down, uint32_t flags) {
   SRHIDOnMain(^{
     uint32_t usage = keyCode < 128 ? kMacToHID[keyCode] : 0;
     bool isModifierKey = usage >= 0xE0 && usage <= 0xE7;
-    if (!isModifierKey)
+    if (!isModifierKey) {
       SRHIDSyncModifiersMain(flags);
-    if (keyCode == 0x39)
+    }
+    if (keyCode == 0x39) {
       return; // caps lock: toggled by the host, not mirrored
+    }
     if (!usage) {
       VLOG("unmapped mac keyCode 0x%x", keyCode);
       return;
     }
     if (isModifierKey) {
       // flagsChanged-style input: keep gModsDown consistent with what we send
-      for (size_t i = 0; i < sizeof kModifiers / sizeof *kModifiers; i++)
+      for (size_t i = 0; i < sizeof kModifiers / sizeof *kModifiers; i++) {
         if (kModifiers[i].usage == usage || kModifiers[i].usage + 4 == usage) {
-          if (down)
+          if (down) {
             gModsDown |= kModifiers[i].flag;
-          else
+          } else {
             gModsDown &= ~kModifiers[i].flag;
+          }
         }
+      }
     }
     SRHIDKeyUsageMain(usage, down);
   });
@@ -734,9 +786,9 @@ static void SRHIDPushDeferringChains(void) {
   UIWindowScene *ws = SRHIDScene();
   id fbs = [ws _FBSScene];
   id token;
-  if ([fbs respondsToSelector:@selector(ui_eventDeferringToken)])
+  if ([fbs respondsToSelector:@selector(ui_eventDeferringToken)]) {
     token = [fbs ui_eventDeferringToken];
-  else {   // iOS 18 has no ui_eventDeferringToken; UIKit uses this same token (its scene identity token's string)
+  } else {   // iOS 18 has no ui_eventDeferringToken; UIKit uses this same token (its scene identity token's string)
     NSString *str = [[fbs identityToken] stringRepresentation];
     token = str ? [NSClassFromString(@"BKSHIDEventDeferringToken") tokenForString:str] : nil;
   }
@@ -744,8 +796,9 @@ static void SRHIDPushDeferringChains(void) {
     VLOG("no scene deferring token yet");
     return;
   }
-  if ([token isEqual:gLastFocusToken])
+  if ([token isEqual:gLastFocusToken]) {
     return;
+  }
   gLastFocusToken = token;
   id disp = [NSClassFromString(@"BKSHIDEventDisplay") builtinDisplay];
   Class EnvC = NSClassFromString(@"BKSHIDEventDeferringEnvironment");
@@ -756,20 +809,23 @@ static void SRHIDPushDeferringChains(void) {
     target = [target respondsToSelector:@selector(initWithPID:token:)] ? [target initWithPID:getpid() token:token] : [target _initWithPID:getpid() token:token];
     id chain = [NSClassFromString(@"BKSHIDEventDeliveryChain") alloc];
     SEL full = @selector(initWithIdentity:compatibilityDisplay:selectionPath:path:modalities:constraints:containsSubset:containsEndOfChain:finalStringTargetIndex:generation:);
-    if ([chain respondsToSelector:full])
+    if ([chain respondsToSelector:full]) {
       chain = [chain initWithIdentity:ident compatibilityDisplay:nil selectionPath:nil path:@[target] modalities:nil constraints:nil
                        containsSubset:NO containsEndOfChain:YES finalStringTargetIndex:0 generation:gChainGeneration++];
-    else
+    } else {
       chain = [chain initWithIdentity:ident compatibilityDisplay:nil path:@[target]];   // iOS 18
-    if (chain)
+    }
+    if (chain) {
       [chains addObject:chain];
+    }
   }
   LOG("keyboard focus: deferring chains -> scene token %s", [[token description] UTF8String]);
   id observer = [NSClassFromString(@"BKSHIDEventObserver") sharedInstance];
-  if ([observer respondsToSelector:@selector(didUpdateDeferringChains:withReply:)])
+  if ([observer respondsToSelector:@selector(didUpdateDeferringChains:withReply:)]) {
     [observer didUpdateDeferringChains:chains withReply:nil];
-  else
+  } else {
     [observer didUpdateDeferringChains:chains];   // iOS 18
+  }
 }
 
 // ---------------------------------------------------------------- dictation livelock workaround
@@ -784,12 +840,15 @@ static BOOL sr_no(id self, SEL _cmd, ...) {
 static void SRHIDDisableDictation(void) {
   Class conn = NSClassFromString(@"UIDictationConnection"), ctl = NSClassFromString(@"UIDictationController");
   Method m;
-  if ((m = class_getInstanceMethod(conn, NSSelectorFromString(@"dictationIsAvailableForLanguage:"))))
+  if ((m = class_getInstanceMethod(conn, NSSelectorFromString(@"dictationIsAvailableForLanguage:")))) {
     method_setImplementation(m, (IMP)sr_no);
-  if ((m = class_getClassMethod(ctl, NSSelectorFromString(@"dictationIsFunctional"))))
+  }
+  if ((m = class_getClassMethod(ctl, NSSelectorFromString(@"dictationIsFunctional")))) {
     method_setImplementation(m, (IMP)sr_no);
-  if ((m = class_getInstanceMethod(conn, NSSelectorFromString(@"dictationConnnectionDidChangeAvailability:"))))
+  }
+  if ((m = class_getInstanceMethod(conn, NSSelectorFromString(@"dictationConnnectionDidChangeAvailability:")))) {
     method_setImplementation(m, (IMP)sr_no);
+  }
 }
 
 // ---------------------------------------------------------------- remote keyboard arbiter
@@ -802,8 +861,9 @@ static void SRHIDDisableDictation(void) {
 static void sr_void(id self, SEL _cmd, ...) {}
 static void SRHIDNeutralizeRemoteKeyboards(void) {
   Method m = class_getInstanceMethod(NSClassFromString(@"_UIRemoteKeyboards"), NSSelectorFromString(@"queue_failedConnection:"));
-  if (m)
+  if (m) {
     method_setImplementation(m, (IMP)sr_void);
+  }
 }
 
 // ---------------------------------------------------------------- viewer protocol receiver (viewer/protocol.h)
@@ -825,10 +885,11 @@ static void SRHIDHandleInput(const sr_input_msg_t *m) {
       break;
     case SR_IN_TEXT: {
       NSString *t = [[NSString alloc] initWithBytes:m->text length:strnlen(m->text, sizeof m->text) encoding:NSUTF8StringEncoding];
-      if (t.length)
+      if (t.length) {
         SRHIDAfterKeys(^{
           SRTextInsert(t);
         });
+      }
       break;
     }
     case SR_IN_SCROLL: {
@@ -848,8 +909,9 @@ static void SRHIDHandleInput(const sr_input_msg_t *m) {
       break;
     case SR_IN_RESIZE: {
       // resize the scene to the host view size in points
-      if (m->x > 0 && m->y > 0)
+      if (m->x > 0 && m->y > 0) {
         SRScenesUpdate(m->x, m->y, YES, 1);
+      }
       break;
     }
     default:
@@ -890,8 +952,9 @@ static void SRHIDStartReceiver(void) {
           SRHIDAfterKeys(^{
             SRTextFromWindow(kind, t, sel);
           });
-        } else
+        } else {
           mach_msg_destroy(&m.h);
+        }
       }
     });
     dispatch_resume(src);
@@ -912,23 +975,29 @@ static void SRHIDStartReceiver(void) {
 
 void SRHIDStart(void) {
   gVerbose = getenv("HID_VERBOSE") != NULL;
-  if (getenv("HID_SOFTWARE_KEYBOARD"))
+  if (getenv("HID_SOFTWARE_KEYBOARD")) {
     gHWKeyboard = 0;
-  if (getenv("HID_KB_SOURCE"))
+  }
+  if (getenv("HID_KB_SOURCE")) {
     kKeyboardSource = atoi(getenv("HID_KB_SOURCE"));
+  }
   // only in an .app: not in helper processes, nor in programs an app runs (they inherit DYLD_INSERT_LIBRARIES)
-  if (![NSBundle.mainBundle.bundlePath hasSuffix:@".app"])
+  if (![NSBundle.mainBundle.bundlePath hasSuffix:@".app"]) {
     return;
-  if (!getenv("HID_KEEP_DICTATION"))
+  }
+  if (!getenv("HID_KEEP_DICTATION")) {
     SRHIDDisableDictation();
-  if (!getenv("HID_KEEP_REMOTE_KEYBOARDS"))
+  }
+  if (!getenv("HID_KEEP_REMOTE_KEYBOARDS")) {
     SRHIDNeutralizeRemoteKeyboards();
+  }
   SRHIDTrackKeys();
   SRHIDStartReceiver();
   if (!getenv("HID_NO_FOCUS")) {
-    for (NSNotificationName n in @[UISceneDidActivateNotification, UIWindowDidBecomeKeyNotification])
+    for (NSNotificationName n in @[UISceneDidActivateNotification, UIWindowDidBecomeKeyNotification]) {
       [[NSNotificationCenter defaultCenter] addObserverForName:n object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
         SRHIDPushDeferringChains();
       }];
+    }
   }
 }

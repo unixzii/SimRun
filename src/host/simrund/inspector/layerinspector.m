@@ -22,8 +22,9 @@
 }
 
 - (instancetype)init {
-  if (!(self = [super init]))
+  if (!(self = [super init])) {
     return nil;
+  }
   _keys = [NSMapTable weakToStrongObjectsMapTable];
   _editable = YES;
   _scroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, 300, 500)];
@@ -70,14 +71,16 @@ static NSString *RectText(CGRect r) {
 }
 static NSColor *ColorOf(id c) {
   NSArray *a = c;
-  if (![a isKindOfClass:NSArray.class] || a.count != 4)
+  if (![a isKindOfClass:NSArray.class] || a.count != 4) {
     return nil;
+  }
   CGFloat comps[4] = { [a[0] doubleValue], [a[1] doubleValue], [a[2] doubleValue], [a[3] doubleValue] };
   return [NSColor colorWithColorSpace:NSColorSpace.extendedSRGBColorSpace components:comps count:4];
 }
 static NSString *Hex(NSColor *c) {
-  if (!c)
+  if (!c) {
     return @"none";
+  }
   NSColor *s = [c colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
   return [NSString stringWithFormat:@"#%02X%02X%02X%02X", (int)lround(s.redComponent * 255), (int)lround(s.greenComponent * 255),
                                     (int)lround(s.blueComponent * 255), (int)lround(s.alphaComponent * 255)];
@@ -158,16 +161,18 @@ static NSString *Hex(NSColor *c) {
 - (void)section:(NSString *)title rows:(NSArray<NSArray *> *)rows {
   NSMutableArray *gridRows = [NSMutableArray array];
   for (NSArray *r in rows) {
-    if (r.count < 2)
+    if (r.count < 2) {
       continue;
+    }
     NSTextField *l = [NSTextField labelWithString:r[0]];
     l.font = Small();
     l.textColor = NSColor.secondaryLabelColor;
     l.alignment = NSTextAlignmentRight;
     [gridRows addObject:@[ l, [r[1] isKindOfClass:NSView.class] ? r[1] : [self text:[r[1] description]] ]];
   }
-  if (!gridRows.count)
+  if (!gridRows.count) {
     return;
+  }
   NSTextField *t = [NSTextField labelWithString:title];
   t.font = [NSFont boldSystemFontOfSize:NSFont.smallSystemFontSize];
   t.textColor = NSColor.secondaryLabelColor;
@@ -188,26 +193,30 @@ static NSString *Hex(NSColor *c) {
 // ---------------------------------------------------------------- edits
 - (void)changed:(NSControl *)c {
   NSString *key = [_keys objectForKey:c];
-  if (!key || !_nid || !self.onEdit)
+  if (!key || !_nid || !self.onEdit) {
     return;
+  }
   id value;
   if ([c isKindOfClass:NSColorWell.class]) {
     NSColor *col = [((NSColorWell *)c).color colorUsingColorSpace:NSColorSpace.extendedSRGBColorSpace];
     value = @[ @(col.redComponent), @(col.greenComponent), @(col.blueComponent), @(col.alphaComponent) ];
-  } else if ([c isKindOfClass:NSButton.class])
+  } else if ([c isKindOfClass:NSButton.class]) {
     value = @(((NSButton *)c).state == NSControlStateValueOn);
-  else
+  } else {
     value = @(c.doubleValue);
+  }
   NSRange dot = [key rangeOfString:@"."];
   if (dot.location != NSNotFound) {   // one of a pair: send the pair, with the other half as it stands
     NSString *base = [key substringToIndex:dot.location];
     NSInteger i = [[key substringFromIndex:NSMaxRange(dot)] integerValue];
     NSArray *now = _mirror.nodes[_nid].props[[base isEqual:@"size"] ? @"bounds" : base];
     NSMutableArray *pair = [base isEqual:@"size"] ? (now.count == 4 ? [@[ now[2], now[3] ] mutableCopy] : nil) : [now mutableCopy];
-    if ([base isEqual:@"position"] && !pair)
+    if ([base isEqual:@"position"] && !pair) {
       pair = [@[ @0, @0 ] mutableCopy];
-    if (pair.count != 2)
+    }
+    if (pair.count != 2) {
       return;
+    }
     pair[i] = value;
     key = base;
     value = pair;
@@ -217,29 +226,34 @@ static NSString *Hex(NSColor *c) {
 - (void)setEditable:(BOOL)on {
   _editable = on;
   for (NSControl *c in _keys.keyEnumerator) {
-    if (!on && [c isKindOfClass:NSColorWell.class])
+    if (!on && [c isKindOfClass:NSColorWell.class]) {
       [(NSColorWell *)c deactivate];
-    if (!on && [c isKindOfClass:NSTextField.class])
+    }
+    if (!on && [c isKindOfClass:NSTextField.class]) {
       [c abortEditing];
+    }
     c.enabled = on;
   }
-  if (!on)
+  if (!on) {
     _editing = NO;
+  }
 }
 - (void)clearColor:(NSButton *)b {
   NSString *key = [_keys objectForKey:b];
-  if (key && _nid && self.onEdit)
+  if (key && _nid && self.onEdit) {
     self.onEdit(_nid, key, nil);
+  }
 }
 - (void)controlTextDidBeginEditing:(NSNotification *)n {
   _editing = YES;
 }
 - (void)controlTextDidEndEditing:(NSNotification *)n {
   _editing = NO;
-  if (_refreshPending)
+  if (_refreshPending) {
     dispatch_async(dispatch_get_main_queue(), ^{
       [self showNode:self->_nid of:self->_mirror];
     });
+  }
 }
 
 // ---------------------------------------------------------------- the sections
@@ -249,9 +263,11 @@ static NSString *Hex(NSColor *c) {
   _mirror = mirror;
   // don't pull a field being typed in, or an open color panel's well, out from under the user
   BOOL colorPanel = NO;
-  for (NSControl *c in _keys.keyEnumerator)
-    if ([c isKindOfClass:NSColorWell.class] && ((NSColorWell *)c).active)
+  for (NSControl *c in _keys.keyEnumerator) {
+    if ([c isKindOfClass:NSColorWell.class] && ((NSColorWell *)c).active) {
       colorPanel = YES;
+    }
+  }
   if (same && (_editing || colorPanel)) {
     _refreshPending = YES;
     return;
@@ -275,15 +291,19 @@ static NSString *Hex(NSColor *c) {
 
   rows = [NSMutableArray array];
   [rows addObject:@[ @"Class", SRReadableClassName(p[@"class"]) ]];
-  if ([p[@"class"] hasPrefix:@"_Tt"])
+  if ([p[@"class"] hasPrefix:@"_Tt"]) {
     [rows addObject:@[ @"Runtime name", p[@"class"] ]];
-  if (p[@"view"])
+  }
+  if (p[@"view"]) {
     [rows addObject:@[ @"View", SRReadableClassName(p[@"view"]) ]];
-  if (p[@"viewController"])
+  }
+  if (p[@"viewController"]) {
     [rows addObject:@[ @"View controller", SRReadableClassName(p[@"viewController"]) ]];
+  }
   [rows addObject:@[ @"Node", [NSString stringWithFormat:@"#%@", nid] ]];
-  if (p[@"name"])
+  if (p[@"name"]) {
     [rows addObject:@[ @"Name", SRReadableText(p[@"name"]) ]];
+  }
   [self section:@"Object" rows:rows];
 
   rows = [NSMutableArray array];
@@ -294,25 +314,31 @@ static NSString *Hex(NSColor *c) {
   [rows addObject:@[ @"Frame", RectText(CGRectMake([pos[0] doubleValue] - [ap[0] doubleValue] * bounds.size.width,
                                                    [pos[1] doubleValue] - [ap[1] doubleValue] * bounds.size.height, bounds.size.width, bounds.size.height)) ]];
   CGRect onScreen = [mirror screenRectOfNode:nid];
-  if (!CGRectIsNull(onScreen))
+  if (!CGRectIsNull(onScreen)) {
     [rows addObject:@[ @"On screen", RectText(onScreen) ]];
+  }
   if (!screen) {
     [rows addObject:@[ @"Position", [self pair:pos key:@"position" labels:@[ @"x", @"y" ]] ]];
     [rows addObject:@[ @"Size", [self pair:@[ @(bounds.size.width), @(bounds.size.height) ] key:@"size" labels:@[ @"w", @"h" ]] ]];
   }
-  if (bounds.origin.x || bounds.origin.y)
+  if (bounds.origin.x || bounds.origin.y) {
     [rows addObject:@[ @"Bounds origin", PointText(@[ @(bounds.origin.x), @(bounds.origin.y) ]) ]];
-  if (p[@"anchorPoint"])
+  }
+  if (p[@"anchorPoint"]) {
     [rows addObject:@[ @"Anchor point", PointText(ap) ]];
-  if (p[@"zPosition"])
+  }
+  if (p[@"zPosition"]) {
     [rows addObject:@[ @"z position", Fmt(p[@"zPosition"]) ]];
+  }
   for (NSString *k in @[ @"transform", @"sublayerTransform" ]) {
     NSArray *m = p[k];
-    if (m.count != 16)
+    if (m.count != 16) {
       continue;
+    }
     NSMutableArray *lines = [NSMutableArray array];
-    for (int r = 0; r < 4; r++)
+    for (int r = 0; r < 4; r++) {
       [lines addObject:[NSString stringWithFormat:@"%@  %@  %@  %@", Fmt(m[r * 4]), Fmt(m[r * 4 + 1]), Fmt(m[r * 4 + 2]), Fmt(m[r * 4 + 3])]];
+    }
     [rows addObject:@[ [k isEqual:@"transform"] ? @"Transform" : @"Sublayer transform", [lines componentsJoinedByString:@"\n"] ]];
   }
   [self section:@"Layout" rows:rows];
@@ -324,29 +350,36 @@ static NSString *Hex(NSColor *c) {
     [rows addObject:@[ @"Clips to bounds", [self checkbox:[p[@"masksToBounds"] boolValue] key:@"masksToBounds"] ]];
     [rows addObject:@[ @"Background", [self color:p[@"backgroundColor"] key:@"backgroundColor"] ]];
     [rows addObject:@[ @"Border width", [self number:[p[@"borderWidth"] doubleValue] key:@"borderWidth"] ]];
-    if (p[@"borderWidth"])
+    if (p[@"borderWidth"]) {
       [rows addObject:@[ @"Border color", [self color:p[@"borderColor"] key:@"borderColor"] ]];
+    }
     [rows addObject:@[ @"Corner radius", [self number:[p[@"cornerRadius"] doubleValue] key:@"cornerRadius"] ]];
-    if ([p[@"cornerCurve"] isEqual:@"continuous"])
+    if ([p[@"cornerCurve"] isEqual:@"continuous"]) {
       [rows addObject:@[ @"Corner curve", @"continuous" ]];
-    if (p[@"maskedCorners"])
+    }
+    if (p[@"maskedCorners"]) {
       [rows addObject:@[ @"Masked corners", p[@"maskedCorners"] ]];
-    if (p[@"shadowOpacity"])
+    }
+    if (p[@"shadowOpacity"]) {
       [rows addObject:@[ @"Shadow", [NSString stringWithFormat:@"opacity %@, radius %@, offset %@, %@", Fmt(p[@"shadowOpacity"]), Fmt(p[@"shadowRadius"]),
                                      PointText(p[@"shadowOffset"]), Hex(ColorOf(p[@"shadowColor"]))] ]];
-    if (p[@"mask"])
+    }
+    if (p[@"mask"]) {
       [rows addObject:@[ @"Mask", [NSString stringWithFormat:@"#%@", p[@"mask"]] ]];
+    }
     if ([p[@"colors"] count]) {
       NSMutableArray *hexes = [NSMutableArray array];
-      for (id c in p[@"colors"])
+      for (id c in p[@"colors"]) {
         [hexes addObject:Hex(ColorOf(c))];
+      }
       [rows addObject:@[ @"Gradient", [hexes componentsJoinedByString:@"  "] ]];
       [rows addObject:@[ @"From / to", [NSString stringWithFormat:@"%@ → %@", PointText(p[@"startPoint"]), PointText(p[@"endPoint"])] ]];
     }
     if (p[@"path"]) {
       [rows addObject:@[ @"Path", [NSString stringWithFormat:@"%lu elements, fill %@", (unsigned long)[p[@"path"] count], Hex(ColorOf(p[@"fillColor"] ?: @[ @0, @0, @0, @1 ]))] ]];
-      if (p[@"strokeColor"])
+      if (p[@"strokeColor"]) {
         [rows addObject:@[ @"Stroke", Hex(ColorOf(p[@"strokeColor"])) ]];
+      }
     }
     [self section:@"Appearance" rows:rows];
   }
@@ -355,19 +388,23 @@ static NSString *Hex(NSColor *c) {
     rows = [NSMutableArray array];
     [rows addObject:@[ @"Kind", p[@"contents"] ]];
     CGImageRef img = [mirror imageNamed:p[@"contentsImage"]];
-    if (img)
+    if (img) {
       [rows addObject:@[ @"Picture", [NSString stringWithFormat:@"%zu × %zu px", CGImageGetWidth(img), CGImageGetHeight(img)] ]];
-    else if (p[@"contentsImage"])
+    } else if (p[@"contentsImage"]) {
       [rows addObject:@[ @"Picture", @"missing" ]];
-    if (p[@"contentsScale"])
+    }
+    if (p[@"contentsScale"]) {
       [rows addObject:@[ @"Scale", Fmt(p[@"contentsScale"]) ]];
-    if (p[@"contentsGravity"])
+    }
+    if (p[@"contentsGravity"]) {
       [rows addObject:@[ @"Gravity", p[@"contentsGravity"] ]];
+    }
     if (img) {   // the picture itself, up to 200 points wide
       CGFloat scale = MAX(1, [p[@"contentsScale"] doubleValue]);
       NSSize size = NSMakeSize(CGImageGetWidth(img) / scale, CGImageGetHeight(img) / scale);
-      if (size.width > 200)
+      if (size.width > 200) {
         size = NSMakeSize(200, size.height * 200 / size.width);
+      }
       NSImageView *iv = [NSImageView imageViewWithImage:[[NSImage alloc] initWithCGImage:img size:size]];
       iv.imageScaling = NSImageScaleProportionallyDown;
       [iv.widthAnchor constraintEqualToConstant:size.width].active = YES;
@@ -387,32 +424,41 @@ static NSString *Hex(NSColor *c) {
   for (NSString *k in @[ @"filters", @"backgroundFilters" ]) {
     NSArray *fs = extras[k];
     if (!fs.count) {
-      if (p[k])
+      if (p[k]) {
         [rows addObject:@[ k, [p[k] componentsJoinedByString:@", "] ]];
+      }
       continue;
     }
     NSMutableArray *lines = [NSMutableArray array];
-    for (id f in fs)
+    for (id f in fs) {
       [lines addObject:describe(f)];
+    }
     [rows addObject:@[ k, [lines componentsJoinedByString:@"\n"] ]];
   }
-  if (extras[@"compositingFilter"] || p[@"compositingFilter"])
+  if (extras[@"compositingFilter"] || p[@"compositingFilter"]) {
     [rows addObject:@[ @"compositingFilter", extras[@"compositingFilter"] ? describe(extras[@"compositingFilter"]) : p[@"compositingFilter"] ]];
+  }
   for (NSString *k in [extras.allKeys sortedArrayUsingSelector:@selector(compare:)]) {
-    if ([@[ @"filters", @"backgroundFilters", @"compositingFilter" ] containsObject:k])
+    if ([@[ @"filters", @"backgroundFilters", @"compositingFilter" ] containsObject:k]) {
       continue;
+    }
     id v = extras[k];
-    if ([v isKindOfClass:NSDictionary.class] && v[@"$type"])
+    if ([v isKindOfClass:NSDictionary.class] && v[@"$type"]) {
       v = [NSString stringWithFormat:@"(%@, %lu bytes)", v[@"$type"], (unsigned long)[v[@"$bytes"] length]];
+    }
     [rows addObject:@[ k, describe(v) ]];
   }
-  if (p[@"portalSource"])
+  if (p[@"portalSource"]) {
     [rows addObject:@[ @"Portal source", [NSString stringWithFormat:@"#%@", p[@"portalSource"]] ]];
-  if ([p[@"animations"] count])
+  }
+  if ([p[@"animations"] count]) {
     [rows addObject:@[ @"Animating", [[[p[@"animations"] allKeys] sortedArrayUsingSelector:@selector(compare:)] componentsJoinedByString:@", "] ]];
+  }
   [self section:@"Filters, animations and special properties" rows:rows];
-  if (!_editable)
-    for (NSControl *c in _keys.keyEnumerator)
+  if (!_editable) {
+    for (NSControl *c in _keys.keyEnumerator) {
       c.enabled = NO;
+    }
+  }
 }
 @end
