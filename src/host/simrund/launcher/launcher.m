@@ -268,33 +268,39 @@ static NSImage *Symbol(NSString *name, NSString *description) {
 - (void)outlineViewSelectionDidChange:(NSNotification *)n { [self selectionChanged]; }
 
 // ---------------------------------------------------------------- actions
-// What an action is for: the menu item's app and profile (the context menus, More), else the selected app in the profile
-// selected in its pane (nil: its default one).
-- (SRAppInfo *)appFor:(id)sender profile:(NSString **)profile {
+// A profile as the pane and the menu items name it ("default" for the default one) as the delegate takes it (nil).
+static NSString *Profile(NSString *name) { return [SREnvironment normalizedProfile:name]; }
+
+// What an action is for: the menu item's app and profiles (the context menus, More), else the selected app in the
+// profiles selected in its pane (its default one if none is).
+- (SRAppInfo *)appFor:(id)sender profiles:(NSArray<NSString *> **)profiles {
   NSDictionary *t = [sender isKindOfClass:NSMenuItem.class] ? [sender representedObject] : nil;
   if ([t isKindOfClass:NSDictionary.class]) {
-    if (profile) *profile = [t[@"profile"] isKindOfClass:NSString.class] ? t[@"profile"] : nil;
+    if (profiles) *profiles = [t[@"profiles"] isKindOfClass:NSArray.class] ? t[@"profiles"] : @[ @"default" ];
     return t[@"app"];
   }
-  if (profile) *profile = _detail.selectedProfile;
+  if (profiles) *profiles = _detail.selectedProfiles;
   return [self selectedApp];
 }
-- (SRAppInfo *)appFor:(id)sender { return [self appFor:sender profile:NULL]; }
+- (SRAppInfo *)appFor:(id)sender { return [self appFor:sender profiles:NULL]; }
 
 - (void)launchSelected:(id)sender {   // double-click, Launch / Show: launch, or show the running app
   if (sender == _table && ![self appAtRow:_table.clickedRow]) return;   // not an app's row
-  NSString *p = nil; SRAppInfo *a = [self appFor:sender profile:&p];
-  if (a) [_delegate launchApp:a profile:p];
+  NSArray *ps = nil; SRAppInfo *a = [self appFor:sender profiles:&ps];
+  if (a) for (NSString *p in ps) [_delegate launchApp:a profile:Profile(p)];
 }
 - (void)run:(id)sender {               // ▶: launch, or relaunch the running app
-  NSString *p = nil; SRAppInfo *a = [self appFor:sender profile:&p];
+  NSArray *ps = nil; SRAppInfo *a = [self appFor:sender profiles:&ps];
   if (!a) return;
-  if ([_delegate stateForApp:a profile:p] == SRAppStateRunning) [_delegate relaunchApp:a profile:p];
-  else [_delegate launchApp:a profile:p];
+  for (NSString *name in ps) {
+    NSString *p = Profile(name);
+    if ([_delegate stateForApp:a profile:p] == SRAppStateRunning) [_delegate relaunchApp:a profile:p];
+    else [_delegate launchApp:a profile:p];
+  }
 }
-- (void)launchWithSelected:(id)sender {
-  NSString *p = nil; SRAppInfo *a = [self appFor:sender profile:&p];
-  if (a) [self showLaunchOptionsForApp:a profile:p];
+- (void)launchWithSelected:(id)sender {   // one profile's options at a time
+  NSArray *ps = nil; SRAppInfo *a = [self appFor:sender profiles:&ps];
+  if (a && ps.count == 1) [self showLaunchOptionsForApp:a profile:Profile(ps[0])];
 }
 
 - (void)showLaunchOptionsForApp:(SRAppInfo *)app profile:(NSString *)profile {
@@ -362,56 +368,80 @@ static NSImage *Symbol(NSString *name, NSString *description) {
   SRAppInfo *a = [self appFor:sender];
   if (a) { [SRLaunchOptions removeOptionsForAppAtPath:a.path]; [SRLibrary.shared removePath:a.path]; }
 }
-- (void)quitSelected:(id)sender { NSString *p = nil; SRAppInfo *a = [self appFor:sender profile:&p]; if (a) [_delegate quitApp:a profile:p]; }
-- (void)logSelected:(id)sender { NSString *p = nil; SRAppInfo *a = [self appFor:sender profile:&p]; if (a) [_delegate showLogForApp:a profile:p]; }
+- (void)quitSelected:(id)sender {
+  NSArray *ps = nil; SRAppInfo *a = [self appFor:sender profiles:&ps];
+  if (a) for (NSString *p in ps) [_delegate quitApp:a profile:Profile(p)];
+}
+- (void)logSelected:(id)sender {
+  NSArray *ps = nil; SRAppInfo *a = [self appFor:sender profiles:&ps];
+  if (a) for (NSString *p in ps) [_delegate showLogForApp:a profile:Profile(p)];   // no window for one it doesn't run in
+}
 - (NSString *)containerOfApp:(SRAppInfo *)a profile:(NSString *)profile {
   return [SREnvironment containerPathForIdentifier:[SREnvironment containerIdentifierForExecutable:a.executablePath] profile:profile];
 }
+- (BOOL)app:(SRAppInfo *)a hasDataInProfile:(NSString *)profile {
+  return [NSFileManager.defaultManager fileExistsAtPath:[self containerOfApp:a profile:profile]];
+}
 - (void)containerSelected:(id)sender {
-  NSString *p = nil; SRAppInfo *a = [self appFor:sender profile:&p];
-  if (a) [NSWorkspace.sharedWorkspace activateFileViewerSelectingURLs:@[ [NSURL fileURLWithPath:[self containerOfApp:a profile:p]] ]];
+  NSArray *ps = nil; SRAppInfo *a = [self appFor:sender profiles:&ps];
+  if (!a) return;
+  NSMutableArray<NSURL *> *urls = [NSMutableArray array];
+  for (NSString *p in ps) if ([self app:a hasDataInProfile:Profile(p)]) [urls addObject:[NSURL fileURLWithPath:[self containerOfApp:a profile:Profile(p)]]];
+  if (urls.count) [NSWorkspace.sharedWorkspace activateFileViewerSelectingURLs:urls];
 }
 - (void)resetSelected:(id)sender {
-  NSString *p = nil; SRAppInfo *a = [self appFor:sender profile:&p];
+  NSArray *ps = nil; SRAppInfo *a = [self appFor:sender profiles:&ps];
   if (!a) return;
   NSAlert *al = [NSAlert new];
-  al.messageText = p ? [NSString stringWithFormat:@"Reset the data of %@ in profile “%@”?", a.name, p]
-                     : [NSString stringWithFormat:@"Reset the data of %@?", a.name];
-  al.informativeText = @"Its data container (documents, preferences, caches, everything under its home directory) is deleted, as if "
-                        "the app were deleted and installed again. Keychain items and app group containers are kept.";
+  NSString *p = ps.count == 1 ? Profile(ps[0]) : nil;
+  if (ps.count > 1) {
+    NSMutableArray *names = [NSMutableArray array];
+    for (NSString *name in ps) [names addObject:[NSString stringWithFormat:@"“%@”", Profile(name) ?: @"Default"]];
+    al.messageText = [NSString stringWithFormat:@"Reset the data of %@ in %lu profiles?", a.name, (unsigned long)ps.count];
+    al.informativeText = [NSString stringWithFormat:@"%@: their data containers (documents, preferences, caches, everything under the "
+                          "app's home directory) are deleted, as if the app were deleted and installed again. Keychain items and app "
+                          "group containers are kept.", [NSListFormatter localizedStringByJoiningStrings:names]];
+  } else {
+    al.messageText = p ? [NSString stringWithFormat:@"Reset the data of %@ in profile “%@”?", a.name, p]
+                       : [NSString stringWithFormat:@"Reset the data of %@?", a.name];
+    al.informativeText = @"Its data container (documents, preferences, caches, everything under its home directory) is deleted, as if "
+                          "the app were deleted and installed again. Keychain items and app group containers are kept.";
+  }
   [al addButtonWithTitle:@"Reset"].hasDestructiveAction = YES;
   [al addButtonWithTitle:@"Cancel"];
   [al beginSheetModalForWindow:_window completionHandler:^(NSModalResponse r) {
-    if (r == NSAlertFirstButtonReturn) { [self->_delegate resetDataForApp:a profile:p]; [self->_detail reloadState]; }
+    if (r != NSAlertFirstButtonReturn) return;
+    for (NSString *name in ps) [self->_delegate resetDataForApp:a profile:Profile(name)];
+    [self->_detail reloadState];
   }];
 }
 - (void)deleteProfileSelected:(id)sender {
-  NSString *p = nil; SRAppInfo *a = [self appFor:sender profile:&p];
-  if (a && p) [_detail deleteProfile:p];
+  NSArray *ps = nil; SRAppInfo *a = [self appFor:sender profiles:&ps];
+  if (a) [_detail deleteProfiles:ps];
 }
 - (void)keychainSelected:(id)sender { SRAppInfo *a = [self appFor:sender]; if (a) [SRKeychainWindow.shared showWithFilter:a.bundleIdentifier ?: @""]; }
 
 // ---------------------------------------------------------------- menus
 // The sidebar's context menu is about the app bundle (shared by all its profiles); a profile row's is about running it
-// in that profile and its data container; the toolbar's More has the container and the app's items.
+// in that profile (or in the selected profiles, when it is one of them) and their data containers; the toolbar's More
+// has the selected profiles' containers and the app's items.
 - (void)menuNeedsUpdate:(NSMenu *)menu {
   [menu removeAllItems];
-  SRAppInfo *a = nil; NSString *profile = nil;
+  SRAppInfo *a = nil; NSArray *profiles = nil;
   if (menu == _table.menu) {
     if ((a = [self appAtRow:_table.clickedRow])) [self addAppItemsFor:a to:menu];
   } else if (menu == _profileMenu) {
-    if ((a = [self selectedApp]) && [_detail profileForMenu:&profile]) [self addProfileItemsFor:a profile:profile to:menu running:YES];
+    if ((a = [self selectedApp]) && (profiles = _detail.profilesForMenu)) [self addProfileItemsFor:a profiles:profiles to:menu running:YES];
   } else if ((a = [self selectedApp])) {   // More
-    profile = _detail.selectedProfile;
-    [self addProfileItemsFor:a profile:profile to:menu running:NO];
+    [self addProfileItemsFor:a profiles:_detail.selectedProfiles to:menu running:NO];
     [menu addItem:NSMenuItem.separatorItem];
     [self addAppItemsFor:a to:menu];
   }
 }
 
-static NSMenuItem *AddItem(NSMenu *menu, NSString *title, SEL action, id target, SRAppInfo *app, NSString *profile) {
+static NSMenuItem *AddItem(NSMenu *menu, NSString *title, SEL action, id target, SRAppInfo *app, NSArray<NSString *> *profiles) {
   NSMenuItem *it = [menu addItemWithTitle:title action:action keyEquivalent:@""];
-  if (action) { it.target = target; it.representedObject = profile ? @{ @"app": app, @"profile": profile } : @{ @"app": app }; }
+  if (action) { it.target = target; it.representedObject = profiles ? @{ @"app": app, @"profiles": profiles } : @{ @"app": app }; }
   return it;
 }
 
@@ -423,38 +453,60 @@ static NSMenuItem *AddItem(NSMenu *menu, NSString *title, SEL action, id target,
   AddItem(menu, @"Remove from SimRun", @selector(removeSelected:), self, a, nil);
 }
 
-// `running`: with the commands that start, stop and show it (the toolbar has them too).
-- (void)addProfileItemsFor:(SRAppInfo *)a profile:(NSString *)p to:(NSMenu *)menu running:(BOOL)running {
-  SRAppState st = [_delegate stateForApp:a profile:p];
+// The app's states in `profiles`: which of them it is stopped, launching and running in.
+typedef struct { NSUInteger stopped, launching, running; } SRStates;
+- (SRStates)statesOfApp:(SRAppInfo *)a profiles:(NSArray<NSString *> *)profiles {
+  SRStates s = { 0, 0, 0 };
+  for (NSString *p in profiles) switch ([_delegate stateForApp:a profile:Profile(p)]) {
+    case SRAppStateStopped: s.stopped++; break;
+    case SRAppStateLaunching: s.launching++; break;
+    case SRAppStateRunning: s.running++; break;
+  }
+  return s;
+}
+
+// `running`: with the commands that start, stop and show it (the toolbar has them too). Each acts on all `profiles`;
+// the launch options are one profile's.
+- (void)addProfileItemsFor:(SRAppInfo *)a profiles:(NSArray<NSString *> *)ps to:(NSMenu *)menu running:(BOOL)running {
+  SRStates st = [self statesOfApp:a profiles:ps];
+  BOOL one = ps.count == 1;
   if (running) {
-    if (st != SRAppStateLaunching) {
-      AddItem(menu, st == SRAppStateRunning ? @"Show" : @"Launch", @selector(launchSelected:), self, a, p);
+    if (st.launching < ps.count) {
+      BOOL shown = st.running && !st.stopped;   // Show brings the running ones to the front; Launch starts the others too
+      AddItem(menu, shown ? @"Show" : @"Launch", @selector(launchSelected:), self, a, ps);
       // with ⌥ held: the Launch With… sheet (Relaunch With… while it runs)
-      NSMenuItem *with = AddItem(menu, st == SRAppStateRunning ? @"Relaunch With…" : @"Launch With…", @selector(launchWithSelected:), self, a, p);
-      with.alternate = YES; with.keyEquivalentModifierMask = NSEventModifierFlagOption;
+      if (one) {
+        NSMenuItem *with = AddItem(menu, shown ? @"Relaunch With…" : @"Launch With…", @selector(launchWithSelected:), self, a, ps);
+        with.alternate = YES; with.keyEquivalentModifierMask = NSEventModifierFlagOption;
+      }
     }
-    if (st != SRAppStateStopped) AddItem(menu, @"Quit App", @selector(quitSelected:), self, a, p);
-    AddItem(menu, @"Launch Options…", @selector(launchWithSelected:), self, a, p);
-    NSMenuItem *log = AddItem(menu, @"Show Log", @selector(logSelected:), self, a, p);
-    log.enabled = st != SRAppStateStopped;
+    if (st.stopped < ps.count) AddItem(menu, @"Quit App", @selector(quitSelected:), self, a, ps);
+    if (one) AddItem(menu, @"Launch Options…", @selector(launchWithSelected:), self, a, ps);
+    NSMenuItem *log = AddItem(menu, one ? @"Show Log" : @"Show Logs", @selector(logSelected:), self, a, ps);
+    log.enabled = st.stopped < ps.count;
     [menu addItem:NSMenuItem.separatorItem];
   }
-  // the profile's data container: there once the app has run in it; reset only while it doesn't run in it
-  BOOL hasData = [NSFileManager.defaultManager fileExistsAtPath:[self containerOfApp:a profile:p]];
+  // the profiles' data containers: there once the app has run in them; reset only while it doesn't run in any of them
+  BOOL hasData = NO;
+  for (NSString *p in ps) hasData |= [self app:a hasDataInProfile:Profile(p)];
   NSMenu *container = [[NSMenu alloc] initWithTitle:@"Data Container"];
   container.autoenablesItems = NO;
-  NSMenuItem *show = AddItem(container, @"Show in Finder", @selector(containerSelected:), self, a, p);
-  NSMenuItem *reset = AddItem(container, @"Reset…", @selector(resetSelected:), self, a, p);
+  NSMenuItem *show = AddItem(container, @"Show in Finder", @selector(containerSelected:), self, a, ps);
+  NSMenuItem *reset = AddItem(container, @"Reset…", @selector(resetSelected:), self, a, ps);
   show.enabled = hasData;
-  reset.enabled = hasData && st == SRAppStateStopped;
-  if (hasData && st != SRAppStateStopped) reset.toolTip = @"Quit the app to reset its data.";
-  NSString *title = running || !p ? @"Data Container" : [NSString stringWithFormat:@"Data Container (%@)", p];
+  reset.enabled = hasData && st.stopped == ps.count;
+  if (hasData && !reset.enabled) reset.toolTip = one ? @"Quit the app to reset its data." : @"Quit the app in these profiles to reset their data.";
+  NSString *p = one ? Profile(ps[0]) : nil;
+  NSString *title = !one ? [NSString stringWithFormat:@"Data Containers (%lu Profiles)", (unsigned long)ps.count]
+                  : running || !p ? @"Data Container" : [NSString stringWithFormat:@"Data Container (%@)", p];
   [menu addItemWithTitle:title action:nil keyEquivalent:@""].submenu = container;
-  if (running && p) {   // the default profile can't be deleted
+  NSUInteger deletable = [ps containsObject:@"default"] ? ps.count - 1 : ps.count;   // the default profile can't be deleted
+  if (running && deletable) {
     [menu addItem:NSMenuItem.separatorItem];
-    NSMenuItem *del = AddItem(menu, @"Delete Profile…", @selector(deleteProfileSelected:), self, a, p);
-    del.enabled = [_detail canDeleteProfile:p];
-    if (!del.enabled) del.toolTip = @"Quit the app in this profile to delete it.";
+    NSString *what = deletable == 1 ? @"Delete Profile…" : [NSString stringWithFormat:@"Delete %lu Profiles…", (unsigned long)deletable];
+    NSMenuItem *del = AddItem(menu, what, @selector(deleteProfileSelected:), self, a, ps);
+    del.enabled = [_detail canDeleteProfiles:ps];
+    if (!del.enabled) del.toolTip = deletable == 1 ? @"Quit the app in this profile to delete it." : @"Quit the app in these profiles to delete them.";
   }
 }
 
@@ -498,18 +550,21 @@ static NSMenuItem *AddItem(NSMenu *menu, NSString *title, SEL action, id target,
   it.target = self; it.action = NSSelectorFromString(d[3]); it.bordered = YES;
   return it;
 }
-// The toolbar acts on the selected app in the profile selected in its pane (the default one if none is).
+// The toolbar acts on the selected app in the profiles selected in its pane (the default one if none is).
 - (BOOL)validateToolbarItem:(NSToolbarItem *)item {
-  NSString *p = nil; SRAppInfo *a = [self appFor:nil profile:&p];
-  SRAppState st = a ? [_delegate stateForApp:a profile:p] : SRAppStateStopped;
+  NSArray *ps = nil; SRAppInfo *a = [self appFor:nil profiles:&ps];
+  SRStates st = a ? [self statesOfApp:a profiles:ps] : (SRStates){ 1, 0, 0 };
   NSString *ident = item.itemIdentifier;
-  NSString *what = !a ? nil : p ? [NSString stringWithFormat:@"%@ (%@)", a.name, p] : a.name;
+  NSString *p = ps.count == 1 ? Profile(ps[0]) : nil;
+  NSString *what = !a ? nil : ps.count > 1 ? [NSString stringWithFormat:@"%@ in %lu profiles", a.name, (unsigned long)ps.count]
+                 : p ? [NSString stringWithFormat:@"%@ (%@)", a.name, p] : a.name;
   if ([ident isEqualToString:kRunItem]) {
-    item.toolTip = !a ? @"Run the app" : [NSString stringWithFormat:st == SRAppStateRunning ? @"Relaunch %@" : @"Run %@", what];
-    return a && st != SRAppStateLaunching;
+    item.toolTip = !a ? @"Run the app" : [NSString stringWithFormat:st.running && !st.stopped ? @"Relaunch %@" : @"Run %@", what];
+    return a && st.launching < ps.count;
   }
   if ([ident isEqualToString:kStopItem]) item.toolTip = a ? [NSString stringWithFormat:@"Quit %@", what] : @"Quit the app";
-  if ([ident isEqualToString:kStopItem] || [ident isEqualToString:kLogItem]) return st != SRAppStateStopped;
+  if ([ident isEqualToString:kStopItem] || [ident isEqualToString:kLogItem]) return a && st.stopped < ps.count;
+  if ([ident isEqualToString:kOptionsItem]) return a && ps.count == 1;   // one profile's options at a time
   return a != nil;
 }
 

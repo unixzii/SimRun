@@ -20,7 +20,7 @@ static NSString *const kDefaultProfile = @"default";   // instancesOfApp:'s key 
 @implementation SRProfileRow
 @end
 
-// The Profiles outline: ⌫ deletes the selected profile.
+// The Profiles outline: ⌫ deletes the selected profiles.
 @interface SRProfileOutline : NSOutlineView
 @property (copy) void (^onDelete)(void);
 @end
@@ -175,8 +175,8 @@ static NSImage *Symbol(NSString *name, CGFloat size, NSFontWeight weight) {
 - (NSView *)profilesPage {
   _profiles = [SRProfileOutline new];
   __weak SRAppDetailController *weakSelf = self;
-  _profiles.onDelete = ^{ SRAppDetailController *me = weakSelf; NSString *p = me.selectedProfile;
-                          if ([me canDeleteProfile:p]) [me deleteProfile:p]; else NSBeep(); };
+  _profiles.onDelete = ^{ SRAppDetailController *me = weakSelf; NSArray *ps = me.selectedProfiles;
+                          if ([me canDeleteProfiles:ps]) [me deleteProfiles:ps]; else NSBeep(); };
   NSArray *cols = @[ @[ @"profile", @"Profile", @120 ], @[ @"process", @"PID", @80 ], @[ @"runsOn", @"Runs On", @250 ],
                      @[ @"container", @"Data Container", @280 ] ];
   for (NSArray *c in cols) {
@@ -190,7 +190,7 @@ static NSImage *Symbol(NSString *name, CGFloat size, NSFontWeight weight) {
   _profiles.rowSizeStyle = NSTableViewRowSizeStyleCustom; _profiles.rowHeight = 24;
   _profiles.columnAutoresizingStyle = NSTableViewLastColumnOnlyAutoresizingStyle;
   _profiles.autosaveName = @"SRProfileColumns"; _profiles.autosaveTableColumns = YES;
-  _profiles.dataSource = self; _profiles.delegate = self;
+  _profiles.dataSource = self; _profiles.delegate = self; _profiles.allowsMultipleSelection = YES;
   _profiles.target = self; _profiles.doubleAction = @selector(openProfile:);
   _profiles.menu = _profileMenu;
   NSScrollView *scroll = [NSScrollView new];
@@ -346,11 +346,11 @@ static NSImage *Symbol(NSString *name, CGFloat size, NSFontWeight weight) {
   else _status.stringValue = [NSString stringWithFormat:@"Running in %@", [NSListFormatter localizedStringByJoiningStrings:runningNames]];
   _status.textColor = runningNames.count || launching ? NSColor.labelColor : NSColor.secondaryLabelColor;
 
-  NSString *keep = _profiles.selectedRow >= 0 ? (self.selectedProfile ?: kDefaultProfile) : nil;   // by profile, across reloads
+  NSArray<NSString *> *keep = _profiles.numberOfSelectedRows ? self.selectedProfiles : nil;   // by profile, across reloads
   _rows = rows;
   [_profiles reloadData];
   [_profiles expandItem:nil expandChildren:YES];
-  if (keep) [self selectRowOfProfile:[keep isEqualToString:kDefaultProfile] ? nil : keep];
+  if (keep) [self selectRowsOfProfiles:keep];
   [self updateRemoveButton];
 }
 
@@ -359,24 +359,35 @@ static NSImage *Symbol(NSString *name, CGFloat size, NSFontWeight weight) {
   id item = r >= 0 ? [_profiles itemAtRow:r] : nil;
   return [item isKindOfClass:SRProfileRow.class] ? item : nil;
 }
-- (NSString *)selectedProfile { return [self rowAt:_profiles.selectedRow].profile; }
-- (BOOL)profileForMenu:(NSString **)profile {
-  SRProfileRow *row = [self rowAt:_profiles.clickedRow];
-  if (!row) return NO;
-  *profile = row.profile;
-  return YES;
+// The profiles of `rows` (an instance row's is its container's), each once, in the outline's order.
+- (NSArray<NSString *> *)profilesOfRows:(NSIndexSet *)rows {
+  NSMutableOrderedSet<NSString *> *out = [NSMutableOrderedSet orderedSet];
+  [rows enumerateIndexesUsingBlock:^(NSUInteger r, BOOL *stop) {
+    SRProfileRow *row = [self rowAt:(NSInteger)r];
+    if (row) [out addObject:row.profile ?: kDefaultProfile];
+  }];
+  return out.array;
 }
-- (void)selectRowOfProfile:(NSString *)profile {
+- (NSArray<NSString *> *)selectedProfiles {
+  NSArray *ps = [self profilesOfRows:_profiles.selectedRowIndexes];
+  return ps.count ? ps : @[ kDefaultProfile ];
+}
+- (NSArray<NSString *> *)profilesForMenu {
+  NSInteger r = _profiles.clickedRow;
+  if (![self rowAt:r]) return nil;
+  if ([_profiles isRowSelected:r]) return self.selectedProfiles;
+  return [self profilesOfRows:[NSIndexSet indexSetWithIndex:(NSUInteger)r]];
+}
+- (void)selectRowsOfProfiles:(NSArray<NSString *> *)profiles {
+  NSMutableIndexSet *rows = [NSMutableIndexSet indexSet];
   for (NSInteger r = 0; r < _profiles.numberOfRows; r++) {
     SRProfileRow *row = [self rowAt:r];
-    if (!row.pid && (row.profile == profile || [row.profile isEqualToString:profile])) {
-      [_profiles selectRowIndexes:[NSIndexSet indexSetWithIndex:(NSUInteger)r] byExtendingSelection:NO];
-      [_profiles scrollRowToVisible:r];
-      return;
-    }
+    if (row && !row.pid && [profiles containsObject:row.profile ?: kDefaultProfile]) [rows addIndex:(NSUInteger)r];
   }
+  [_profiles selectRowIndexes:rows byExtendingSelection:NO];
+  if (rows.count) [_profiles scrollRowToVisible:(NSInteger)rows.firstIndex];
 }
-- (void)selectProfile:(NSString *)profile { [self reloadState]; [self selectRowOfProfile:profile]; }
+- (void)selectProfile:(NSString *)profile { [self reloadState]; [self selectRowsOfProfiles:@[ profile ?: kDefaultProfile ]]; }
 - (void)outlineViewSelectionDidChange:(NSNotification *)n {
   [self updateRemoveButton];
   if (self.onSelectProfile) self.onSelectProfile();
@@ -441,35 +452,59 @@ static NSImage *Symbol(NSString *name, CGFloat size, NSFontWeight weight) {
 }
 - (void)controlTextDidChange:(NSNotification *)n { if (n.object == _newName) [self validateNewProfileName]; }
 
-// ---------------------------------------------------------------- deleting a profile
+// ---------------------------------------------------------------- deleting profiles
 - (BOOL)isRunningInProfile:(NSString *)profile {
   return [_delegate instancesOfApp:_app][profile ?: kDefaultProfile].count > 0 || [_delegate stateForApp:_app profile:profile] != SRAppStateStopped;
 }
-- (BOOL)canDeleteProfile:(NSString *)profile { return _app && profile && ![self isRunningInProfile:profile]; }
+// Those of `profiles` that can be deleted: all but the default one.
+- (NSArray<NSString *> *)deletableProfiles:(NSArray<NSString *> *)profiles {
+  return [profiles filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"SELF != %@", kDefaultProfile]];
+}
+// The first of `profiles` the app runs in, or nil.
+- (NSString *)runningProfileOf:(NSArray<NSString *> *)profiles {
+  for (NSString *p in profiles) if ([self isRunningInProfile:[SREnvironment normalizedProfile:p]]) return p;
+  return nil;
+}
+- (BOOL)canDeleteProfiles:(NSArray<NSString *> *)profiles {
+  NSArray *ps = [self deletableProfiles:profiles];
+  return _app && ps.count && ![self runningProfileOf:ps];
+}
 - (void)updateRemoveButton {
-  NSString *p = _profiles.selectedRow >= 0 ? self.selectedProfile : nil;
-  _removeButton.enabled = [self canDeleteProfile:p];
-  _removeButton.toolTip = !p ? @"Delete Profile" : [self isRunningInProfile:p]
-      ? [NSString stringWithFormat:@"Quit %@ in “%@” to delete the profile", _app.name, p] : [NSString stringWithFormat:@"Delete “%@”", p];
+  NSArray *ps = _profiles.numberOfSelectedRows ? [self deletableProfiles:self.selectedProfiles] : @[];
+  NSString *running = [self runningProfileOf:ps];
+  _removeButton.enabled = [self canDeleteProfiles:ps];
+  _removeButton.toolTip = !ps.count ? @"Delete Profile"
+      : running ? [NSString stringWithFormat:@"Quit %@ in “%@” to delete %@", _app.name, running, ps.count == 1 ? @"the profile" : @"the profiles"]
+      : ps.count == 1 ? [NSString stringWithFormat:@"Delete “%@”", ps[0]] : [NSString stringWithFormat:@"Delete %lu Profiles", (unsigned long)ps.count];
 }
 - (void)deleteSelectedProfile:(id)sender {
-  NSString *p = self.selectedProfile;
-  if ([self canDeleteProfile:p]) [self deleteProfile:p];
+  NSArray *ps = self.selectedProfiles;
+  if ([self canDeleteProfiles:ps]) [self deleteProfiles:ps];
 }
-- (void)deleteProfile:(NSString *)profile {
+- (void)deleteProfiles:(NSArray<NSString *> *)profiles {
   NSWindow *window = self.view.window;
-  if (![self canDeleteProfile:profile] || !window || window.attachedSheet) return;
+  if (![self canDeleteProfiles:profiles] || !window || window.attachedSheet) return;
+  profiles = [self deletableProfiles:profiles];
   NSAlert *al = [NSAlert new];
-  al.messageText = [NSString stringWithFormat:@"Delete the profile “%@” of %@?", profile, _app.name];
-  al.informativeText = @"Its data container (documents, preferences, caches, everything the app saved in this profile) and its "
-                        "launch options are deleted. This can't be undone. Keychain items and app group containers are kept.";
+  if (profiles.count == 1) {
+    al.messageText = [NSString stringWithFormat:@"Delete the profile “%@” of %@?", profiles[0], _app.name];
+    al.informativeText = @"Its data container (documents, preferences, caches, everything the app saved in this profile) and its "
+                          "launch options are deleted. This can't be undone. Keychain items and app group containers are kept.";
+  } else {
+    NSMutableArray *quoted = [NSMutableArray array];
+    for (NSString *p in profiles) [quoted addObject:[NSString stringWithFormat:@"“%@”", p]];
+    al.messageText = [NSString stringWithFormat:@"Delete %lu profiles of %@?", (unsigned long)profiles.count, _app.name];
+    al.informativeText = [NSString stringWithFormat:@"%@: their data containers (documents, preferences, caches, everything the app "
+                          "saved in them) and launch options are deleted. This can't be undone. Keychain items and app group "
+                          "containers are kept.", [NSListFormatter localizedStringByJoiningStrings:quoted]];
+  }
   [al addButtonWithTitle:@"Delete"].hasDestructiveAction = YES;
   [al addButtonWithTitle:@"Cancel"];
   SRAppInfo *app = _app;
   [al beginSheetModalForWindow:window completionHandler:^(NSModalResponse r) {
     if (r != NSAlertFirstButtonReturn) return;
-    [self->_delegate deleteProfile:profile ofApp:app];
-    if ([app.path isEqualToString:self->_app.path]) { [self->_runsOn removeObjectForKey:profile]; [self reloadState]; }
+    for (NSString *p in profiles) [self->_delegate deleteProfile:p ofApp:app];
+    if ([app.path isEqualToString:self->_app.path]) { [self->_runsOn removeObjectsForKeys:profiles]; [self reloadState]; }
   }];
 }
 

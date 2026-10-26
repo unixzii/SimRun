@@ -76,8 +76,9 @@ exits with the app's status, and Ctrl-C (or closing the window) ends the app. La
 The launcher (`launcher.m`, `appdetail.m`) is a split view: the library of apps in the sidebar (an outline view, in sections: iPhone apps,
 each expandable to a row for each Watch app it contains, then watch apps that aren't in an iPhone app in the library), the selected app's
 pane beside it (its details, then tabs: Profiles lists its data containers with what each runs as and its running
-instances, and makes and deletes profiles), and the commands for the selected profile (run, stop, launch options, log, more)
-in the toolbar. The sidebar's context menu has what concerns the app bundle (keychain items, Show in Finder, Remove);
+instances, and makes and deletes profiles), and the commands for the selected profiles (run, stop, launch options, log, more)
+in the toolbar. The Profiles outline selects several profiles at once; the toolbar, a profile's context menu (opened on one of
+the selected rows) and deleting then act on each of them, except launch options, which are one profile's. The sidebar's context menu has what concerns the app bundle (keychain items, Show in Finder, Remove);
 a profile's has running it and its data container. It remembers its library of apps. **File ▸ Add Xcode
 Simulator Builds** scans
 `~/Library/Developer/Xcode/DerivedData/*/Build/Products/*-iphonesimulator/` for `.app` bundles. An app is accepted

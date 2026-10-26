@@ -161,7 +161,8 @@ with no apps running.
   double-click it to launch the app with that profile's data container, next to the app in its default one. Each
   profile has its own launch options (device, runtime, arguments…). From the terminal, `simrun run --profile alice …`
   uses (and on first use creates) profile "alice"; `simrun profiles` lists them. Select a profile and click **−** (or
-  press ⌫) to delete it with its data.
+  press ⌫) to delete it with its data. ⌘- or ⇧-click to select several profiles: the toolbar's Run, Stop and Log, the
+  context menu, and **−** then act on all of them.
 - **Run a build made for iPhone or iPad devices**, such as a development or ad hoc build someone sent you, or
   Xcode's `Debug-iphoneos` build: add it or `simrun run` it like any other app. SimRun runs a copy converted for the
   Simulator, made in about a second the first time and again whenever the app changes (they are kept in

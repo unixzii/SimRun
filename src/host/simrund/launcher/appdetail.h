@@ -12,18 +12,21 @@
 @property (copy) void (^onAddApp)(void), (^onAddXcodeBuilds)(void);
 @property (copy) void (^onDrop)(NSArray<NSString *> *paths);   // .app bundles dropped on the pane
 
-// The profile selected in the Profiles outline (nil: the default one, also when none is selected), and selecting one.
-@property (readonly) NSString *selectedProfile;
+// The outline selects several profiles at once (⌘- and ⇧-click). Lists of profiles name the default one "default", as
+// instancesOfApp: does; +[SREnvironment normalizedProfile:] makes that nil.
+// The profiles selected in the Profiles outline, in its order (the default one when none is), and selecting one.
+@property (readonly) NSArray<NSString *> *selectedProfiles;
 - (void)selectProfile:(NSString *)profile;
 @property (copy) void (^onSelectProfile)(void);             // the selection changed
 @property (copy) void (^onOpenProfile)(NSString *profile);  // a profile was double-clicked
-// The context menu of the outline's rows; profileForMenu: gives the row it is open for (NO: none, e.g. empty space).
+// The context menu of the outline's rows; profilesForMenu gives what it is for: the selected profiles when it opened on
+// one of them, else the row it opened on (nil: none, e.g. empty space).
 @property (nonatomic) NSMenu *profileMenu;
-- (BOOL)profileForMenu:(NSString **)profile;
-// Asks whether to delete `profile` (its data container and launch options), then does. Not the default profile, and
-// not while the app runs in it.
-- (BOOL)canDeleteProfile:(NSString *)profile;
-- (void)deleteProfile:(NSString *)profile;
+@property (readonly) NSArray<NSString *> *profilesForMenu;
+// Asks whether to delete `profiles` (their data containers and launch options), then does. Not the default profile
+// (skipped), and not while the app runs in any of them.
+- (BOOL)canDeleteProfiles:(NSArray<NSString *> *)profiles;
+- (void)deleteProfiles:(NSArray<NSString *> *)profiles;
 
 - (void)reloadInfo;    // the app's launch options changed (or anything else in its details)
 - (void)reloadState;   // an instance of it started or exited, or a container changed
