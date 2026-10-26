@@ -433,6 +433,8 @@ static NSString *Profile(NSString *name) { return [SREnvironment normalizedProfi
   } else if (menu == _profileMenu) {
     if ((a = [self selectedApp]) && (profiles = _detail.profilesForMenu)) [self addProfileItemsFor:a profiles:profiles to:menu running:YES];
   } else if ((a = [self selectedApp])) {   // More
+    // the toolbar item doesn't list the first item of this menu, filled as it opens (like a pull-down's title): a hidden one
+    [menu addItemWithTitle:@"" action:nil keyEquivalent:@""].hidden = YES;
     [self addProfileItemsFor:a profiles:_detail.selectedProfiles to:menu running:NO];
     [menu addItem:NSMenuItem.separatorItem];
     [self addAppItemsFor:a to:menu];
