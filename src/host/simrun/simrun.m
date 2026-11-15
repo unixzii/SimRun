@@ -43,6 +43,9 @@ static const char kUsage[] =
   "                               the Mac plays, but the app itself) or an audio file, played from its start\n"
   "                               each time the app starts recording, then silence (AUDIO_INPUT=<source>)\n"
   "        --mic-loop             play the --mic file over and over (AUDIO_INPUT_LOOP=1)\n"
+  "        --camera <source>      what the app's camera sees: mac (the Mac's camera, the default; or mac:<device>)\n"
+  "                               or an image or video file (CAMERA_INPUT=<source>)\n"
+  "        --camera-loop          play the --camera video file over and over (CAMERA_INPUT_LOOP=1)\n"
   "  list                       the running apps\n"
   "  quit <pid | app> [-p <profile>]\n"
   "                             quit a running app (app: its name, bundle ID or executable)\n"
@@ -349,8 +352,10 @@ static int Run(NSArray<NSString *> *args) {
   NSString *err = ParseOptions(args, @{ @"-p": @"profile", @"--profile": @"profile", @"-r": @"runtime", @"--runtime": @"runtime",
                                         @"-d": @"device", @"--device": @"device", @"--insert": @"insert",
                                         @"--headless": @"headless", @"--mute": @"mute", @"--pick": @"pick",
-                                        @"--mic": @"mic", @"--mic-loop": @"micLoop", @"--with-watch-app": @"withWatchApp" },
-                               [NSSet setWithObjects:@"--headless", @"--mute", @"--mic-loop", @"--with-watch-app", nil], [NSSet setWithObject:@"--pick"],
+                                        @"--mic": @"mic", @"--mic-loop": @"micLoop",
+                                        @"--camera": @"camera", @"--camera-loop": @"cameraLoop",
+                                        @"--with-watch-app": @"withWatchApp" },
+                               [NSSet setWithObjects:@"--headless", @"--mute", @"--mic-loop", @"--camera-loop", @"--with-watch-app", nil], [NSSet setWithObject:@"--pick"],
                                YES, o, rest);
   if (err) {
     Fail(@"%@", err);
@@ -381,11 +386,24 @@ static int Run(NSArray<NSString *> *args) {
   } else if (micLoop) {
     return Fail(@"--mic-loop goes with --mic <audio file>");
   }
+  NSString *cam = o[@"camera"];
+  BOOL camLoop = [o[@"cameraLoop"] isEqual:@YES];
+  if (cam && ![cam isEqualToString:@"mac"] && ![cam hasPrefix:@"mac:"]) {
+    cam = AbsolutePath(cam);
+    BOOL dir = NO;
+    if (![NSFileManager.defaultManager fileExistsAtPath:cam isDirectory:&dir] || dir) {
+      return Fail(@"--camera takes mac, mac:<device> or an image/video file; there is no file at %@", cam);
+    }
+  } else if (camLoop) {
+    return Fail(@"--camera-loop goes with --camera <video file>");
+  }
   NSMutableArray *env = [NSMutableArray array];
   BOOL mute = [o[@"mute"] isEqual:@YES];
-  // the app's own variables (app.dylib's audio module), replacing the terminal's
+  // the app's own variables (app.dylib's audio and camera modules), replacing the terminal's
   for (char **e = environ; *e; e++) {
-    if (!(mute && !strncmp(*e, "AUDIO_MUTE=", 11)) && !(mic && !strncmp(*e, "AUDIO_INPUT=", 12)) && !(micLoop && !strncmp(*e, "AUDIO_INPUT_LOOP=", 17))) {
+    if (!(mute && !strncmp(*e, "AUDIO_MUTE=", 11)) && !(mic && !strncmp(*e, "AUDIO_INPUT=", 12)) &&
+        !(micLoop && !strncmp(*e, "AUDIO_INPUT_LOOP=", 17)) && !(cam && !strncmp(*e, "CAMERA_INPUT=", 13)) &&
+        !(camLoop && !strncmp(*e, "CAMERA_INPUT_LOOP=", 18))) {
       [env addObject:@(*e)];
     }
   }
@@ -398,7 +416,13 @@ static int Run(NSArray<NSString *> *args) {
   if (micLoop) {
     [env addObject:@"AUDIO_INPUT_LOOP=1"];
   }
-  [o removeObjectsForKeys:@[ @"mute", @"mic", @"micLoop" ]];
+  if (cam) {
+    [env addObject:[@"CAMERA_INPUT=" stringByAppendingString:cam]];
+  }
+  if (camLoop) {
+    [env addObject:@"CAMERA_INPUT_LOOP=1"];
+  }
+  [o removeObjectsForKeys:@[ @"mute", @"mic", @"micLoop", @"camera", @"cameraLoop" ]];
   NSMutableDictionary *req = [@{ @"action": @"run", @"argv": rest, @"env": env, @"cwd": NSFileManager.defaultManager.currentDirectoryPath } mutableCopy];
   [req addEntriesFromDictionary:o];
 

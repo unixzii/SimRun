@@ -2,6 +2,7 @@
 #import "launchsheet.h"
 #import "apps/launchoptions.h"
 #import "device/environment.h"
+#import "sim2host/camerahost.h"
 #import "tabbar.h"
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
@@ -11,6 +12,7 @@ static NSArray<NSArray *> *ServiceSwitches(void) {
             @[ @"DOCPICKER_DISABLE", @"Document pickers with Mac file panels", @YES ],
             @[ @"KEYCHAIN_DISABLE", @"SimRun keychain", @YES ], @[ @"WEBKIT_DISABLE", @"Web view helper processes", @YES ],
             @[ @"MPS_DISABLE", @"MPSGraph on the GPU", @YES ],
+            @[ @"CAMERA_DISABLE", @"Camera (the Mac's camera or an image/video file)", @YES ],
             @[ @"MOTION_DISABLE", @"Motion sensors (the Mac's accelerometer and gyroscope)", @YES ],
             @[ @"SCRIPT_DISABLE", @"Scripts (simrun eval)", @YES ] ];
 }
@@ -20,7 +22,8 @@ static NSArray<NSArray *> *TracingSwitches(void) {
             @[ @"DRAG_VERBOSE", @"Drag and drop", @NO ], @[ @"DOCPICKER_VERBOSE", @"Document pickers", @NO ],
             @[ @"KEYCHAIN_VERBOSE", @"Keychain", @NO ],
             @[ @"WEBKIT_VERBOSE", @"Web views", @NO ], @[ @"MPS_VERBOSE", @"MPSGraph", @NO ],
-            @[ @"SCRIPT_VERBOSE", @"Scripts", @NO ], @[ @"AUDIO_VERBOSE", @"Audio", @NO ], @[ @"MOTION_VERBOSE", @"Motion", @NO ],
+            @[ @"SCRIPT_VERBOSE", @"Scripts", @NO ], @[ @"AUDIO_VERBOSE", @"Audio", @NO ],
+            @[ @"CAMERA_VERBOSE", @"Camera", @NO ], @[ @"MOTION_VERBOSE", @"Motion", @NO ],
             @[ @"TCC_VERBOSE", @"Privacy permissions", @NO ], @[ @"LOCALE_VERBOSE", @"Language & region", @NO ],
             @[ @"CONTAINER_VERBOSE", @"Sandbox container", @NO ], @[ @"XPCSERVICES_VERBOSE", @"Shader compiler service", @NO ] ];
 }
@@ -82,9 +85,9 @@ static NSGridView *Form(NSArray<NSArray<NSView *> *> *rows, NSInteger columns) {
   NSWindow *_sheet, *_parent;
   SRTabBar *_tabBar;
   NSArray<NSView *> *_pages;
-  NSPopUpButton *_runtime, *_device, *_locale, *_microphone;
+  NSPopUpButton *_runtime, *_device, *_locale, *_microphone, *_camera;
   NSButton *_watchApp;   // an iPhone app with a Watch app: run that too
-  NSButton *_micLoop;
+  NSButton *_micLoop, *_cameraLoop;
   NSMutableArray<NSButton *> *_switchBoxes;
   NSTableView *_argsTable, *_envTable;
 }
@@ -276,6 +279,8 @@ static NSView *Page(NSView *content) {
     @[ Label(@"Sound"), [self switchBox:@[ @"AUDIO_MUTE", @"Mute", @NO ]] ],
     @[ Label(@"Microphone"), [self microphoneMenu] ],
     @[ NSGridCell.emptyContentView, _micLoop = [self switchBox:@[ @"AUDIO_INPUT_LOOP", @"Play the audio file over and over", @NO ]] ],
+    @[ Label(@"Camera"), [self cameraMenu] ],
+    @[ NSGridCell.emptyContentView, _cameraLoop = [self switchBox:@[ @"CAMERA_INPUT_LOOP", @"Play the video file over and over", @NO ]] ],
   ]];
   NSArray *services = ServiceSwitches();
   for (NSUInteger i = 0; i < services.count; i++) {
@@ -284,7 +289,7 @@ static NSView *Page(NSView *content) {
   [rows addObject:@[ NSGridCell.emptyContentView, Note(@"Turn a service off to see how the app behaves without what SimRun provides.") ]];
   NSGridView *g = Form(rows, 2);
   [g rowAtIndex:1].topPadding = -4;
-  [g rowAtIndex:2].topPadding = [g rowAtIndex:5].topPadding = 12;
+  [g rowAtIndex:2].topPadding = [g rowAtIndex:7].topPadding = 12;
   [g rowAtIndex:rows.count - 1].topPadding = -2;
   return Page(g);
 }
@@ -339,6 +344,78 @@ static NSView *Page(NSView *content) {
     self->_options.microphone = panel.URL.path;
     [self refreshMicrophone];
   }];
+}
+
+- (NSPopUpButton *)cameraMenu {
+  _camera = [NSPopUpButton new];
+  _camera.target = self;
+  _camera.action = @selector(cameraChanged:);
+  [_camera.widthAnchor constraintEqualToConstant:kFieldWidth].active = YES;
+  return _camera;
+}
+- (void)refreshCamera {
+  [_camera removeAllItems];
+  [_camera addItemWithTitle:@"Mac Camera"];
+  NSArray<NSDictionary<NSString *, NSString *> *> *cams = [SRCameraHost macCameras];
+  NSString *cam = _options.camera;
+  NSMenuItem *selected = nil;
+  if (cams.count > 1) {
+    for (NSDictionary<NSString *, NSString *> *d in cams) {
+      NSString *spec = [@"mac:" stringByAppendingString:d[@"id"]];
+      NSMenuItem *it = [_camera.menu addItemWithTitle:[NSString stringWithFormat:@"Mac Camera: %@", d[@"name"]] action:nil keyEquivalent:@""];
+      it.representedObject = spec;
+      if ([cam isEqualToString:spec]) {
+        selected = it;
+      }
+    }
+  }
+  BOOL file = cam && ![cam isEqualToString:@"mac"] && ![cam hasPrefix:@"mac:"];
+  if (cam && !file && ![cam isEqualToString:@"mac"] && !selected) {
+    NSString *label = [cam substringFromIndex:4];
+    selected = [_camera.menu addItemWithTitle:[NSString stringWithFormat:@"Mac Camera: %@ (Disconnected)", label] action:nil keyEquivalent:@""];
+    selected.representedObject = cam;
+  }
+  [_camera.menu addItem:NSMenuItem.separatorItem];
+  if (file) {
+    BOOL there = [NSFileManager.defaultManager fileExistsAtPath:cam];
+    selected = [_camera.menu addItemWithTitle:[NSString stringWithFormat:there ? @"Media File: %@" : @"Media File: %@ (Missing)", cam.lastPathComponent]
+                                       action:nil
+                                keyEquivalent:@""];
+    selected.representedObject = cam;
+    selected.toolTip = cam.stringByAbbreviatingWithTildeInPath;
+  }
+  [_camera addItemWithTitle:@"Choose Image or Video…"];
+  _camera.lastItem.tag = 1;
+  if (selected) {
+    [_camera selectItem:selected];
+  } else {
+    [_camera selectItemAtIndex:0];
+  }
+  UTType *t = file ? [UTType typeWithFilenameExtension:cam.pathExtension ?: @""] : nil;
+  _cameraLoop.enabled = t && ([t conformsToType:UTTypeMovie] || [t conformsToType:UTTypeVideo]);
+}
+- (void)cameraChanged:(NSPopUpButton *)p {
+  if (p.selectedItem.tag != 1) {
+    _options.camera = p.selectedItem.representedObject;
+    [self refreshCamera];
+    return;
+  }
+  [self refreshCamera];
+  NSOpenPanel *panel = [NSOpenPanel openPanel];
+  panel.allowedContentTypes = @[ UTTypeImage, UTTypeMovie ];
+  panel.message = @"The app's camera sees this image or video file.";
+  NSString *cam = _options.camera;
+  if (cam && ![cam isEqualToString:@"mac"] && ![cam hasPrefix:@"mac:"]) {
+    panel.directoryURL = [NSURL fileURLWithPath:cam.stringByDeletingLastPathComponent];
+  }
+  [panel beginSheetModalForWindow:_sheet
+                completionHandler:^(NSModalResponse r) {
+                  if (r != NSModalResponseOK || !panel.URL) {
+                    return;
+                  }
+                  self->_options.camera = panel.URL.path;
+                  [self refreshCamera];
+                }];
 }
 
 - (NSView *)diagnosticsPage {
@@ -544,6 +621,7 @@ static NSView *Page(NSView *content) {
     b.state = [_options.switches containsObject:b.identifier] != (b.tag != 0) ? NSControlStateValueOn : NSControlStateValueOff;
   }
   [self refreshMicrophone];
+  [self refreshCamera];
   [_argsTable reloadData];
   [_envTable reloadData];
 }

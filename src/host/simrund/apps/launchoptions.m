@@ -82,6 +82,9 @@ static NSArray<NSString *> *ShellWords(NSString *s) {
   if ([d[@"microphone"] isKindOfClass:NSString.class]) {
     o.microphone = d[@"microphone"];
   }
+  if ([d[@"camera"] isKindOfClass:NSString.class]) {
+    o.camera = d[@"camera"];
+  }
   o.runsWatchApp = [d[@"watchApp"] isEqual:@YES];
   for (NSString *key in @[ @"arguments", @"environment" ]) {
     NSArray *items = [d[key] isKindOfClass:NSArray.class] ? d[key] : @[];
@@ -153,6 +156,9 @@ static NSArray<NSString *> *ShellWords(NSString *s) {
   if (_microphone) {
     d[@"microphone"] = _microphone;
   }
+  if (_camera) {
+    d[@"camera"] = _camera;
+  }
   if (_runsWatchApp) {
     d[@"watchApp"] = @YES;
   }
@@ -197,6 +203,9 @@ static NSArray<NSString *> *ShellWords(NSString *s) {
   }
   if (_microphone) {
     out[@"AUDIO_INPUT"] = _microphone;
+  }
+  if (_camera) {
+    out[@"CAMERA_INPUT"] = _camera;
   }
   for (SRLaunchItem *i in _environment) {
     if (i.enabled && i.name.length) {

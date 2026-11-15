@@ -6,9 +6,11 @@
 # (common.h), compiled once and linked into each one that uses it.
 SIM   := src/sim
 SHIMS := $(SIM)/shims
-SIMLIBS := $(LIB)/xpcservices.dylib $(LIB)/app.dylib $(LIB)/SimFramebuffer $(LIB)/simpair $(LIB)/wcd.dylib $(LIB)/containermanagerd.dylib
+SIMLIBS := $(LIB)/xpcservices.dylib $(LIB)/app.dylib $(LIB)/camera.dylib $(LIB)/SimFramebuffer $(LIB)/simpair $(LIB)/wcd.dylib \
+           $(LIB)/containermanagerd.dylib
+IOS_ONLY_LIBS := $(LIB)/camera.dylib
 WATCHLIB  := $(LIB)/watchos
-WATCHLIBS := $(WATCHLIB)/simns $(patsubst $(LIB)/%,$(WATCHLIB)/%,$(SIMLIBS))
+WATCHLIBS := $(WATCHLIB)/simns $(patsubst $(LIB)/%,$(WATCHLIB)/%,$(filter-out $(IOS_ONLY_LIBS),$(SIMLIBS)))
 
 COMMON_OBJ := $(call sim_objs,$(SIM)/common/common.m)
 $(OBJ)/sim/$(SIM)/common/%.o $(OBJ)/sim/$(SHIMS)/xpcservices/%.o: CPPFLAGS += -I$(SIM)/common
@@ -45,7 +47,7 @@ $(LIB)/xpcservices.dylib: $(XPCSERVICES_OBJ) $(COMMON_OBJ) | $(LIB)
 # TCC.framework is linked through a stub (tcc/tcc.tbd; not in the SDK); the other private frameworks' symbols
 # (FrontBoardServices, GraphicsServices, BackBoardServices...) are looked up at load.
 APP_DIR := $(SHIMS)/app
-APP_MODULES := locale container watch render scenes hid textinput pboard drag docpicker keychain webkit mps script tcc audio motion
+APP_MODULES := locale container watch render scenes hid textinput pboard drag docpicker keychain webkit mps script tcc audio camera motion
 APP_OBJ := $(call sim_objs,$(APP_DIR)/app.m $(foreach m,$(APP_MODULES),$(wildcard $(APP_DIR)/$(m)/*.m)))
 $(OBJ)/sim/$(APP_DIR)/%.o: CPPFLAGS += -I$(SIM)/common -I$(APP_DIR) -I$(GEN)
 $(GEN)/script_js.h: $(wildcard $(APP_DIR)/script/js/*.js)
@@ -56,7 +58,19 @@ $(LIB)/app.dylib: $(APP_OBJ) $(COMMON_OBJ) $(APP_DIR)/tcc/tcc.tbd | $(LIB)
 	$(SIM_LINK) -dynamiclib $^ -framework Foundation \
 	  -framework UIKit -framework QuartzCore -framework CoreGraphics -framework IOKit -framework UniformTypeIdentifiers \
 	  -framework Security -framework Metal -framework AudioToolbox -framework CoreAudio \
+	  -framework IOSurface -framework CoreMedia -framework CoreVideo -framework ImageIO -lMobileGestalt \
 	  -Wl,-undefined,dynamic_lookup -Wl,-w -o $@
+	@$(SIGN) $@ 2>/dev/null
+
+# shims/camera: camera.dylib, AVFoundation capture and UIImagePickerController(.camera), which app.dylib's camera module
+# loads into the app and its WebKit extensions once AVFCapture is loaded (app/camera/cameraapi.h). iOS only: no watchOS
+# copy. Vision is looked up when a metadata output first scans, not linked.
+CAMERA_OBJ := $(call sim_objs,$(wildcard $(SHIMS)/camera/*.m))
+$(OBJ)/sim/$(SHIMS)/camera/%.o: CPPFLAGS += -I$(SIM)/common -I$(APP_DIR)
+$(LIB)/camera.dylib: $(CAMERA_OBJ) | $(LIB)
+	$(SIM_LINK) -dynamiclib $^ -framework Foundation -framework UIKit -framework AVFoundation -framework QuartzCore \
+	  -framework CoreGraphics -framework CoreMedia -framework CoreVideo -framework ImageIO -framework IOSurface \
+	  -framework AudioToolbox -framework Accelerate -o $@
 	@$(SIGN) $@ 2>/dev/null
 
 # shims/wcd: wcd.dylib, in wcd, the WatchConnectivity daemon (SIMNS_DAEMON_INSERT), what it would ask LaunchServices,
@@ -73,7 +87,8 @@ $(LIB)/containermanagerd.dylib: $(CONTAINERMANAGERD_OBJ) | $(LIB)
 	$(SIM_LINK) -dynamiclib $^ -framework Foundation -o $@
 	@$(SIGN) $@ 2>/dev/null
 
-OBJS += $(COMMON_OBJ) $(SIMNS_OBJ) $(SIMPAIR_OBJ) $(SIMFB_OBJ) $(XPCSERVICES_OBJ) $(APP_OBJ) $(WCD_OBJ) $(CONTAINERMANAGERD_OBJ)
+OBJS += $(COMMON_OBJ) $(SIMNS_OBJ) $(SIMPAIR_OBJ) $(SIMFB_OBJ) $(XPCSERVICES_OBJ) $(APP_OBJ) $(CAMERA_OBJ) $(WCD_OBJ) \
+        $(CONTAINERMANAGERD_OBJ)
 
 # watchOS: the same simns and libraries, marked for the watchOS Simulator (LC_BUILD_VERSION), which is all that tells
 # them apart. dyld_sim skips an inserted library of another platform without a word, and the watchOS SDK can't build

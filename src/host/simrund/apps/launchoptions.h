@@ -14,6 +14,8 @@
 @property (copy) NSString *deviceType;     // a device type identifier; nil: the runtime's default (environment.h)
 @property (copy) NSString *microphone;     // what the app records (AUDIO_INPUT): nil the Mac's microphone, "system" what
                                            // the Mac plays, else an audio file's path (AUDIO_INPUT_LOOP is a switch)
+@property (copy) NSString *camera;         // what the app's camera sees (CAMERA_INPUT): nil the Mac's camera, "mac:<id>"
+                                           // a specific Mac camera, else an image/video file's path (CAMERA_INPUT_LOOP is a switch)
 @property BOOL runsWatchApp;               // an iPhone app: also run its Watch apps on the paired Apple Watch (default NO)
 @property (readonly) NSMutableArray<SRLaunchItem *> *arguments, *environment;
 @property (readonly) NSMutableSet<NSString *> *switches;

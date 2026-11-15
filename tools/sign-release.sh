@@ -18,6 +18,7 @@ for lib in lib lib/watchos; do
     done
     "${SIGN[@]}" --entitlements "$ROOT/resources/release-simns.entitlements" "$APP/Contents/Resources/$lib/simns"
 done
+"${SIGN[@]}" "$APP/Contents/Resources/lib/camera.dylib" # iOS only: no lib/watchos copy
 "${SIGN[@]}" "$APP/Contents/Helpers/simrun"
 "${SIGN[@]}" "$APP/Contents/Frameworks/WebRTC.framework"
 "${SIGN[@]}" --entitlements "$ROOT/resources/release-host.entitlements" "$APP"

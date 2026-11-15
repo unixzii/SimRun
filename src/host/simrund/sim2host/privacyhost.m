@@ -14,8 +14,8 @@ pid_t xpc_connection_get_pid(xpc_connection_t);
 mach_port_t xpc_endpoint_copy_listener_port_4sim(xpc_endpoint_t);
 void xpc_connection_enable_sim2host_4sim(xpc_connection_t);   // sim clients speak the sim2host wire format (gpuhost.m)
 
-static NSString *MicrophoneStatus(void) {
-  switch ([AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio]) {
+static NSString *MediaAuthorizationStatus(AVMediaType type) {
+  switch ([AVCaptureDevice authorizationStatusForMediaType:type]) {
     case AVAuthorizationStatusAuthorized:
       return @SRPV_AUTHORIZED;
     case AVAuthorizationStatusDenied:
@@ -97,7 +97,7 @@ static NSString *AudioCaptureStatus(void) {
       return;
     }
     const char *op = xpc_dictionary_get_string(m, "op"), *service = xpc_dictionary_get_string(m, "service");
-    BOOL known = service && (!strcmp(service, SRPV_MICROPHONE) || !strcmp(service, SRPV_AUDIO_CAPTURE));
+    BOOL known = service && (!strcmp(service, SRPV_MICROPHONE) || !strcmp(service, SRPV_AUDIO_CAPTURE) || !strcmp(service, SRPV_CAMERA));
     if (!op || !known || (strcmp(op, "status") && strcmp(op, "request"))) {
       xpc_dictionary_set_string(reply, "error", known ? "unknown op" : "unknown service");
       xpc_connection_send_message(peer, reply);
@@ -122,7 +122,13 @@ static NSString *AudioCaptureStatus(void) {
   if (_pretend[service]) {
     return _pretend[service];
   }
-  return [service isEqualToString:@SRPV_MICROPHONE] ? MicrophoneStatus() : AudioCaptureStatus();
+  if ([service isEqualToString:@SRPV_MICROPHONE]) {
+    return MediaAuthorizationStatus(AVMediaTypeAudio);
+  }
+  if ([service isEqualToString:@SRPV_CAMERA]) {
+    return MediaAuthorizationStatus(AVMediaTypeVideo);
+  }
+  return AudioCaptureStatus();
 }
 
 // macOS's prompt, once per service however many apps ask while it is up. On _q.
@@ -144,8 +150,9 @@ static NSString *AudioCaptureStatus(void) {
       }
     });
   };
-  if ([service isEqualToString:@SRPV_MICROPHONE]) {
-    [AVCaptureDevice requestAccessForMediaType:AVMediaTypeAudio completionHandler:^(BOOL granted) {
+  if ([service isEqualToString:@SRPV_MICROPHONE] || [service isEqualToString:@SRPV_CAMERA]) {
+    AVMediaType type = [service isEqualToString:@SRPV_CAMERA] ? AVMediaTypeVideo : AVMediaTypeAudio;
+    [AVCaptureDevice requestAccessForMediaType:type completionHandler:^(BOOL granted) {
       answered();
     }];
   } else {

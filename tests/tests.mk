@@ -127,8 +127,10 @@ audiotest_SRC  := tests/audio/audiotest.m
 audiotest_FLAGS := -framework Foundation -framework AVFoundation -framework AudioToolbox -framework CoreMedia
 motiontest_SRC := tests/motion/motiontest.m
 motiontest_FLAGS := -framework Foundation -framework CoreMotion
+cameratest_SRC := tests/camera/cameratest.m
+cameratest_FLAGS := -framework UIKit -framework CoreGraphics -framework AVFoundation -framework CoreMedia -framework CoreVideo -framework CoreImage -framework AudioToolbox -lMobileGestalt
 
-TEST_PROGRAM_NAMES := nettest nwtest pbtest kctest loctest mpstest audiotest motiontest
+TEST_PROGRAM_NAMES := nettest nwtest pbtest kctest loctest mpstest audiotest motiontest cameratest
 $(foreach p,$(TEST_PROGRAM_NAMES),$(eval $(call test_program,$(p))))
 
 # a viewer without a browser (tests/remote): the same WebRTC, from vendor/
