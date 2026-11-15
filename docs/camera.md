@@ -39,10 +39,10 @@ In the iOS Simulator runtime, `AVFoundation` re-exports `AVFCapture.framework`, 
 exists in the simulator runtime, so `AVCaptureDeviceDiscoverySession` finds zero video devices even when the simulated
 iPhone model's MobileGestalt plist claims camera hardware.
 
-## SimRun's version (`camerahost.m` + `src/sim/shims/app/camera/`)
+## SimRun's version (`camerahost.m`, `src/sim/shims/app/camera/` + `src/sim/shims/camera/`)
 
 ```
-simrund (camerahost.m)                                     app (app.dylib's camera module)
+simrund (camerahost.m)                                     app (app.dylib's camera module + camera.dylib)
   SRCM_SERVICE (dev.simrun.camera, include/camera.h)         MobileGestalt + kTCCServiceCamera + virtual AVFCapture
     Mac AVCaptureSession (lazy, shared per camera)             ├─ SRCaptureVideoDevice (Back & Front wide-angle)
     or ImageIO / AVAssetReader (per file subscriber)           ├─ AVCaptureSession / PreviewLayer (CALayer + IOSurface)
@@ -59,11 +59,16 @@ simrund (camerahost.m)                                     app (app.dylib's came
   `CMClockGetHostTimeClock()` timestamps to subscribers. Multiple apps using the same Mac camera share one
   `AVCaptureSession` on `simrund`; when the last subscriber stops or disconnects, `simrund` stops the Mac session
   immediately.
-- **Zero link-time `AVFoundation` / `Vision` symbols in `app.dylib`.** Because `app.dylib` is also marked for the
-  watchOS Simulator (`vtool`), `src/sim/shims/app/camera/` looks up all `AVFCapture` and `Vision` classes and string
-  constants dynamically (`objc_getClass`, `dlsym`, `_dyld_register_func_for_add_image`) and exits immediately on
-  `SRIsWatch()`.
-- **Virtual capture devices & stateful hardware compatibility (`camera.m`).** Exposes two physical single-lens wide
+- **Two libraries (`src/sim/shims/app/camera/`, `src/sim/shims/camera/`).** `app.dylib` is also marked for the watchOS
+  Simulator (`vtool`), so it can't link `AVFoundation`; its camera module keeps only what must be there from launch: the
+  `SRCM_SERVICE` client and its frames, `kTCCServiceCamera`, and the MobileGestalt answers. Once `AVFCapture` is loaded
+  (`_dyld_register_func_for_add_image`; every UIKit process, WebKit's extensions included, loads it at launch), it
+  loads `camera.dylib` (iOS only) from its own directory and calls `SRCameraInstall` with `SRCameraAPI`
+  (`cameraapi.h`). `camera.dylib` links `AVFoundation` and UIKit, and loads `Vision` only when a metadata output first
+  scans. What SimRun makes (devices, formats, inputs, ports, connections, photos, metadata objects) are its own
+  subclasses of `AVFoundation`'s classes; for what the app makes (sessions, outputs, preview layers), patch classes'
+  methods replace `AVFoundation`'s (`capture.h`), and methods that only answer a constant are installed from tables.
+- **Virtual capture devices & stateful hardware compatibility (`devices.m`, `session.m`).** Exposes two physical single-lens wide
   cameras (`BuiltInWideAngleCamera` Back and Front, `isVirtualDevice = NO`) plus the built-in microphone, 7 standard
   `AVCaptureDeviceFormat` entries (`640×480` through `3840×2160` in `'420v'`, `'420f'`, `'BGRA'`, 1–60 fps), and
   `AVCaptureDeviceRotationCoordinator` reporting `0°` upright portrait. Hardware configuration methods
@@ -72,9 +77,9 @@ simrund (camerahost.m)                                     app (app.dylib's came
   expected KVO transitions (`adjustingFocus`, `adjustingExposure`, `adjustingWhiteBalance`, `rampingVideoZoom`), invoke
   completion handlers asynchronously with host `CMTime`, and apply digital zoom center-cropping to delivered frames.
   Permissive setters ignore unsupported modes rather than throwing `NSInvalidArgumentException`.
-- **Outputs (`outputs.m`).**
+- **Outputs (`outputs.m`, `pixels.m`).**
   - `AVCaptureVideoDataOutput`: zero-copy `CVPixelBufferCreateWithIOSurface` fast path for unrotated `'BGRA'` at `1.0×`
-    zoom; CPU crop/rotate/mirror and BT.601 full-range (`'420f'`) / video-range (`'420v'`) NV12 conversion otherwise,
+    zoom; vImage (Accelerate) crop/scale/rotate/mirror and BT.601 full-range (`'420f'`) / video-range (`'420v'`) NV12 conversion otherwise,
     honoring `alwaysDiscardsLateVideoFrames`.
   - `AVCapturePhotoOutput`: runs the 5-step `AVCapturePhotoCaptureDelegate` lifecycle (`willBeginCapture` →
     `willCapturePhoto` → `didCapturePhoto` → `didFinishProcessingPhoto:error:` → `didFinishCapture`), encoding JPEG or

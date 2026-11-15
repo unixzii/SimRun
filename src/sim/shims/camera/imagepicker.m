@@ -1,13 +1,8 @@
-// imagepicker.m — UIImagePickerController(.camera) support for app.dylib's camera module.
-// Leaves .photoLibrary and .savedPhotosAlbum untouched; intercepts .camera to present an in-process camera UI backed by
-// SimRun's virtual AVFoundation capture session, supporting both interactive controls and programmatic capture
-// (-takePicture, -startVideoCapture, -stopVideoCapture, cameraOverlayView, cameraViewTransform, front/back flip).
-#import "cam_internal.h"
+// imagepicker.m — UIImagePickerController(.camera): an in-process camera screen on SimRun's capture session, with the
+// picker's controls, review and retake, square crop for allowsEditing, cameraOverlayView and cameraViewTransform, and
+// programmatic capture (-takePicture, -startVideoCapture, -stopVideoCapture). Other source types are UIKit's.
+#import "capture.h"
 #import <UIKit/UIKit.h>
-#import <QuartzCore/QuartzCore.h>
-#import <objc/message.h>
-#import <objc/runtime.h>
-#include <dlfcn.h>
 
 @class SRCameraPickerViewController;
 
@@ -41,30 +36,8 @@
 }
 @end
 
-static const void *kPickerStateKey = &kPickerStateKey;
-
 static SRImagePickerState *picker_state(UIImagePickerController *picker) {
-  if (!picker) {
-    return nil;
-  }
-  SRImagePickerState *st = objc_getAssociatedObject(picker, kPickerStateKey);
-  if (!st) {
-    st = [SRImagePickerState new];
-    objc_setAssociatedObject(picker, kPickerStateKey, st, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-  }
-  return st;
-}
-
-static NSString *picker_key(const char *sym, NSString *fallback) {
-  return SRCameraConst(sym, fallback);
-}
-
-static void ensure_avfoundation_ready(void) {
-  static dispatch_once_t once;
-  dispatch_once(&once, ^{
-    dlopen("/System/Library/Frameworks/AVFoundation.framework/AVFoundation", RTLD_LAZY);
-  });
-  SRCameraEnsureAVFoundationPatched();
+  return SR_STATE(picker, SRImagePickerState);
 }
 
 static UIImage *crop_center_square(UIImage *src, CGRect *outCropRect) {
@@ -370,40 +343,23 @@ static NSURL *write_temp_jpeg(NSData *jpegData, UIImage *fallbackImage) {
 }
 
 - (AVCaptureDevice *)videoDeviceForPickerDevice:(UIImagePickerControllerCameraDevice)camDev {
-  Class devCls = objc_getClass("AVCaptureDevice");
-  if (!devCls) {
-    return nil;
-  }
-  NSString *wide = SRCameraConst("AVCaptureDeviceTypeBuiltInWideAngleCamera", @"AVCaptureDeviceTypeBuiltInWideAngleCamera");
-  NSString *vide = SRCameraConst("AVMediaTypeVideo", @"vide");
   AVCaptureDevicePosition pos = (camDev == UIImagePickerControllerCameraDeviceFront)
                                     ? AVCaptureDevicePositionFront
                                     : AVCaptureDevicePositionBack;
-  return [devCls defaultDeviceWithDeviceType:wide mediaType:vide position:pos];
+  return [AVCaptureDevice defaultDeviceWithDeviceType:AVCaptureDeviceTypeBuiltInWideAngleCamera mediaType:AVMediaTypeVideo position:pos];
 }
 
 - (void)setupCaptureSessionIfNeeded {
   if (self.session) {
     return;
   }
-  ensure_avfoundation_ready();
-  Class sessCls = objc_getClass("AVCaptureSession");
-  Class inCls = objc_getClass("AVCaptureDeviceInput");
-  Class photoCls = objc_getClass("AVCapturePhotoOutput");
-  Class movieCls = objc_getClass("AVCaptureMovieFileOutput");
-  Class prevCls = objc_getClass("AVCaptureVideoPreviewLayer");
-  Class devCls = objc_getClass("AVCaptureDevice");
-  if (!sessCls || !inCls || !photoCls || !prevCls || !devCls) {
-    return;
-  }
-
-  AVCaptureSession *sess = [[sessCls alloc] init];
+  AVCaptureSession *sess = [[AVCaptureSession alloc] init];
   [sess beginConfiguration];
 
   SRImagePickerState *st = picker_state(self.picker);
   AVCaptureDevice *vDev = [self videoDeviceForPickerDevice:st ? st.cameraDevice : UIImagePickerControllerCameraDeviceRear];
   if (vDev) {
-    AVCaptureDeviceInput *vIn = [inCls deviceInputWithDevice:vDev error:NULL];
+    AVCaptureDeviceInput *vIn = [AVCaptureDeviceInput deviceInputWithDevice:vDev error:NULL];
     if (vIn && [sess canAddInput:vIn]) {
       [sess addInput:vIn];
       self.videoInput = vIn;
@@ -411,10 +367,9 @@ static NSURL *write_temp_jpeg(NSData *jpegData, UIImage *fallbackImage) {
   }
 
   if (st && [st.mediaTypes containsObject:@"public.movie"]) {
-    NSString *soun = SRCameraConst("AVMediaTypeAudio", @"soun");
-    AVCaptureDevice *aDev = [devCls defaultDeviceWithMediaType:soun];
+    AVCaptureDevice *aDev = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeAudio];
     if (aDev) {
-      AVCaptureDeviceInput *aIn = [inCls deviceInputWithDevice:aDev error:NULL];
+      AVCaptureDeviceInput *aIn = [AVCaptureDeviceInput deviceInputWithDevice:aDev error:NULL];
       if (aIn && [sess canAddInput:aIn]) {
         [sess addInput:aIn];
         self.audioInput = aIn;
@@ -422,26 +377,24 @@ static NSURL *write_temp_jpeg(NSData *jpegData, UIImage *fallbackImage) {
     }
   }
 
-  AVCapturePhotoOutput *pOut = [[photoCls alloc] init];
+  AVCapturePhotoOutput *pOut = [[AVCapturePhotoOutput alloc] init];
   if (pOut && [sess canAddOutput:pOut]) {
     [sess addOutput:pOut];
     self.photoOutput = pOut;
   }
 
-  if (movieCls) {
-    AVCaptureMovieFileOutput *mOut = [[movieCls alloc] init];
-    if (mOut && [sess canAddOutput:mOut]) {
-      [sess addOutput:mOut];
-      self.movieOutput = mOut;
-    }
+  AVCaptureMovieFileOutput *mOut = [[AVCaptureMovieFileOutput alloc] init];
+  if ([sess canAddOutput:mOut]) {
+    [sess addOutput:mOut];
+    self.movieOutput = mOut;
   }
 
   [sess commitConfiguration];
   self.session = sess;
 
   if (self.previewContainer) {
-    AVCaptureVideoPreviewLayer *layer = [prevCls layerWithSession:sess];
-    layer.videoGravity = SRCameraConst("AVLayerVideoGravityResizeAspectFill", @"AVLayerVideoGravityResizeAspectFill");
+    AVCaptureVideoPreviewLayer *layer = [AVCaptureVideoPreviewLayer layerWithSession:sess];
+    layer.videoGravity = AVLayerVideoGravityResizeAspectFill;
     layer.frame = self.previewContainer.bounds;
     [self.previewContainer.layer addSublayer:layer];
     self.previewLayer = layer;
@@ -478,8 +431,7 @@ static NSURL *write_temp_jpeg(NSData *jpegData, UIImage *fallbackImage) {
   if (self.session) {
     AVCaptureDevice *targetDev = [self videoDeviceForPickerDevice:st.cameraDevice];
     if (targetDev && self.videoInput.device != targetDev) {
-      Class inCls = objc_getClass("AVCaptureDeviceInput");
-      AVCaptureDeviceInput *newIn = [inCls deviceInputWithDevice:targetDev error:NULL];
+      AVCaptureDeviceInput *newIn = [AVCaptureDeviceInput deviceInputWithDevice:targetDev error:NULL];
       if (newIn) {
         [self.session beginConfiguration];
         if (self.videoInput) {
@@ -493,12 +445,9 @@ static NSURL *write_temp_jpeg(NSData *jpegData, UIImage *fallbackImage) {
       }
     }
     if ([st.mediaTypes containsObject:@"public.movie"] && !self.audioInput) {
-      Class devCls = objc_getClass("AVCaptureDevice");
-      Class inCls = objc_getClass("AVCaptureDeviceInput");
-      NSString *soun = SRCameraConst("AVMediaTypeAudio", @"soun");
-      AVCaptureDevice *aDev = [devCls defaultDeviceWithMediaType:soun];
-      if (aDev && inCls) {
-        AVCaptureDeviceInput *aIn = [inCls deviceInputWithDevice:aDev error:NULL];
+      AVCaptureDevice *aDev = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeAudio];
+      if (aDev) {
+        AVCaptureDeviceInput *aIn = [AVCaptureDeviceInput deviceInputWithDevice:aDev error:NULL];
         if (aIn) {
           [self.session beginConfiguration];
           if ([self.session canAddInput:aIn]) {
@@ -602,13 +551,12 @@ static NSURL *write_temp_jpeg(NSData *jpegData, UIImage *fallbackImage) {
   if (self.session && !self.session.isRunning) {
     [self.session startRunning];
   }
-  Class setCls = objc_getClass("AVCapturePhotoSettings");
-  if (!self.photoOutput || !setCls) {
+  if (!self.photoOutput) {
     return;
   }
   self.captureInFlight = YES;
   self.pendingImmediateDelivery = immediate;
-  AVCapturePhotoSettings *settings = [setCls photoSettings];
+  AVCapturePhotoSettings *settings = [AVCapturePhotoSettings photoSettings];
   [self.photoOutput capturePhotoWithSettings:settings delegate:self];
 }
 
@@ -656,7 +604,7 @@ static NSURL *write_temp_jpeg(NSData *jpegData, UIImage *fallbackImage) {
   }
   if (!img) {
     // Fallback black image if captured before first frame arrived
-    CGSize sz = SRCameraNaturalSize();
+    CGSize sz = gCamera->naturalSize();
     UIGraphicsImageRenderer *r = [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(sz.width ?: 720, sz.height ?: 1280)];
     img = [r imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
       [UIColor.blackColor setFill];
@@ -729,36 +677,29 @@ static NSURL *write_temp_jpeg(NSData *jpegData, UIImage *fallbackImage) {
     return;
   }
   NSMutableDictionary *info = [NSMutableDictionary dictionary];
-  NSString *kMediaType = picker_key("UIImagePickerControllerMediaType", @"UIImagePickerControllerMediaType");
-  NSString *kOrigImage = picker_key("UIImagePickerControllerOriginalImage", @"UIImagePickerControllerOriginalImage");
-  NSString *kEditImage = picker_key("UIImagePickerControllerEditedImage", @"UIImagePickerControllerEditedImage");
-  NSString *kCropRect = picker_key("UIImagePickerControllerCropRect", @"UIImagePickerControllerCropRect");
-  NSString *kImageURL = picker_key("UIImagePickerControllerImageURL", @"UIImagePickerControllerImageURL");
-  NSString *kMediaURL = picker_key("UIImagePickerControllerMediaURL", @"UIImagePickerControllerMediaURL");
-  NSString *kMetadata = picker_key("UIImagePickerControllerMediaMetadata", @"UIImagePickerControllerMediaMetadata");
 
   UIImage *pickedImage = self.pendingImage;
   NSURL *movieURL = self.pendingMovieURL;
 
   if (movieURL) {
-    info[kMediaType] = @"public.movie";
-    info[kMediaURL] = movieURL;
+    info[UIImagePickerControllerMediaType] = @"public.movie";
+    info[UIImagePickerControllerMediaURL] = movieURL;
   } else if (pickedImage) {
-    info[kMediaType] = @"public.image";
-    info[kOrigImage] = pickedImage;
+    info[UIImagePickerControllerMediaType] = @"public.image";
+    info[UIImagePickerControllerOriginalImage] = pickedImage;
     if (self.pendingMetadata) {
-      info[kMetadata] = self.pendingMetadata;
+      info[UIImagePickerControllerMediaMetadata] = self.pendingMetadata;
     }
     NSURL *imgURL = write_temp_jpeg(self.pendingJPEGData, pickedImage);
     if (imgURL) {
-      info[kImageURL] = imgURL;
+      info[UIImagePickerControllerImageURL] = imgURL;
     }
     if (picker.allowsEditing) {
       CGRect crop = CGRectZero;
       UIImage *edited = crop_center_square(pickedImage, &crop);
       if (edited) {
-        info[kEditImage] = edited;
-        info[kCropRect] = [NSValue valueWithCGRect:crop];
+        info[UIImagePickerControllerEditedImage] = edited;
+        info[UIImagePickerControllerCropRect] = [NSValue valueWithCGRect:crop];
       }
     }
   } else {
@@ -779,411 +720,246 @@ static NSURL *write_temp_jpeg(NSData *jpegData, UIImage *fallbackImage) {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
     [del imagePickerController:picker
-         didFinishPickingImage:(info[kEditImage] ?: pickedImage)editingInfo:[info copy]];
+         didFinishPickingImage:(info[UIImagePickerControllerEditedImage] ?: pickedImage)editingInfo:[info copy]];
 #pragma clang diagnostic pop
   }
 }
 
 @end
 
-// ---------------------------------------------------------------- UIImagePickerController patching
+// ---------------------------------------------------------------- UIImagePickerController
 
 static IMP nav_super_imp(SEL sel) {
-  Class navCls = UINavigationController.class;
-  return class_respondsToSelector(navCls, sel) ? class_getMethodImplementation(navCls, sel) : NULL;
+  return class_getMethodImplementation(UINavigationController.class, sel);
 }
 
-static void ensure_camera_vc_installed(UIImagePickerController *picker, SRImagePickerState *st) {
+// Show the camera screen as the picker's only view controller, without its navigation bar.
+static void install_camera_vc(UIImagePickerController *picker, SRImagePickerState *st) {
   if (!st.cameraVC) {
-    SRCameraPickerViewController *vc = [[SRCameraPickerViewController alloc] init];
-    vc.picker = picker;
-    st.cameraVC = vc;
+    st.cameraVC = [[SRCameraPickerViewController alloc] init];
+    st.cameraVC.picker = picker;
   }
-  IMP setNavHidden = nav_super_imp(@selector(setNavigationBarHidden:animated:));
-  if (setNavHidden) {
-    ((void (*)(id, SEL, BOOL, BOOL))setNavHidden)(picker, @selector(setNavigationBarHidden:animated:), YES, NO);
-  }
-  IMP getVCs = nav_super_imp(@selector(viewControllers));
-  NSArray *cur = getVCs ? ((NSArray * (*)(id, SEL)) getVCs)(picker, @selector(viewControllers)) : nil;
+  ((void (*)(id, SEL, BOOL, BOOL))nav_super_imp(@selector(setNavigationBarHidden:animated:)))(picker, @selector(setNavigationBarHidden:animated:), YES, NO);
+  NSArray *cur = ((NSArray * (*)(id, SEL)) nav_super_imp(@selector(viewControllers)))(picker, @selector(viewControllers));
   if (cur.count != 1 || cur.firstObject != st.cameraVC) {
-    IMP setVCs = nav_super_imp(@selector(setViewControllers:animated:));
-    if (setVCs) {
-      ((void (*)(id, SEL, NSArray *, BOOL))setVCs)(picker, @selector(setViewControllers:animated:), @[ st.cameraVC ], NO);
-    }
+    ((void (*)(id, SEL, NSArray *, BOOL))nav_super_imp(@selector(setViewControllers:animated:)))(picker, @selector(setViewControllers:animated:), @[ st.cameraVC ], NO);
   }
 }
 
-static void raise_not_camera_exception(NSString *methodName) {
-  [NSException raise:NSInvalidArgumentException
-              format:@"UIImagePickerController: %@ is only supported when sourceType is UIImagePickerControllerSourceTypeCamera",
-                     methodName];
+// The picker's state for a camera-only method, which UIKit throws for outside .camera.
+static SRImagePickerState *camera_state(UIImagePickerController *picker, SEL method) {
+  SRImagePickerState *st = picker_state(picker);
+  if (!st.isCameraMode) {
+    [NSException raise:NSInvalidArgumentException
+                format:@"UIImagePickerController: %@ is only supported when sourceType is UIImagePickerControllerSourceTypeCamera", NSStringFromSelector(method)];
+  }
+  return st;
 }
 
-void SRImagePickerPatch(void) {
-  Class cls = objc_getClass("UIImagePickerController");
-  if (!cls) {
+static BOOL is_picker_media_type(NSString *type) {
+  return [type isEqualToString:@"public.image"] || [type isEqualToString:@"public.movie"];
+}
+
+// sr_ methods are exchanged with UIKit's, which they call for other source types; the rest replace UIKit's.
+@interface SRImagePickerPatch : UIImagePickerController
+@end
+
+@implementation SRImagePickerPatch
++ (BOOL)sr_isSourceTypeAvailable:(UIImagePickerControllerSourceType)source {
+  return source == UIImagePickerControllerSourceTypeCamera ? gCamera->available() : [self sr_isSourceTypeAvailable:source];
+}
++ (NSArray<NSString *> *)sr_availableMediaTypesForSourceType:(UIImagePickerControllerSourceType)source {
+  if (source != UIImagePickerControllerSourceTypeCamera) {
+    return [self sr_availableMediaTypesForSourceType:source];
+  }
+  return gCamera->available() ? @[ @"public.image", @"public.movie" ] : nil;
+}
++ (BOOL)sr__isMediaTypeAvailable:(NSString *)type forSource:(UIImagePickerControllerSourceType)source {
+  if (source != UIImagePickerControllerSourceTypeCamera) {
+    return [self sr__isMediaTypeAvailable:type forSource:source];
+  }
+  return gCamera->available() && is_picker_media_type(type);
+}
++ (BOOL)isCameraDeviceAvailable:(UIImagePickerControllerCameraDevice)device {
+  return gCamera->available() && (device == UIImagePickerControllerCameraDeviceRear || device == UIImagePickerControllerCameraDeviceFront);
+}
++ (NSArray<NSNumber *> *)availableCaptureModesForCameraDevice:(UIImagePickerControllerCameraDevice)device {
+  return [self isCameraDeviceAvailable:device] ? @[ @(UIImagePickerControllerCameraCaptureModePhoto), @(UIImagePickerControllerCameraCaptureModeVideo) ] : nil;
+}
++ (BOOL)isFlashAvailableForCameraDevice:(UIImagePickerControllerCameraDevice)device {
+  return [self isCameraDeviceAvailable:device];
+}
+
+- (UIImagePickerControllerSourceType)sr_sourceType {
+  return picker_state(self).isCameraMode ? UIImagePickerControllerSourceTypeCamera : [self sr_sourceType];
+}
+- (void)sr_setSourceType:(UIImagePickerControllerSourceType)source {
+  SRImagePickerState *st = picker_state(self);
+  if (source == UIImagePickerControllerSourceTypeCamera) {
+    if (![self.class isSourceTypeAvailable:source]) {
+      [NSException raise:NSInvalidArgumentException format:@"Source type %ld not available", (long)source];
+    }
+    st.isCameraMode = YES;
+    install_camera_vc(self, st);
+    [st.cameraVC syncFromPickerState];
     return;
   }
+  st.isCameraMode = NO;
+  st.cameraVC = nil;
+  [self sr_setSourceType:source];
+}
+- (NSArray<NSString *> *)sr_mediaTypes {
+  return picker_state(self).isCameraMode ? picker_state(self).mediaTypes : [self sr_mediaTypes];
+}
+- (void)sr_setMediaTypes:(NSArray<NSString *> *)types {
+  SRImagePickerState *st = picker_state(self);
+  NSArray<NSString *> *valid = [[NSOrderedSet orderedSetWithArray:[types filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(NSString *t, NSDictionary *b) {
+                                                                           return is_picker_media_type(t);
+                                                                         }]]] array];
+  if (valid.count > 0) {
+    st.mediaTypes = valid;
+  }
+  if (!st.isCameraMode) {
+    [self sr_setMediaTypes:types];
+    return;
+  }
+  if (valid.count == 0) {
+    [NSException raise:NSInvalidArgumentException format:@"No available types for source %ld", (long)UIImagePickerControllerSourceTypeCamera];
+  }
+  BOOL image = [valid containsObject:@"public.image"];
+  BOOL movie = [valid containsObject:@"public.movie"];
+  if (image != movie) {
+    st.cameraCaptureMode = movie ? UIImagePickerControllerCameraCaptureModeVideo : UIImagePickerControllerCameraCaptureModePhoto;
+  }
+  [st.cameraVC syncFromPickerState];
+}
+- (NSTimeInterval)sr_videoMaximumDuration {
+  return picker_state(self).isCameraMode ? picker_state(self).videoMaximumDuration : [self sr_videoMaximumDuration];
+}
+- (void)sr_setVideoMaximumDuration:(NSTimeInterval)duration {
+  picker_state(self).videoMaximumDuration = duration;
+  if (!picker_state(self).isCameraMode) {
+    [self sr_setVideoMaximumDuration:duration];
+  }
+}
+// In .camera, skip UIKit's remote picker extension: plain UINavigationController behavior.
+- (void)sr_viewDidLoad {
+  SRImagePickerState *st = picker_state(self);
+  if (!st.isCameraMode) {
+    [self sr_viewDidLoad];
+    return;
+  }
+  ((void (*)(id, SEL))nav_super_imp(@selector(viewDidLoad)))(self, @selector(viewDidLoad));
+  install_camera_vc(self, st);
+}
+- (void)sr_viewWillAppear:(BOOL)animated {
+  SRImagePickerState *st = picker_state(self);
+  if (!st.isCameraMode) {
+    [self sr_viewWillAppear:animated];
+    return;
+  }
+  install_camera_vc(self, st);
+  ((void (*)(id, SEL, BOOL))nav_super_imp(@selector(viewWillAppear:)))(self, @selector(viewWillAppear:), animated);
+}
+- (void)sr__viewControllerPresentationDidInitiate {
+  SEL sel = sel_registerName("_viewControllerPresentationDidInitiate");
+  if (!picker_state(self).isCameraMode) {
+    [self sr__viewControllerPresentationDidInitiate];
+  } else if (class_respondsToSelector(UINavigationController.class, sel)) {
+    ((void (*)(id, SEL))nav_super_imp(sel))(self, sel);
+  }
+}
+
+- (BOOL)showsCameraControls {
+  return camera_state(self, _cmd).showsCameraControls;
+}
+- (void)setShowsCameraControls:(BOOL)shows {
+  SRImagePickerState *st = camera_state(self, _cmd);
+  st.showsCameraControls = shows;
+  [st.cameraVC syncFromPickerState];
+}
+- (UIView *)cameraOverlayView {
+  return camera_state(self, _cmd).cameraOverlayView;
+}
+- (void)setCameraOverlayView:(UIView *)view {
+  SRImagePickerState *st = camera_state(self, _cmd);
+  st.cameraOverlayView = view;
+  [st.cameraVC syncFromPickerState];
+}
+- (CGAffineTransform)cameraViewTransform {
+  return camera_state(self, _cmd).cameraViewTransform;
+}
+- (void)setCameraViewTransform:(CGAffineTransform)transform {
+  SRImagePickerState *st = camera_state(self, _cmd);
+  st.cameraViewTransform = transform;
+  [st.cameraVC syncFromPickerState];
+}
+- (UIImagePickerControllerCameraDevice)cameraDevice {
+  return camera_state(self, _cmd).cameraDevice;
+}
+- (void)setCameraDevice:(UIImagePickerControllerCameraDevice)device {
+  SRImagePickerState *st = camera_state(self, _cmd);
+  if (![self.class isCameraDeviceAvailable:device]) {
+    [NSException raise:NSInvalidArgumentException format:@"Camera device %ld not available", (long)device];
+  }
+  st.cameraDevice = device;
+  [st.cameraVC syncFromPickerState];
+}
+- (UIImagePickerControllerCameraCaptureMode)cameraCaptureMode {
+  return camera_state(self, _cmd).cameraCaptureMode;
+}
+- (void)setCameraCaptureMode:(UIImagePickerControllerCameraCaptureMode)mode {
+  SRImagePickerState *st = camera_state(self, _cmd);
+  BOOL video = mode == UIImagePickerControllerCameraCaptureModeVideo;
+  if (![st.mediaTypes containsObject:video ? @"public.movie" : @"public.image"]) {
+    [NSException raise:NSInvalidArgumentException format:@"%@ capture mode requires %@ in mediaTypes", video ? @"Video" : @"Photo", video ? @"public.movie" : @"public.image"];
+  }
+  st.cameraCaptureMode = mode;
+  [st.cameraVC syncFromPickerState];
+}
+- (UIImagePickerControllerCameraFlashMode)cameraFlashMode {
+  return camera_state(self, _cmd).cameraFlashMode;
+}
+- (void)setCameraFlashMode:(UIImagePickerControllerCameraFlashMode)mode {
+  camera_state(self, _cmd).cameraFlashMode = mode;
+}
+- (void)takePicture {
+  SRImagePickerState *st = camera_state(self, _cmd);
+  install_camera_vc(self, st);
+  [st.cameraVC triggerPhotoCaptureImmediate:YES];
+}
+- (BOOL)startVideoCapture {
+  SRImagePickerState *st = camera_state(self, _cmd);
+  install_camera_vc(self, st);
+  return [st.cameraVC startVideoCaptureImmediate:YES];
+}
+- (void)stopVideoCapture {
+  [camera_state(self, _cmd).cameraVC stopVideoCaptureInternal];
+}
+@end
+
+void SRImagePickerInstall(void) {
+  SR_PATCH(SRImagePickerPatch);
+  Class cls = UIImagePickerController.class;
   Class meta = object_getClass(cls);
-
-  // 1. Class capability queries
-  Method mSrcAvail = class_getClassMethod(cls, @selector(isSourceTypeAvailable:));
-  BOOL (*origSrcAvail)(id, SEL, UIImagePickerControllerSourceType) = mSrcAvail ? (void *)method_getImplementation(mSrcAvail) : NULL;
-  SRCameraReplaceMethod(meta, @selector(isSourceTypeAvailable:), ^BOOL(id self, UIImagePickerControllerSourceType src) {
-    if (src == UIImagePickerControllerSourceTypeCamera) {
-      return SRCameraAvailable();
-    }
-    return origSrcAvail ? origSrcAvail(self, @selector(isSourceTypeAvailable:), src) : NO;
-  },
-                        "B@:q");
-
-  Method mAvailTypes = class_getClassMethod(cls, @selector(availableMediaTypesForSourceType:));
-  NSArray *(*origAvailTypes)(id, SEL, UIImagePickerControllerSourceType) = mAvailTypes ? (void *)method_getImplementation(mAvailTypes) : NULL;
-  SRCameraReplaceMethod(meta, @selector(availableMediaTypesForSourceType:), ^NSArray *(id self, UIImagePickerControllerSourceType src) {
-    if (src == UIImagePickerControllerSourceTypeCamera) {
-      return SRCameraAvailable() ? @[ @"public.image", @"public.movie" ] : nil;
-    }
-    return origAvailTypes ? origAvailTypes(self, @selector(availableMediaTypesForSourceType:), src) : nil;
-  },
-                        "@@:q");
-
-  SEL privMediaAvail = sel_registerName("_isMediaTypeAvailable:forSource:");
-  Method mPrivMedia = class_getClassMethod(cls, privMediaAvail);
-  if (mPrivMedia) {
-    BOOL (*origPrivMedia)(id, SEL, NSString *, UIImagePickerControllerSourceType) = (void *)method_getImplementation(mPrivMedia);
-    SRCameraReplaceMethod(meta, privMediaAvail, ^BOOL(id self, NSString *mt, UIImagePickerControllerSourceType src) {
-      if (src == UIImagePickerControllerSourceTypeCamera) {
-        return SRCameraAvailable() && ([mt isEqualToString:@"public.image"] || [mt isEqualToString:@"public.movie"]);
-      }
-      return origPrivMedia(self, privMediaAvail, mt, src);
-    },
-                          "B@:@q");
+  SRCaptureSwizzle(meta, @selector(isSourceTypeAvailable:), @selector(sr_isSourceTypeAvailable:));
+  SRCaptureSwizzle(meta, @selector(availableMediaTypesForSourceType:), @selector(sr_availableMediaTypesForSourceType:));
+  SRCaptureSwizzle(meta, sel_registerName("_isMediaTypeAvailable:forSource:"), @selector(sr__isMediaTypeAvailable:forSource:));
+  const struct {
+    const char *sel;
+    SEL replacement;
+  } kSwizzles[] = {
+      {"sourceType", @selector(sr_sourceType)},
+      {"setSourceType:", @selector(sr_setSourceType:)},
+      {"mediaTypes", @selector(sr_mediaTypes)},
+      {"setMediaTypes:", @selector(sr_setMediaTypes:)},
+      {"videoMaximumDuration", @selector(sr_videoMaximumDuration)},
+      {"setVideoMaximumDuration:", @selector(sr_setVideoMaximumDuration:)},
+      {"viewDidLoad", @selector(sr_viewDidLoad)},
+      {"viewWillAppear:", @selector(sr_viewWillAppear:)},
+      {"_viewControllerPresentationDidInitiate", @selector(sr__viewControllerPresentationDidInitiate)},
+  };
+  for (size_t i = 0; i < sizeof kSwizzles / sizeof *kSwizzles; i++) {
+    SRCaptureSwizzle(cls, sel_registerName(kSwizzles[i].sel), kSwizzles[i].replacement);
   }
-
-  SRCameraReplaceMethod(meta, @selector(isCameraDeviceAvailable:), ^BOOL(id self, UIImagePickerControllerCameraDevice dev) {
-    return SRCameraAvailable() &&
-           (dev == UIImagePickerControllerCameraDeviceRear || dev == UIImagePickerControllerCameraDeviceFront);
-  },
-                        "B@:q");
-
-  SRCameraReplaceMethod(meta, @selector(availableCaptureModesForCameraDevice:), ^NSArray *(id self, UIImagePickerControllerCameraDevice dev) {
-    if (![self isCameraDeviceAvailable:dev]) {
-      return nil;
-    }
-    return @[ @(UIImagePickerControllerCameraCaptureModePhoto), @(UIImagePickerControllerCameraCaptureModeVideo) ];
-  },
-                        "@@:q");
-
-  SRCameraReplaceMethod(meta, @selector(isFlashAvailableForCameraDevice:), ^BOOL(id self, UIImagePickerControllerCameraDevice dev) {
-    return [self isCameraDeviceAvailable:dev];
-  },
-                        "B@:q");
-
-  // 2. Source type, media types, and lifecycle isolation from remote extension setup
-  Method mGetSrc = class_getInstanceMethod(cls, @selector(sourceType));
-  UIImagePickerControllerSourceType (*origGetSrc)(id, SEL) = mGetSrc ? (void *)method_getImplementation(mGetSrc) : NULL;
-  SRCameraReplaceMethod(cls, @selector(sourceType), ^UIImagePickerControllerSourceType(UIImagePickerController *self) {
-    SRImagePickerState *st = objc_getAssociatedObject(self, kPickerStateKey);
-    if (st && st.isCameraMode) {
-      return UIImagePickerControllerSourceTypeCamera;
-    }
-    return origGetSrc ? origGetSrc(self, @selector(sourceType)) : UIImagePickerControllerSourceTypePhotoLibrary;
-  },
-                        "q@:");
-
-  Method mSetSrc = class_getInstanceMethod(cls, @selector(setSourceType:));
-  void (*origSetSrc)(id, SEL, UIImagePickerControllerSourceType) = mSetSrc ? (void *)method_getImplementation(mSetSrc) : NULL;
-  SRCameraReplaceMethod(cls, @selector(setSourceType:), ^(UIImagePickerController *self, UIImagePickerControllerSourceType src) {
-    if (src == UIImagePickerControllerSourceTypeCamera) {
-      if (![self.class isSourceTypeAvailable:UIImagePickerControllerSourceTypeCamera]) {
-        [NSException raise:NSInvalidArgumentException format:@"Source type %ld not available", (long)src];
-      }
-      SRImagePickerState *st = picker_state(self);
-      st.isCameraMode = YES;
-      ensure_camera_vc_installed(self, st);
-      [st.cameraVC syncFromPickerState];
-      return;
-    }
-    SRImagePickerState *st = objc_getAssociatedObject(self, kPickerStateKey);
-    if (st && st.isCameraMode) {
-      st.isCameraMode = NO;
-      st.cameraVC = nil;
-    }
-    if (origSetSrc) {
-      origSetSrc(self, @selector(setSourceType:), src);
-    }
-  },
-                        "v@:q");
-
-  Method mGetTypes = class_getInstanceMethod(cls, @selector(mediaTypes));
-  NSArray *(*origGetTypes)(id, SEL) = mGetTypes ? (void *)method_getImplementation(mGetTypes) : NULL;
-  SRCameraReplaceMethod(cls, @selector(mediaTypes), ^NSArray *(UIImagePickerController *self) {
-    SRImagePickerState *st = objc_getAssociatedObject(self, kPickerStateKey);
-    if (st && st.isCameraMode) {
-      return st.mediaTypes ?: @[ @"public.image" ];
-    }
-    return origGetTypes ? origGetTypes(self, @selector(mediaTypes)) : @[ @"public.image" ];
-  },
-                        "@@:");
-
-  Method mSetTypes = class_getInstanceMethod(cls, @selector(setMediaTypes:));
-  void (*origSetTypes)(id, SEL, NSArray *) = mSetTypes ? (void *)method_getImplementation(mSetTypes) : NULL;
-  SRCameraReplaceMethod(cls, @selector(setMediaTypes:), ^(UIImagePickerController *self, NSArray<NSString *> *types) {
-    SRImagePickerState *st = picker_state(self);
-    NSMutableArray<NSString *> *valid = [NSMutableArray array];
-    for (NSString *t in types) {
-      if ([t isEqualToString:@"public.image"] || [t isEqualToString:@"public.movie"]) {
-        if (![valid containsObject:t]) {
-          [valid addObject:t];
-        }
-      }
-    }
-    if (valid.count > 0) {
-      st.mediaTypes = valid;
-    }
-    if (st.isCameraMode) {
-      if (valid.count == 0) {
-        [NSException raise:NSInvalidArgumentException format:@"No available types for source %ld", (long)UIImagePickerControllerSourceTypeCamera];
-      }
-      if (![valid containsObject:@"public.image"] && [valid containsObject:@"public.movie"]) {
-        st.cameraCaptureMode = UIImagePickerControllerCameraCaptureModeVideo;
-      } else if ([valid containsObject:@"public.image"] && ![valid containsObject:@"public.movie"]) {
-        st.cameraCaptureMode = UIImagePickerControllerCameraCaptureModePhoto;
-      }
-      [st.cameraVC syncFromPickerState];
-      return;
-    }
-    if (origSetTypes) {
-      origSetTypes(self, @selector(setMediaTypes:), types);
-    }
-  },
-                        "v@:@");
-
-  Method mGetMaxDur = class_getInstanceMethod(cls, @selector(videoMaximumDuration));
-  NSTimeInterval (*origGetMaxDur)(id, SEL) = mGetMaxDur ? (void *)method_getImplementation(mGetMaxDur) : NULL;
-  SRCameraReplaceMethod(cls, @selector(videoMaximumDuration), ^NSTimeInterval(UIImagePickerController *self) {
-    SRImagePickerState *st = objc_getAssociatedObject(self, kPickerStateKey);
-    if (st && st.isCameraMode) {
-      return st.videoMaximumDuration;
-    }
-    return origGetMaxDur ? origGetMaxDur(self, @selector(videoMaximumDuration)) : 600.0;
-  },
-                        "d@:");
-
-  Method mSetMaxDur = class_getInstanceMethod(cls, @selector(setVideoMaximumDuration:));
-  void (*origSetMaxDur)(id, SEL, NSTimeInterval) = mSetMaxDur ? (void *)method_getImplementation(mSetMaxDur) : NULL;
-  SRCameraReplaceMethod(cls, @selector(setVideoMaximumDuration:), ^(UIImagePickerController *self, NSTimeInterval dur) {
-    picker_state(self).videoMaximumDuration = dur;
-    if (!picker_state(self).isCameraMode && origSetMaxDur) {
-      origSetMaxDur(self, @selector(setVideoMaximumDuration:), dur);
-    }
-  },
-                        "v@:d");
-
-  // Bypass UIImagePickerController's remote-extension presentation hooks when in camera mode
-  Method mDidLoad = class_getInstanceMethod(cls, @selector(viewDidLoad));
-  void (*origDidLoad)(id, SEL) = mDidLoad ? (void *)method_getImplementation(mDidLoad) : NULL;
-  IMP superDidLoad = nav_super_imp(@selector(viewDidLoad));
-  SRCameraReplaceMethod(cls, @selector(viewDidLoad), ^(UIImagePickerController *self) {
-    SRImagePickerState *st = objc_getAssociatedObject(self, kPickerStateKey);
-    if (st && st.isCameraMode) {
-      if (superDidLoad) {
-        ((void (*)(id, SEL))superDidLoad)(self, @selector(viewDidLoad));
-      }
-      ensure_camera_vc_installed(self, st);
-      return;
-    }
-    if (origDidLoad) {
-      origDidLoad(self, @selector(viewDidLoad));
-    }
-  },
-                        "v@:");
-
-  Method mWillAppear = class_getInstanceMethod(cls, @selector(viewWillAppear:));
-  void (*origWillAppear)(id, SEL, BOOL) = mWillAppear ? (void *)method_getImplementation(mWillAppear) : NULL;
-  IMP superWillAppear = nav_super_imp(@selector(viewWillAppear:));
-  SRCameraReplaceMethod(cls, @selector(viewWillAppear:), ^(UIImagePickerController *self, BOOL animated) {
-    SRImagePickerState *st = objc_getAssociatedObject(self, kPickerStateKey);
-    if (st && st.isCameraMode) {
-      ensure_camera_vc_installed(self, st);
-      if (superWillAppear) {
-        ((void (*)(id, SEL, BOOL))superWillAppear)(self, @selector(viewWillAppear:), animated);
-      }
-      return;
-    }
-    if (origWillAppear) {
-      origWillAppear(self, @selector(viewWillAppear:), animated);
-    }
-  },
-                        "v@:B");
-
-  SEL initiateSel = sel_registerName("_viewControllerPresentationDidInitiate");
-  Method mInitiate = class_getInstanceMethod(cls, initiateSel);
-  if (mInitiate) {
-    void (*origInitiate)(id, SEL) = (void *)method_getImplementation(mInitiate);
-    IMP superInitiate = nav_super_imp(initiateSel);
-    SRCameraReplaceMethod(cls, initiateSel, ^(UIImagePickerController *self) {
-      SRImagePickerState *st = objc_getAssociatedObject(self, kPickerStateKey);
-      if (st && st.isCameraMode) {
-        if (superInitiate) {
-          ((void (*)(id, SEL))superInitiate)(self, initiateSel);
-        }
-        return;
-      }
-      origInitiate(self, initiateSel);
-    },
-                          "v@:");
-  }
-
-  // 3. Camera-specific instance properties & capture actions
-  SRCameraReplaceMethod(cls, @selector(showsCameraControls), ^BOOL(UIImagePickerController *self) {
-    SRImagePickerState *st = objc_getAssociatedObject(self, kPickerStateKey);
-    if (!st || !st.isCameraMode) {
-      raise_not_camera_exception(@"showsCameraControls");
-    }
-    return st.showsCameraControls;
-  },
-                        "B@:");
-
-  SRCameraReplaceMethod(cls, @selector(setShowsCameraControls:), ^(UIImagePickerController *self, BOOL yn) {
-    SRImagePickerState *st = objc_getAssociatedObject(self, kPickerStateKey);
-    if (!st || !st.isCameraMode) {
-      raise_not_camera_exception(@"setShowsCameraControls:");
-    }
-    st.showsCameraControls = yn;
-    [st.cameraVC syncFromPickerState];
-  },
-                        "v@:B");
-
-  SRCameraReplaceMethod(cls, @selector(cameraOverlayView), ^UIView *(UIImagePickerController *self) {
-    SRImagePickerState *st = objc_getAssociatedObject(self, kPickerStateKey);
-    if (!st || !st.isCameraMode) {
-      raise_not_camera_exception(@"cameraOverlayView");
-    }
-    return st.cameraOverlayView;
-  },
-                        "@@:");
-
-  SRCameraReplaceMethod(cls, @selector(setCameraOverlayView:), ^(UIImagePickerController *self, UIView *view) {
-    SRImagePickerState *st = objc_getAssociatedObject(self, kPickerStateKey);
-    if (!st || !st.isCameraMode) {
-      raise_not_camera_exception(@"setCameraOverlayView:");
-    }
-    st.cameraOverlayView = view;
-    [st.cameraVC syncFromPickerState];
-  },
-                        "v@:@");
-
-  SRCameraReplaceMethod(cls, @selector(cameraViewTransform), ^CGAffineTransform(UIImagePickerController *self) {
-    SRImagePickerState *st = objc_getAssociatedObject(self, kPickerStateKey);
-    if (!st || !st.isCameraMode) {
-      raise_not_camera_exception(@"cameraViewTransform");
-    }
-    return st.cameraViewTransform;
-  },
-                        "{CGAffineTransform=dddddd}@:");
-
-  SRCameraReplaceMethod(cls, @selector(setCameraViewTransform:), ^(UIImagePickerController *self, CGAffineTransform tr) {
-    SRImagePickerState *st = objc_getAssociatedObject(self, kPickerStateKey);
-    if (!st || !st.isCameraMode) {
-      raise_not_camera_exception(@"setCameraViewTransform:");
-    }
-    st.cameraViewTransform = tr;
-    [st.cameraVC syncFromPickerState];
-  },
-                        "v@:{CGAffineTransform=dddddd}");
-
-  SRCameraReplaceMethod(cls, @selector(cameraDevice), ^UIImagePickerControllerCameraDevice(UIImagePickerController *self) {
-    SRImagePickerState *st = objc_getAssociatedObject(self, kPickerStateKey);
-    if (!st || !st.isCameraMode) {
-      raise_not_camera_exception(@"cameraDevice");
-    }
-    return st.cameraDevice;
-  },
-                        "q@:");
-
-  SRCameraReplaceMethod(cls, @selector(setCameraDevice:), ^(UIImagePickerController *self, UIImagePickerControllerCameraDevice dev) {
-    SRImagePickerState *st = objc_getAssociatedObject(self, kPickerStateKey);
-    if (!st || !st.isCameraMode) {
-      raise_not_camera_exception(@"setCameraDevice:");
-    }
-    if (![self.class isCameraDeviceAvailable:dev]) {
-      [NSException raise:NSInvalidArgumentException format:@"Camera device %ld not available", (long)dev];
-    }
-    st.cameraDevice = dev;
-    [st.cameraVC syncFromPickerState];
-  },
-                        "v@:q");
-
-  SRCameraReplaceMethod(cls, @selector(cameraCaptureMode), ^UIImagePickerControllerCameraCaptureMode(UIImagePickerController *self) {
-    SRImagePickerState *st = objc_getAssociatedObject(self, kPickerStateKey);
-    if (!st || !st.isCameraMode) {
-      raise_not_camera_exception(@"cameraCaptureMode");
-    }
-    return st.cameraCaptureMode;
-  },
-                        "q@:");
-
-  SRCameraReplaceMethod(cls, @selector(setCameraCaptureMode:), ^(UIImagePickerController *self, UIImagePickerControllerCameraCaptureMode mode) {
-    SRImagePickerState *st = objc_getAssociatedObject(self, kPickerStateKey);
-    if (!st || !st.isCameraMode) {
-      raise_not_camera_exception(@"setCameraCaptureMode:");
-    }
-    if (mode == UIImagePickerControllerCameraCaptureModeVideo && ![st.mediaTypes containsObject:@"public.movie"]) {
-      [NSException raise:NSInvalidArgumentException format:@"Video capture mode requires public.movie in mediaTypes"];
-    }
-    if (mode == UIImagePickerControllerCameraCaptureModePhoto && ![st.mediaTypes containsObject:@"public.image"]) {
-      [NSException raise:NSInvalidArgumentException format:@"Photo capture mode requires public.image in mediaTypes"];
-    }
-    st.cameraCaptureMode = mode;
-    [st.cameraVC syncFromPickerState];
-  },
-                        "v@:q");
-
-  SRCameraReplaceMethod(cls, @selector(cameraFlashMode), ^UIImagePickerControllerCameraFlashMode(UIImagePickerController *self) {
-    SRImagePickerState *st = objc_getAssociatedObject(self, kPickerStateKey);
-    if (!st || !st.isCameraMode) {
-      raise_not_camera_exception(@"cameraFlashMode");
-    }
-    return st.cameraFlashMode;
-  },
-                        "q@:");
-
-  SRCameraReplaceMethod(cls, @selector(setCameraFlashMode:), ^(UIImagePickerController *self, UIImagePickerControllerCameraFlashMode mode) {
-    SRImagePickerState *st = objc_getAssociatedObject(self, kPickerStateKey);
-    if (!st || !st.isCameraMode) {
-      raise_not_camera_exception(@"setCameraFlashMode:");
-    }
-    st.cameraFlashMode = mode;
-  },
-                        "v@:q");
-
-  SRCameraReplaceMethod(cls, @selector(takePicture), ^(UIImagePickerController *self) {
-    SRImagePickerState *st = objc_getAssociatedObject(self, kPickerStateKey);
-    if (!st || !st.isCameraMode) {
-      raise_not_camera_exception(@"takePicture");
-    }
-    ensure_camera_vc_installed(self, st);
-    [st.cameraVC triggerPhotoCaptureImmediate:YES];
-  },
-                        "v@:");
-
-  SRCameraReplaceMethod(cls, @selector(startVideoCapture), ^BOOL(UIImagePickerController *self) {
-    SRImagePickerState *st = objc_getAssociatedObject(self, kPickerStateKey);
-    if (!st || !st.isCameraMode) {
-      raise_not_camera_exception(@"startVideoCapture");
-    }
-    ensure_camera_vc_installed(self, st);
-    return [st.cameraVC startVideoCaptureImmediate:YES];
-  },
-                        "B@:");
-
-  SRCameraReplaceMethod(cls, @selector(stopVideoCapture), ^(UIImagePickerController *self) {
-    SRImagePickerState *st = objc_getAssociatedObject(self, kPickerStateKey);
-    if (!st || !st.isCameraMode) {
-      raise_not_camera_exception(@"stopVideoCapture");
-    }
-    [st.cameraVC stopVideoCaptureInternal];
-  },
-                        "v@:");
 }
