@@ -21,6 +21,8 @@ Write-ups of each part:
 - [docpicker.md](docpicker.md) — document pickers: UIDocumentPickerViewController with the Mac's open and save panels
 - [microphone.md](microphone.md) — recording: the Mac's microphone, what the Mac plays or an audio file as the app's
   microphone, and its permission
+- [camera.md](camera.md) — camera capture: the Mac's camera, an image or a video file behind `AVCaptureSession`,
+  Vision barcode/face detection, `UIImagePickerController(.camera)` and camera TCC
 - [motion.md](motion.md) — CoreMotion from a MacBook's accelerometer, gyroscope and lid angle: the SPU's HID
   sensors, turning them on, CoreMotion's samples, device motion fused in the app, the screen as the phone
 - [keychain.md](keychain.md) — the fake keychain: SecItem semantics, the plaintext store, access groups, the Keychain

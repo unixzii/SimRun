@@ -19,6 +19,7 @@ typedef enum {
   SRModuleScript,       // script/
   SRModuleTCC,          // tcc/: privacy permissions; before the modules that register services with it
   SRModuleAudio,        // audio/: muting and the microphone
+  SRModuleCamera,       // camera/: AVFoundation capture and UIImagePickerController(.camera)
   SRModuleMotion,       // motion/: CMMotionManager from the Mac's accelerometer and gyroscope
   SRModuleCount
 } SRModuleID;
@@ -44,4 +45,5 @@ SR_HIDDEN void SRMPSStart(void);
 SR_HIDDEN void SRScriptStart(void);
 SR_HIDDEN void SRTCCStart(void);
 SR_HIDDEN void SRAudioStart(void);
+SR_HIDDEN void SRCameraStart(void);
 SR_HIDDEN void SRMotionStart(void);

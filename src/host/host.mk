@@ -26,7 +26,8 @@ $(OBJ)/mac/src/host/simrund/%.o: CPPFLAGS += -Isrc/host/simrund -Fvendor
 $(SIMRUND_OBJ): | $(WEBRTC_STAMP)
 $(BIN)/simrund: $(SIMRUND_OBJ) $(WEBRTC_STAMP) | $(BIN)
 	$(MAC_LINK) -Fvendor $(SIMRUND_OBJ) -framework Cocoa -framework QuartzCore -framework IOSurface -framework Metal \
-	  -framework UniformTypeIdentifiers -framework ImageIO -framework AVFoundation -framework IOKit -framework Security \
+	  -framework UniformTypeIdentifiers -framework ImageIO -framework AVFoundation -framework CoreMedia -framework CoreImage \
+	  -framework VideoToolbox -framework IOKit -framework Security \
 	  -framework SystemConfiguration -framework Network -framework CoreVideo -framework WebRTC \
 	  -Wl,-rpath,@executable_path/../Frameworks -Wl,-rpath,@executable_path/../../vendor -o $@
 

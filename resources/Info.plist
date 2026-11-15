@@ -15,6 +15,7 @@
 	<key>NSHighResolutionCapable</key><true/>
 	<key>NSPrincipalClass</key><string>NSApplication</string>
 	<key>NSHumanReadableCopyright</key><string>Run iOS Simulator apps directly on your Mac.</string>
+	<key>NSCameraUsageDescription</key><string>Apps running in SimRun capture photos and video from the Mac's camera.</string>
 	<key>NSMicrophoneUsageDescription</key><string>Apps running in SimRun record from the Mac's microphone.</string>
 	<key>NSAudioCaptureUsageDescription</key><string>Apps running in SimRun can record what the Mac plays, when their microphone is set to Mac System Audio.</string>
 	<key>CFBundleDocumentTypes</key>

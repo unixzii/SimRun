@@ -45,7 +45,7 @@ $(LIB)/xpcservices.dylib: $(XPCSERVICES_OBJ) $(COMMON_OBJ) | $(LIB)
 # TCC.framework is linked through a stub (tcc/tcc.tbd; not in the SDK); the other private frameworks' symbols
 # (FrontBoardServices, GraphicsServices, BackBoardServices...) are looked up at load.
 APP_DIR := $(SHIMS)/app
-APP_MODULES := locale container watch render scenes hid textinput pboard drag docpicker keychain webkit mps script tcc audio motion
+APP_MODULES := locale container watch render scenes hid textinput pboard drag docpicker keychain webkit mps script tcc audio camera motion
 APP_OBJ := $(call sim_objs,$(APP_DIR)/app.m $(foreach m,$(APP_MODULES),$(wildcard $(APP_DIR)/$(m)/*.m)))
 $(OBJ)/sim/$(APP_DIR)/%.o: CPPFLAGS += -I$(SIM)/common -I$(APP_DIR) -I$(GEN)
 $(GEN)/script_js.h: $(wildcard $(APP_DIR)/script/js/*.js)
@@ -56,6 +56,7 @@ $(LIB)/app.dylib: $(APP_OBJ) $(COMMON_OBJ) $(APP_DIR)/tcc/tcc.tbd | $(LIB)
 	$(SIM_LINK) -dynamiclib $^ -framework Foundation \
 	  -framework UIKit -framework QuartzCore -framework CoreGraphics -framework IOKit -framework UniformTypeIdentifiers \
 	  -framework Security -framework Metal -framework AudioToolbox -framework CoreAudio \
+	  -framework IOSurface -framework CoreMedia -framework CoreVideo -framework ImageIO -lMobileGestalt \
 	  -Wl,-undefined,dynamic_lookup -Wl,-w -o $@
 	@$(SIGN) $@ 2>/dev/null
 

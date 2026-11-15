@@ -29,6 +29,7 @@ static const SRModule kModules[SRModuleCount] = {
   [SRModuleScript]     = { APP, "SCRIPT_DISABLE", SRScriptStart },
   [SRModuleTCC]        = { APP | EXTENSION, NULL, SRTCCStart },
   [SRModuleAudio]      = { APP | EXTENSION, NULL, SRAudioStart },
+  [SRModuleCamera]     = { APP | EXTENSION, "CAMERA_DISABLE", SRCameraStart },
   [SRModuleMotion]     = { APP, "MOTION_DISABLE", SRMotionStart },
 };
 

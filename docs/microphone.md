@@ -127,8 +127,9 @@ which asks for its permissions again.
 
 ## Not supported
 
-- **`AVCaptureSession` audio** gets no samples, from any source (the Mac's microphone included); its permission works
-  as above. Not investigated yet.
+- **`AVCaptureSession` audio without the camera module:** `AVCaptureAudioDataOutput` and `AVCaptureMovieFileOutput`
+  audio tracks are provided by the camera module ([camera.md](camera.md)), routed through `AudioQueueNewInput` (so they
+  share `--mic` and microphone TCC); `CAMERA_DISABLE=1` turns them off too.
 - **No input device, no input.** The Mac's input device still runs under a file or the tap (its samples are dropped):
   an app can't record if the Mac has no input device, and the Mac shows its microphone in use while an app records in
   every mode. A file or the tap doesn't need SimRun's microphone permission, but if macOS has never been asked for it,

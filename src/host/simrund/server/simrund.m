@@ -32,6 +32,7 @@
 #include "sim2host/docpickerhost.h"
 #include "sim2host/privacyhost.h"
 #include "sim2host/motionhost.h"
+#include "sim2host/camerahost.h"
 #include "keychain/keychainwindow.h"
 #include "clitool.h"
 #include "remote/remote.h"
@@ -46,6 +47,7 @@
 #include "docpicker.h"
 #include "privacy.h"
 #include "motion.h"
+#include "camera.h"
 
 typedef NS_ENUM(NSInteger, SRMode) { SRModeGUI, SRModeServe };
 
@@ -125,6 +127,8 @@ static BOOL SameProfile(NSString *a, NSString *b) {
   mach_port_t _privacyPort;
   SRMotionHost *_motion;
   mach_port_t _motionPort;
+  SRCameraHost *_camera;
+  mach_port_t _cameraPort;
   BOOL _gpuStarted;
   mach_port_t _iosurfacePort, _metalPort;
   mach_port_t _audioPort;
@@ -886,6 +890,15 @@ static BOOL ProcessGone(pid_t pid) {
       [self registerName:SRMO_SERVICE port:_motionPort in:ns];
     } else {
       LOG(@"host motion service failed to start");
+    }
+    if (!_camera) {
+      _camera = [SRCameraHost new];
+      _cameraPort = [_camera start];
+    }
+    if (_cameraPort) {
+      [self registerName:SRCM_SERVICE port:_cameraPort in:ns];
+    } else {
+      LOG(@"host camera service failed to start");
     }
     if (!_audioPort) {
       [self lookUpHostAudio];

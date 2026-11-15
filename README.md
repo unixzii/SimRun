@@ -177,6 +177,10 @@ with no apps running.
   time it starts recording, and `--mic system` what the Mac is playing; or pick either in Launch Options ▸
   Microphone ([microphone.md](docs/microphone.md)). Recording from the Mac's microphone, or what it plays, takes
   SimRun's permission on the Mac (macOS asks the first time); without it apps are denied the microphone.
+- **Use your Mac's camera, or feed an image or video**: apps capture photos, video and QR codes from your Mac's camera
+  by default (the green camera light is on only while an `AVCaptureSession` runs), or pass `simrun run --camera qr.png`
+  / `--camera clip.mov --camera-loop` (or Launch Options ▸ Camera) for repeatable testing without camera permission
+  ([camera.md](docs/camera.md)).
 - **Tilt your MacBook** to move the app: on Apple silicon MacBooks, CoreMotion's accelerometer, gyro and device
   motion come from the Mac's own motion sensors, and the phone is the Mac's screen, so opening and closing the lid
   tilts it too ([motion.md](docs/motion.md)). Macs without the sensors report them unavailable.
