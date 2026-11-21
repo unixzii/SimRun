@@ -1,0 +1,9 @@
+{
+  "name": "Shanghai (simulated)",
+  "enabled": true,
+  "latitude": 31.2304,
+  "longitude": 121.4737,
+  "horizontalAccuracy": 5,
+  "authorization": "notDetermined",
+  "requestAuthorization": "authorizedWhenInUse"
+}
